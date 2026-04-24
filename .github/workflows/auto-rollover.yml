@@ -29,12 +29,25 @@ jobs:
     environment: release
     permissions:
       contents: write
+      pull-requests: read
     steps:
       # Belt-and-braces with the `on: push: branches: [main]` trigger.
       - name: Validate trigger branch
         run: |
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "::error::auto-rollover.yml must only run on refs/heads/main, got: $GITHUB_REF"
+            exit 1
+          fi
+
+      # Surface missing/empty token up front instead of as a cryptic auth
+      # error at `git push` time. The `release` environment guards access but
+      # the secret itself can still be misconfigured at the org/repo level.
+      - name: Validate token
+        env:
+          TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::RELEASE_PLEASE_TOKEN secret is missing or empty"
             exit 1
           fi
 
@@ -45,6 +58,8 @@ jobs:
 
       - name: Check if rollover is needed
         id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -60,7 +75,9 @@ jobs:
           VERSION="${LAST_STABLE#v}"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
 
-          # Only roll over when the next patch would be 10 (patch == 9).
+          # Roll over whenever patch >= 9 (next bump would reach or exceed .10).
+          # Defensive: the typical trigger is patch == 9, but this also recovers
+          # if a 0.X.10+ tag somehow slipped through.
           if [ "$PATCH" -lt 9 ]; then
             echo "Last stable patch is $PATCH; no rollover needed."
             echo "needed=false" >> "$GITHUB_OUTPUT"
@@ -68,9 +85,22 @@ jobs:
           fi
 
           # Skip if a Release-As trailer is already queued between last stable and HEAD.
-          # Handles both our own rollover commits and manual overrides.
+          # Handles both our own rollover commits and manual overrides (feature-PR
+          # body Release-As trailers land here via squash-merge).
           if git log "${LAST_STABLE}..HEAD" --format=%B | grep -qE '^Release-As:'; then
             echo "Release-As trailer already present in unreleased commits; skipping."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Also skip if Release Please already has an open release PR whose
+          # body carries a Release-As trailer. That directive isn't in git
+          # history until the RP PR merges, so without this check the rollover
+          # could race ahead and push a conflicting 0.(X+1).0 target.
+          RP_PR_BODY=$(gh pr list --state open --label 'autorelease: pending' \
+            --json body --jq '.[0].body // ""')
+          if printf '%s' "$RP_PR_BODY" | grep -qE '^Release-As:'; then
+            echo "Release-As trailer already queued in Release Please PR body; skipping."
             echo "needed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -91,4 +121,4 @@ jobs:
           git commit --allow-empty \
             -m "chore: auto-rollover to v${NEXT_VERSION}" \
             -m "Release-As: ${NEXT_VERSION}"
-          git push
+          git push origin HEAD:refs/heads/main
