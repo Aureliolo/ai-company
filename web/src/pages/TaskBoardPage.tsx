@@ -236,6 +236,9 @@ export default function TaskBoardPage() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return
+      // Ignore auto-repeat from held keys; each discrete press should
+      // toggle once rather than rapidly flip back and forth.
+      if (event.repeat) return
       const target = event.target
       if (target instanceof HTMLElement) {
         const tag = target.tagName

@@ -33,7 +33,7 @@ export function BatchActionBar({
       animate="animate"
       exit="exit"
     >
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-2.5 shadow-[var(--so-shadow-card-hover)]" role="toolbar" aria-label="Batch actions">
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface p-card shadow-[var(--so-shadow-card-hover)]" role="toolbar" aria-label="Batch actions">
         <span className="text-sm font-medium text-foreground" aria-live="polite">
           {formatNumber(selectedCount)} selected
         </span>

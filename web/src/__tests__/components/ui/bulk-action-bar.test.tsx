@@ -14,7 +14,12 @@ function renderBar(props: BarProps = {}) {
   } = props
   return render(
     <AnimatePresence>
-      <BulkActionBar selectedCount={selectedCount} onClear={onClear} {...rest}>
+      <BulkActionBar
+        key="bulk-action-bar"
+        selectedCount={selectedCount}
+        onClear={onClear}
+        {...rest}
+      >
         {children}
       </BulkActionBar>
     </AnimatePresence>,

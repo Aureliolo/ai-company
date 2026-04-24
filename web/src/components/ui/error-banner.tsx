@@ -74,7 +74,7 @@ export function ErrorBanner({
   const role = severity === 'error' ? 'alert' : 'status'
   const ariaLive = severity === 'error' ? 'assertive' : 'polite'
 
-  const densityClasses = variant === 'inline' ? 'gap-2 px-3 py-2 text-xs' : 'gap-3 p-card text-sm'
+  const densityClasses = variant === 'inline' ? 'gap-2 p-card text-xs' : 'gap-3 p-card text-sm'
 
   return (
     <div

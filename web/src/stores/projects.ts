@@ -178,6 +178,16 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   },
 
   batchDeleteProjects: async (ids: readonly string[]) => {
+    const idSet = new Set(ids)
+    const previous = useProjectsStore.getState()
+    const removed = previous.projects.filter((p) => idSet.has(p.id))
+    set((state) => {
+      const filtered = state.projects.filter((p) => !idSet.has(p.id))
+      return {
+        projects: filtered,
+        totalProjects: Math.max(0, state.totalProjects - removed.length),
+      }
+    })
     const results = await Promise.allSettled(
       ids.map(async (id) => {
         await deleteProjectApi(id)
@@ -185,28 +195,33 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
       }),
     )
     const succeededIds: string[] = []
+    const failedIds: string[] = []
     const failedReasons: string[] = []
     results.forEach((result, index) => {
+      const id = ids[index] ?? '<unknown>'
       if (result.status === 'fulfilled') {
         succeededIds.push(result.value)
       } else {
-        const id = ids[index] ?? '<unknown>'
+        failedIds.push(id)
         failedReasons.push(`${id}: ${getErrorMessage(result.reason)}`)
       }
     })
-    if (succeededIds.length > 0) {
-      const deletedSet = new Set(succeededIds)
+    if (failedIds.length > 0) {
+      const failedSet = new Set(failedIds)
+      const rollback = removed.filter((p) => failedSet.has(p.id))
       set((state) => {
-        const filtered = state.projects.filter((p) => !deletedSet.has(p.id))
+        const existing = new Set(state.projects.map((p) => p.id))
+        const toRestore = rollback.filter((p) => !existing.has(p.id))
+        if (toRestore.length === 0) return state
         return {
-          projects: filtered,
-          totalProjects: Math.max(0, state.totalProjects - succeededIds.length),
+          projects: [...toRestore, ...state.projects],
+          totalProjects: state.totalProjects + toRestore.length,
         }
       })
     }
     return {
       succeeded: succeededIds.length,
-      failed: ids.length - succeededIds.length,
+      failed: failedIds.length,
       failedReasons,
     }
   },

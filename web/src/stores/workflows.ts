@@ -41,6 +41,13 @@ interface WorkflowsState {
   createWorkflow: (data: CreateWorkflowDefinitionRequest) => Promise<WorkflowDefinition | null>
   createFromBlueprint: (data: CreateFromBlueprintRequest) => Promise<WorkflowDefinition | null>
   deleteWorkflow: (id: string) => Promise<boolean>
+  batchDeleteWorkflows: (
+    ids: readonly string[],
+  ) => Promise<{
+    succeeded: number
+    failed: number
+    failedReasons: readonly string[]
+  }>
   setSearchQuery: (q: string) => void
   setWorkflowTypeFilter: (t: string | null) => void
   updateFromWsEvent: () => void
@@ -193,6 +200,40 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
         description: getErrorMessage(err),
       })
       return false
+    }
+  },
+
+  batchDeleteWorkflows: async (ids: readonly string[]) => {
+    const results = await Promise.allSettled(
+      ids.map(async (id) => {
+        await deleteWorkflowApi(id)
+        return id
+      }),
+    )
+    const succeededIds: string[] = []
+    const failedReasons: string[] = []
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        succeededIds.push(result.value)
+      } else {
+        const id = ids[index] ?? '<unknown>'
+        failedReasons.push(`${id}: ${getErrorMessage(result.reason)}`)
+      }
+    })
+    if (succeededIds.length > 0) {
+      const deletedSet = new Set(succeededIds)
+      set((state) => {
+        const filtered = state.workflows.filter((w) => !deletedSet.has(w.id))
+        return {
+          workflows: filtered,
+          totalWorkflows: Math.max(0, state.totalWorkflows - succeededIds.length),
+        }
+      })
+    }
+    return {
+      succeeded: succeededIds.length,
+      failed: ids.length - succeededIds.length,
+      failedReasons,
     }
   },
 

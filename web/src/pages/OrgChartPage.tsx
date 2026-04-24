@@ -222,12 +222,33 @@ function OrgChartInner() {
     fitView({ padding: 0.2, duration: 0 })
     setExporting(true)
     try {
-      // Read the live page background from a computed style so the PNG
-      // matches whichever theme token is active. NO hardcoded colors --
-      // the design system forbids them.
-      const backgroundColor = getComputedStyle(document.body).backgroundColor
+      // Wait for the browser to commit the fitView transform before the
+      // snapshot. A single requestAnimationFrame is enough because
+      // `duration: 0` disables ReactFlow's transition.
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve())
+      })
+      // Resolve the live background from `--so-background`; fall back to
+      // `--so-surface`, then to the computed body background, then to the
+      // chart element itself. A transparent PNG would render on top of
+      // whatever the target viewer shows, which is almost never what we
+      // want. NO hardcoded colors -- the design system forbids them.
+      const rootStyle = getComputedStyle(document.documentElement)
+      const tokenBackground =
+        rootStyle.getPropertyValue('--so-background').trim() ||
+        rootStyle.getPropertyValue('--so-surface').trim()
+      const bodyBackground = getComputedStyle(document.body).backgroundColor
+      const targetBackground = getComputedStyle(target).backgroundColor
+      const backgroundColor =
+        tokenBackground ||
+        (bodyBackground && bodyBackground !== 'rgba(0, 0, 0, 0)'
+          ? bodyBackground
+          : undefined) ||
+        (targetBackground && targetBackground !== 'rgba(0, 0, 0, 0)'
+          ? targetBackground
+          : undefined)
       const dataUrl = await toPng(target, {
-        backgroundColor: backgroundColor || undefined,
+        backgroundColor,
         pixelRatio: 2,
         cacheBust: true,
       })

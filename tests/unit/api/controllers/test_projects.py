@@ -144,4 +144,62 @@ class TestProjectController:
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
-        assert "not found" in body["error"].lower()
+        assert body["error"] == "Project 'proj-does-not-exist' not found"
+
+    def test_delete_project_broadcasts_ws_event(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Successful delete must publish a PROJECT_DELETED WS event.
+
+        Regression guard: the controller's WS broadcast is easy to drop during
+        refactors because it is fire-and-forget and silent on failure.
+        """
+        from synthorg.api.controllers import projects as projects_module
+
+        captured: list[dict[str, Any]] = []
+
+        real_publish = projects_module.publish_ws_event
+
+        def capture(
+            request: Any,
+            event_type: Any,
+            channel: str,
+            payload: dict[str, Any],
+        ) -> None:
+            captured.append(
+                {
+                    "event_type": event_type,
+                    "channel": channel,
+                    "payload": payload,
+                },
+            )
+            real_publish(request, event_type, channel, payload)
+
+        monkeypatch.setattr(projects_module, "publish_ws_event", capture)
+
+        create_resp = test_client.post(
+            "/api/v1/projects",
+            json={"name": "Doomed"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+
+        delete_resp = test_client.delete(
+            f"/api/v1/projects/{project_id}",
+            headers=make_auth_headers("ceo"),
+        )
+        assert delete_resp.status_code == 204
+
+        delete_events = [
+            call
+            for call in captured
+            if getattr(call["event_type"], "value", call["event_type"])
+            == "project.deleted"
+        ]
+        assert len(delete_events) == 1
+        event = delete_events[0]
+        assert event["channel"] == "projects"
+        assert event["payload"]["project_id"] == project_id
+        assert event["payload"]["name"] == "Doomed"

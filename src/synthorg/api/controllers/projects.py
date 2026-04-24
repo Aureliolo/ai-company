@@ -51,7 +51,7 @@ LeadFilter = Annotated[
 
 
 class ProjectController(Controller):
-    """Controller for project listing and creation."""
+    """Controller for project listing, creation, and deletion."""
 
     path = "/projects"
     tags = ("projects",)
@@ -150,6 +150,10 @@ class ProjectController(Controller):
             NotFoundError: Project with ``project_id`` does not exist.
         """
         repo = state.app_state.persistence.projects
+        project = await repo.get(project_id)
+        if project is None:
+            msg = f"Project {project_id!r} not found"
+            raise NotFoundError(msg)
         deleted = await repo.delete(project_id)
         if not deleted:
             msg = f"Project {project_id!r} not found"
@@ -159,7 +163,7 @@ class ProjectController(Controller):
             request,
             WsEventType.PROJECT_DELETED,
             CHANNEL_PROJECTS,
-            {"project_id": project_id},
+            {"project_id": project_id, "name": project.name},
         )
 
     @post(guards=[require_write_access])

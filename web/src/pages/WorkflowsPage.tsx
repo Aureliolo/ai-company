@@ -79,15 +79,9 @@ export default function WorkflowsPage() {
   const handleBulkDelete = useCallback(async () => {
     setBulkDeleting(true)
     const ids = [...visibleSelected]
-    const results = await Promise.allSettled(
-      ids.map(async (id) => {
-        const ok = await useWorkflowsStore.getState().deleteWorkflow(id)
-        if (!ok) throw new Error('delete returned false')
-        return id
-      }),
-    )
-    const succeeded = results.filter((r) => r.status === 'fulfilled').length
-    const failed = ids.length - succeeded
+    const { succeeded, failed, failedReasons } = await useWorkflowsStore
+      .getState()
+      .batchDeleteWorkflows(ids)
     setBulkDeleting(false)
     setBulkDeleteOpen(false)
     clearSelection()
@@ -100,7 +94,11 @@ export default function WorkflowsPage() {
       useToastStore.getState().add({
         variant: 'warning',
         title: `Deleted ${formatNumber(succeeded)} of ${formatNumber(ids.length)} workflows`,
-        description: `${formatNumber(failed)} failed. Please retry.`,
+        description:
+          failedReasons.length > 0
+            ? failedReasons.slice(0, 3).join('; ') +
+              (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : '')
+            : `${formatNumber(failed)} failed. Please retry.`,
       })
     }
   }, [visibleSelected, clearSelection])
