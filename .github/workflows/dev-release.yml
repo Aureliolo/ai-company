@@ -69,10 +69,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-
-          # 1. Find last stable release tag (exclude dev tags).
-          LAST_TAG=$(git tag --sort=-v:refname --list "v[0-9]*.[0-9]*.[0-9]*" | grep -vE '\-dev\.' | head -1)
+          # 1. Find last stable release tag (exclude dev tags)
+          LAST_TAG=$(git tag --sort=-v:refname --list "v[0-9]*.[0-9]*.[0-9]*" | grep -vE '\-dev\.[0-9]+$' | head -1)
           LAST_TAG=${LAST_TAG:-""}
           if [ -z "$LAST_TAG" ]; then
             echo "::error::No stable release tag found"
@@ -80,10 +78,10 @@ jobs:
           fi
           echo "Last stable tag: $LAST_TAG"
 
-          # 2. Get next version from Release Please pending PR.
+          # 2. Get next version from Release Please pending PR
           NEXT_VERSION=$(gh pr list --label "autorelease: pending" --state open --json title --jq '.[0].title // ""' | grep -oP '\d+\.\d+\.\d+' || true)
           if [ -z "$NEXT_VERSION" ]; then
-            # Fallback: bump patch from last tag.
+            # Fallback: bump patch from last tag
             LAST_VERSION="${LAST_TAG#v}"
             IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
             NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
@@ -92,22 +90,18 @@ jobs:
             echo "Next version from Release Please: $NEXT_VERSION"
           fi
 
-          # 3. Compute today's build sequence. Tag format is
-          # `v<next>-dev.YYYYMMDD.N` where N is the Nth dev build today.
-          # This replaces the prior "commits since last stable" counter
-          # so tags at a glance reveal their age (handy when skimming a
-          # release page with 20 dev tags). YYYYMMDD is zero-padded UTC
-          # so the tags sort lexically even across day boundaries.
-          DATE_STAMP=$(date -u +%Y%m%d)
-          EXISTING_TODAY=$(gh release list --limit 50 --json tagName,isPrerelease \
-            --jq '[.[] | select(.isPrerelease and (.tagName | test("-dev\\.'"$DATE_STAMP"'\\.[0-9]+$"))) | .tagName] | length')
-          DEV_NUM=$((EXISTING_TODAY + 1))
+          # 3. Count commits since last stable tag
+          DEV_NUM=$(git rev-list "${LAST_TAG}..HEAD" --count)
+          if [ "$DEV_NUM" -eq 0 ]; then
+            echo "::notice::No commits since $LAST_TAG, skipping dev release"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          DEV_TAG="v${NEXT_VERSION}-dev.${DATE_STAMP}.${DEV_NUM}"
+          DEV_TAG="v${NEXT_VERSION}-dev.${DEV_NUM}"
           echo "Dev version: $DEV_TAG"
           echo "dev_tag=$DEV_TAG" >> "$GITHUB_OUTPUT"
           echo "dev_num=$DEV_NUM" >> "$GITHUB_OUTPUT"
-          echo "date_stamp=$DATE_STAMP" >> "$GITHUB_OUTPUT"
           echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
