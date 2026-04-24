@@ -91,19 +91,16 @@ class TrainingService:
         training_tags: Default tags for stored items.
     """
 
-    __slots__ = (
-        "_curation",
-        "_executed_plan_ids",
-        "_extractors",
-        "_guards",
-        "_idempotency_lock",
-        "_memory_backend",
-        "_selector",
-        "_session_lock",
-        "_sessions",
-        "_training_namespace",
-        "_training_tags",
-    )
+    # ``__slots__`` was evaluated but intentionally not added: the
+    # session test harness in ``tests/unit/hr/training/test_service_sessions.py``
+    # monkey-patches ``_execute_locked`` onto live instances so
+    # ``start_session`` sees a synthetic pipeline result without
+    # rebuilding the full dependency graph. ``__slots__`` would block
+    # that per-instance assignment with ``AttributeError``, and patching
+    # via ``type(service).__dict__`` would mutate the class for every
+    # concurrent test worker. The memory saving is negligible for a
+    # service instance spawned once per app state, so we keep the
+    # flexible instance dict.
 
     def __init__(  # noqa: PLR0913
         self,

@@ -135,6 +135,12 @@ class _FakeOrchestrator:
         self.resume_calls: list[str] = []
         self.cancel_calls: int = 0
         self._status = FineTuneStatus()
+        # ``current_run`` mirrors the real orchestrator's property so
+        # ``MemoryService.cancel_fine_tune`` can capture the active run
+        # id before cancel for the destructive-op audit event. Default
+        # ``None`` keeps existing happy-path tests stable; tests that
+        # care can assign a ``FineTuneRun`` before invoking cancel.
+        self.current_run: FineTuneRun | None = None
 
     async def start(self, request) -> FineTuneRun:  # type: ignore[no-untyped-def]
         self.start_calls.append(request)
