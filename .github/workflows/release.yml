@@ -18,7 +18,7 @@ jobs:
       # Belt-and-braces with the `on: push: branches: [main]` trigger.
       # Fails fast if the workflow is ever invoked from another ref (e.g. a
       # future `workflow_dispatch` addition or an unexpected routing event)
-      # before the RELEASE_PLEASE_TOKEN is exposed via `env:`.
+      # before the App token is minted.
       - name: Validate trigger branch
         run: |
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
@@ -26,10 +26,25 @@ jobs:
             exit 1
           fi
 
+      # Mint a short-lived installation token for the `synthorg-release-bot`
+      # GitHub App. App-token-authored API commits are GitHub-signed (verify
+      # via `gh api .../commits/<sha> --jq '.commit.verification'` -> expect
+      # `verified: true, reason: "valid"`) AND trigger downstream workflows
+      # -- the two constraints PAT + GITHUB_TOKEN could not satisfy together.
+      # See docs/reference/github-environments.md for provisioning.
+      - name: Mint release-bot App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: synthorg
+
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         id: release
         with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
 

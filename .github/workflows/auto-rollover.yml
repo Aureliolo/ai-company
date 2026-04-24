@@ -39,17 +39,23 @@ jobs:
             exit 1
           fi
 
-      # Surface missing/empty token up front instead of as a cryptic auth
-      # error at `git push` time. The `release` environment guards access but
-      # the secret itself can still be misconfigured at the org/repo level.
-      - name: Validate token
-        env:
-          TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-        run: |
-          if [ -z "$TOKEN" ]; then
-            echo "::error::RELEASE_PLEASE_TOKEN secret is missing or empty"
-            exit 1
-          fi
+      # Mint installation token for the `synthorg-release-bot` App. The
+      # rollover commit is pushed directly to main, which enforces signed
+      # commits via branch protection. App-token-authored Git Data API
+      # commits are GitHub-signed (`verified: true, reason: "valid"`) AND
+      # trigger downstream Release + Dev Release workflows -- the two
+      # constraints PAT + GITHUB_TOKEN could not satisfy together.
+      # A missing RELEASE_BOT_APP_ID / RELEASE_BOT_APP_PRIVATE_KEY secret
+      # fails this step fast with an informative error, so we no longer
+      # need the prior "Validate token" preflight.
+      - name: Mint release-bot App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: synthorg
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -113,13 +119,14 @@ jobs:
       - name: Create rollover commit
         if: steps.check.outputs.needed == 'true'
         env:
-          # PAT (not GITHUB_TOKEN) is required so the resulting commit
-          # triggers downstream release.yml + dev-release.yml workflows
-          # (GITHUB_TOKEN-authored commits are suppressed by GitHub's
-          # anti-recursion rule). Git Data API commits are signed by
-          # GitHub when the PAT owner has vigilant mode enabled -- this
-          # matches release-please's own signature pattern on this repo.
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # App installation token (not GITHUB_TOKEN) so the resulting
+          # commit triggers downstream release.yml + dev-release.yml
+          # workflows (GITHUB_TOKEN-authored commits are suppressed by
+          # GitHub's anti-recursion rule, which does not apply to App
+          # tokens). Git Data API commits from an App token are signed
+          # with GitHub's internal key, attributed to the App's bot
+          # identity, and verify as `{verified: true, reason: "valid"}`.
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           NEXT_VERSION: ${{ steps.check.outputs.next_version }}
         run: |
           set -euo pipefail

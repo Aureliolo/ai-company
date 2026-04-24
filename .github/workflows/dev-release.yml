@@ -33,13 +33,26 @@ jobs:
     steps:
       # Belt-and-braces with the `on: push: branches: [main]` trigger.
       # Fails fast if the workflow is ever invoked from another ref before
-      # the RELEASE_PLEASE_TOKEN is exposed via `env:` in later steps.
+      # the App token is minted in the next step.
       - name: Validate trigger branch
         run: |
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "::error::dev-release.yml must only run on refs/heads/main, got: $GITHUB_REF"
             exit 1
           fi
+
+      # Mint installation token for the `synthorg-release-bot` App. App
+      # tokens sign API commits AND fire downstream workflow events
+      # (GITHUB_TOKEN's anti-recursion rule does not apply), so the tag
+      # push in the final step triggers Docker + CLI builds as intended.
+      - name: Mint release-bot App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: synthorg
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -120,11 +133,12 @@ jobs:
           && steps.version.outputs.skip != 'true'
           && steps.tag-exists.outputs.skip != 'true'
         env:
-          # Use PAT instead of github.token so the tag push triggers
-          # downstream workflows (Docker, CLI). Tags created with the
-          # default GITHUB_TOKEN do not fire push events for other
-          # workflows -- a GitHub Actions anti-recursion safeguard.
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # Use the App installation token minted above so the tag push
+          # triggers downstream workflows (Docker, CLI). Tags created with
+          # the default GITHUB_TOKEN do not fire push events for other
+          # workflows -- a GitHub Actions anti-recursion safeguard that
+          # does not apply to App tokens.
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           DEV_TAG: ${{ steps.version.outputs.dev_tag }}
           DEV_NUM: ${{ steps.version.outputs.dev_num }}
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
