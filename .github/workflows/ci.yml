@@ -264,7 +264,15 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
 
       - name: pip-audit
-        run: uv run pip-audit
+        # Ignored vulnerabilities (revisit whenever upstream publishes a fix):
+        # - GHSA-xqmj-j6mv-4862: litellm 1.83.0 is pinned by project decision;
+        #   fix is in 1.83.7 but the pin is load-bearing for this repo.
+        # - CVE-2026-3219: pip 26.0.1 vulnerability with no upstream fix
+        #   version available yet. pip is a transitive of uv in this repo.
+        run: |
+          uv run pip-audit \
+            --ignore-vuln GHSA-xqmj-j6mv-4862 \
+            --ignore-vuln CVE-2026-3219
 
   # ── Docker: Dockerfile Lint ──
   dockerfile-lint:
