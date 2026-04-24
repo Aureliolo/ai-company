@@ -110,11 +110,13 @@ under the `release` deployment environment.
 
 **Purpose**:
 
-- `release.yml` uses it for the `googleapis/release-please-action` step
-  and the BSL Change Date Contents API update (`PUT
-  /repos/.../contents/LICENSE`) against the release-please PR branch.
-  Both writes flow through the GitHub REST API, which signs the
-  resulting commits on behalf of the PAT owner.
+- `release.yml` uses it only for the `googleapis/release-please-action`
+  step. Release Please needs a PAT so that its tag push on release-PR
+  merge triggers the downstream Docker + CLI build pipelines (tag
+  pushes from the default `GITHUB_TOKEN` are suppressed by GitHub's
+  anti-recursion rule). The BSL Change Date Contents API update uses
+  the default `GITHUB_TOKEN` instead, since it commits to the release
+  PR branch and does not need to trigger any workflow.
 - `dev-release.yml` uses it to create dev pre-release tags (e.g.
   `v0.7.2-dev.3`). Unlike the default `GITHUB_TOKEN`, a PAT-authored tag
   push triggers downstream workflows (docker.yml, cli.yml, etc.), which is

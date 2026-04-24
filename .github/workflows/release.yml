@@ -46,7 +46,13 @@ jobs:
       - name: Update BSL Change Date (release + 3 years)
         if: steps.release.outputs.pr != ''
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # GITHUB_TOKEN (not the PAT) so the Contents API commit ships
+          # with a GitHub-signed verification -- PAT-authored API commits
+          # are unsigned, while GITHUB_TOKEN commits are signed by GitHub
+          # and attributed to github-actions[bot]. Workflow recursion is
+          # not a concern here because the commit lands on the release PR
+          # branch, not main.
+          GH_TOKEN: ${{ github.token }}
           BRANCH: release-please--branches--main--components--synthorg
         run: |
           set -euo pipefail
@@ -62,11 +68,11 @@ jobs:
             exit 0
           fi
 
-          # Commit via the GitHub Contents API so the commit is verified
-          # in the release PR UI -- matches release-please's own commits
-          # on the same PR and avoids Unverified badges mid-review.
-          # (The eventual squash-merge produces a fresh GitHub-signed
-          # commit on main regardless of this step's signature.)
+          # Commit via the GitHub Contents API with GITHUB_TOKEN. The
+          # resulting commit is signed by GitHub and authored by
+          # github-actions[bot], appearing as Verified in the release PR
+          # UI. (The eventual squash-merge produces a separate GitHub-
+          # signed commit on main regardless of this step's signature.)
           BLOB_SHA=$(git rev-parse HEAD:LICENSE)
           jq -n \
             --arg msg "chore: update BSL Change Date to $new_date" \
