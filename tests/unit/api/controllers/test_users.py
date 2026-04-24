@@ -255,6 +255,13 @@ class TestListUsers:
         assert second_resp.status_code == 200, second_resp.text
         second = second_resp.json()["data"]
         assert first == second
+        # Lock the ordering contract to ascending ``id`` -- repeatability
+        # alone would also pass for a backend that returns rows in
+        # ``created_at`` (or any other) order.  ``id`` is the sort key
+        # the keyset cursor advances on, so any drift here would
+        # break cursor pagination semantics.
+        ids = [u["id"] for u in first]
+        assert ids == sorted(ids)
 
 
 @pytest.mark.unit
