@@ -32,6 +32,27 @@ export interface ThemeState extends ThemePreferences {
   setSidebarMode: (value: SidebarMode) => void
   setPopoverOpen: (open: boolean) => void
   reset: () => void
+  /**
+   * Detach the matchMedia listener installed at store creation.
+   * Called from the global afterEach in test-setup.tsx so
+   * `--detect-async-leaks` does not count the listener against the
+   * per-test leak budget. Also invoked from Vite's `import.meta.hot`
+   * dispose hook to avoid leaking listeners across Fast Refresh
+   * cycles in dev. Idempotent.
+   */
+  teardown: () => void
+  /**
+   * Re-attach the `prefers-reduced-motion` matchMedia listener after
+   * a prior `teardown()`. Idempotent: calling it while the listener
+   * is already attached is a no-op. Needed because the store is a
+   * Zustand singleton whose closure refs are permanently nulled by
+   * `teardown()`; without this method, tests running after the
+   * global `afterEach` have a store that no longer reacts to OS
+   * reduced-motion preference changes. Tests that exercise runtime
+   * reduced-motion reactivity should call `reattach()` after
+   * mocking `window.matchMedia`.
+   */
+  reattach: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -174,10 +195,34 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
     log.warn('Failed to apply initial theme classes:', err)
   }
 
-  // Listen for reduced-motion changes
-  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-    const mql = window.matchMedia('(prefers-reduced-motion: reduce)')
-    mql.addEventListener('change', (e) => {
+  // Listen for reduced-motion changes. Capture both the MediaQueryList
+  // and the change handler in closure-scoped refs so `teardown()` can
+  // call `removeEventListener` with the same handler identity. Set to
+  // `null` after teardown so a second call is a no-op -- and so
+  // `reattach()` can re-install a fresh pair without duplicate adds.
+  let mql: MediaQueryList | null = null
+  let reducedMotionHandler: ((e: MediaQueryListEvent) => void) | null = null
+
+  // Install the listener against the current `window.matchMedia`.
+  // Factored out so both the initial store creation AND `reattach()`
+  // drive the same code path. Idempotent: a second call while the
+  // listener is still attached is a no-op, which keeps the
+  // `--detect-async-leaks` per-test add/remove count symmetric.
+  //
+  // The handler CANNOT be invoked synchronously here because this
+  // function runs inside the Zustand creator before the store's
+  // initial state is returned -- ``get()`` would see partial /
+  // undefined fields and could write bogus preferences. Initial
+  // alignment to ``mql.matches`` happens via the ``reducedMotion``
+  // variable threaded into the store's returned object; a synthetic
+  // replay is only safe once the store is fully constructed, which
+  // is why ``reattach()`` (not the initial attach) is responsible
+  // for firing the handler.
+  const attachReducedMotionListener = (): void => {
+    if (mql && reducedMotionHandler) return
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    mql = window.matchMedia('(prefers-reduced-motion: reduce)')
+    reducedMotionHandler = (e) => {
       set({ reducedMotionDetected: e.matches })
       // Follow OS reduced-motion preference: always switch to minimal when
       // OS requests it; revert to default when OS lifts the preference
@@ -191,8 +236,11 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
         applyThemeClasses(prefs)
         set({ animation: newAnimation })
       }
-    })
+    }
+    mql.addEventListener('change', reducedMotionHandler)
   }
+
+  attachReducedMotionListener()
 
   return {
     ...initial,
@@ -246,5 +294,47 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
         log.warn('Failed to clear stored preferences:', err)
       }
     },
+
+    teardown: (): void => {
+      if (mql && reducedMotionHandler) {
+        mql.removeEventListener('change', reducedMotionHandler)
+      }
+      mql = null
+      reducedMotionHandler = null
+    },
+
+    reattach: (): void => {
+      // Capture the pre-attach state so we only replay the handler
+      // when ``reattach()`` is actually re-installing a fresh
+      // listener (after a prior ``teardown()``). Calling
+      // ``reattach()`` on an already-attached store must be a
+      // no-op -- otherwise repeated calls would drive the handler
+      // on every invocation, causing avoidable ``savePreferences``
+      // localStorage writes and ``applyThemeClasses`` DOM churn.
+      const wasDetached = !(mql && reducedMotionHandler)
+      attachReducedMotionListener()
+      // Safe to invoke the handler synchronously here: the store is
+      // fully constructed by the time ``reattach()`` is callable, so
+      // ``get()`` inside the handler returns complete state. The
+      // replay mirrors today's OS preference (or the test's mocked
+      // ``matchMedia`` value) into the store immediately, rather
+      // than waiting for the next ``change`` event that may never
+      // fire in tests. Initial store construction skips this replay
+      // (see ``attachReducedMotionListener``).
+      if (wasDetached && mql && reducedMotionHandler) {
+        reducedMotionHandler({ matches: mql.matches } as MediaQueryListEvent)
+      }
+    },
   }
 })
+
+// Dev-only: release the matchMedia listener across Vite Fast Refresh
+// so we do not layer duplicate handlers in the dev loop. In production
+// Vite dead-code-eliminates this branch; under any non-Vite bundler
+// `import.meta.hot` is `undefined` and the `typeof` guard skips the
+// call safely.
+if (typeof import.meta.hot !== 'undefined' && import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    useThemeStore.getState().teardown()
+  })
+}

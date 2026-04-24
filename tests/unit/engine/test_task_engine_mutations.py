@@ -346,7 +346,7 @@ class TestReadThroughErrorWrapping:
 
         persistence.tasks.get = exploding_get  # type: ignore[method-assign]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             with pytest.raises(TaskInternalError, match="Failed to read task"):
                 await eng.get_task("task-1")
@@ -365,7 +365,7 @@ class TestReadThroughErrorWrapping:
 
         persistence.tasks.list_tasks = exploding_list  # type: ignore[assignment,method-assign]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             with pytest.raises(TaskInternalError, match="Failed to list tasks"):
                 await eng.list_tasks()
@@ -381,7 +381,7 @@ class TestReadThroughErrorWrapping:
 
         persistence.tasks.get = oom_get  # type: ignore[method-assign]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             with pytest.raises(MemoryError):
                 await eng.get_task("task-1")
@@ -397,7 +397,7 @@ class TestReadThroughErrorWrapping:
 
         persistence.tasks.list_tasks = oom_list  # type: ignore[assignment,method-assign]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             with pytest.raises(MemoryError):
                 await eng.list_tasks()
@@ -428,7 +428,7 @@ class TestListTasksSafetyCap:
 
         persistence.tasks.list_tasks = oversized_list  # type: ignore[method-assign]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             # Create one task so the oversized list has data to repeat
             await eng.create_task(make_create_data(), requested_by="alice")
@@ -458,7 +458,7 @@ class TestListTasksPushDownPagination:
         from unittest.mock import AsyncMock
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             for i in range(5):
                 await eng.create_task(
@@ -496,7 +496,7 @@ class TestListTasksPushDownPagination:
         from unittest.mock import AsyncMock
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             for i in range(5):
                 await eng.create_task(
@@ -524,7 +524,7 @@ class TestListTasksPushDownPagination:
         from unittest.mock import AsyncMock
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             await eng.create_task(make_create_data(), requested_by="alice")
             count_spy = AsyncMock(wraps=persistence.tasks.count_tasks)
@@ -549,7 +549,7 @@ class TestListTasksPushDownPagination:
     ) -> None:
         """``limit=0`` returns no rows but total still reflects cardinality."""
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             for i in range(3):
                 await eng.create_task(
@@ -568,7 +568,7 @@ class TestListTasksPushDownPagination:
     ) -> None:
         """``offset`` past the end of results yields an empty tuple (no error)."""
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             for i in range(3):
                 await eng.create_task(
@@ -596,7 +596,7 @@ class TestListTasksPushDownPagination:
         from synthorg.core.enums import TaskStatus
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             for i in range(6):
                 await eng.create_task(
@@ -641,7 +641,7 @@ class TestListTasksPushDownPagination:
         in production repos surface in fake-backed tests too.
         """
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             for i in range(5):
                 await eng.create_task(
@@ -673,7 +673,7 @@ class TestListTasksPushDownPagination:
         semantics.
         """
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             with pytest.raises(ValueError, match="requires an explicit limit"):
                 await eng.list_tasks(offset=5)
@@ -686,7 +686,7 @@ class TestListTasksPushDownPagination:
     ) -> None:
         """Negative ``limit`` fails fast with ``ValueError``."""
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             with pytest.raises(ValueError, match="non-negative"):
                 await eng.list_tasks(limit=-1)
@@ -699,7 +699,7 @@ class TestListTasksPushDownPagination:
     ) -> None:
         """Negative ``offset`` fails fast with ``ValueError``."""
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             with pytest.raises(ValueError, match="non-negative"):
                 await eng.list_tasks(offset=-1)
@@ -918,7 +918,7 @@ class TestErrorPropagation:
             persistence=persistence,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             mutation = CreateTaskMutation(
                 request_id="req-1",

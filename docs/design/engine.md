@@ -459,13 +459,48 @@ obs_loop -> observers
 
 ### Lifecycle
 
-- **start()**: Spawns two background tasks: the mutation processing loop
-  and the observer dispatch loop.
-- **stop()**: Sets `_running = False`, drains the mutation queue within a
-  configurable timeout, then places a `None` sentinel on the observer
-  queue to signal completion. The observer dispatch loop exits when it
-  dequeues the sentinel. Remaining timeout budget is used for observer
-  drain. Abandoned futures receive a failure result.
+`start()` and `stop()` are both `async` and run under a dedicated
+`_lifecycle_lock` so the `_running` check-and-set and the background
+task spawn / drain sequences are atomic against concurrent lifecycle
+transitions. A `start()` racing an in-flight `stop()` cannot see
+`_running=False` mid-drain and spawn a new processing task that the
+outgoing stop never waits on.
+
+- **start()** (`async`): Acquires `_lifecycle_lock`, verifies
+  `_running is False`, spawns the two background tasks (mutation
+  processing loop + observer dispatch loop) *first*, and only then
+  commits `_running = True` under `_admission_lock` so `submit()`
+  callers cannot observe a "running" engine before both loops are
+  attached. This ordering is load-bearing -- a `submit()` that saw
+  `_running=True` before the loops were wired would enqueue work with
+  no dispatcher ever picking it up. Raises `RuntimeError` if already
+  running. Every call site must `await`.
+- **stop()** (`async`): Acquires `_lifecycle_lock`, sets
+  `_running = False` under a separate `_admission_lock` so new
+  `submit()` calls fast-fail immediately, drains the mutation queue
+  within the configured `drain_timeout_seconds`, places a `None`
+  sentinel on the observer queue, and drains the observer dispatch
+  loop within the remaining budget. A hard outer deadline (2x the
+  nominal drain budget) bounds the entire stop body so the lifecycle
+  lock can never be held indefinitely even if a drain stage hangs
+  post-cancel. Abandoned futures receive a failure result. Idempotent
+  on the success path.
+
+!!! warning "Unrestartable after a timed-out or cancelled stop"
+
+    If `stop()` either (a) exceeds the hard outer deadline (`TimeoutError`) or
+    (b) is interrupted mid-drain by caller cancellation (`CancelledError`),
+    the engine sets `_unrestartable = True` and re-raises the originating
+    exception. Every subsequent `start()` on that instance raises
+    `RuntimeError("TaskEngine is unrestartable after a failed stop drain; construct a fresh TaskEngine instead")`.
+    This is intentional: the
+    orphaned processing / observer tasks that ignored cancellation are
+    still holding the engine's `_queue` and `_observer_queue`, so
+    re-running `start()` would attach a second producer/consumer pair
+    onto the same state and silently violate the single-writer
+    invariant. Operator recovery is to discard the `TaskEngine`
+    instance (along with any callers it is wired into) and build a
+    fresh one via the factory.
 
 ### AgentEngine <-> TaskEngine Incremental Sync
 

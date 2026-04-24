@@ -24,6 +24,7 @@ from synthorg.communication.channel import Channel  # noqa: TC001
 from synthorg.communication.subscription import Subscription
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
+    COMM_DUPLICATE_SUBSCRIPTION_DISCARDED,
     COMM_SUBSCRIPTION_CREATED,
     COMM_SUBSCRIPTION_REMOVED,
 )
@@ -50,12 +51,18 @@ async def create_pull_consumer(
     prefix = state.nats_config.stream_name_prefix
     subject = subject_for_channel(prefix, channel)
     durable = durable_name(channel_name, subscriber_id)
+    # ``max_ack_pending`` gives the NATS consumer the same
+    # per-subscriber bound that the in-memory bus applies to its
+    # ``asyncio.Queue(maxsize=...)``. JetStream pauses delivery to a
+    # consumer whose unacked count reaches this cap, preventing
+    # broker-side accumulation for a slow agent.
     consumer_config = ConsumerConfig(
         durable_name=durable,
         ack_wait=(
             state.nats_config.publish_ack_wait_seconds * CONSUMER_ACK_WAIT_MULTIPLIER
         ),
         max_deliver=1,
+        max_ack_pending=state.config.retention.max_subscriber_queue_size,
         filter_subject=subject,
     )
     return await state.js.pull_subscribe(
@@ -109,16 +116,24 @@ async def subscribe(
             state.channels[channel_name] = updated_channel
 
     if cleanup_sub is not None:
-        try:
-            await cleanup_sub.unsubscribe()
-        except Exception:
-            logger.warning(
-                COMM_SUBSCRIPTION_REMOVED,
-                channel=channel_name,
-                subscriber=subscriber_id,
-                phase="cleanup_duplicate_consumer",
-                exc_info=True,
-            )
+        # Do NOT call ``cleanup_sub.unsubscribe()`` here. JetStream
+        # durable consumers are keyed by ``durable_name(channel,
+        # subscriber)``; two concurrent ``pull_subscribe`` calls with
+        # the same durable name return distinct client-side
+        # ``Subscription`` objects that reference the **same**
+        # server-side consumer. Calling ``unsubscribe()`` on this
+        # duplicate would delete that shared consumer and break the
+        # winning coroutine's subscription on the next fetch. Dropping
+        # the local reference is the correct cleanup: the server-side
+        # consumer remains bound to the winner in ``state.subscriptions``.
+        # Use the dedicated discard event (not ``COMM_SUBSCRIPTION_REMOVED``)
+        # so unsubscribe metrics / alerts / audit trails are not inflated
+        # by race-loss discards.
+        logger.debug(
+            COMM_DUPLICATE_SUBSCRIPTION_DISCARDED,
+            channel=channel_name,
+            subscriber=subscriber_id,
+        )
 
     if updated_channel is not None:
         await write_channel_to_kv(state, updated_channel)
@@ -156,6 +171,14 @@ async def unsubscribe(
         state.channels[channel_name] = updated
         key = (channel_name, subscriber_id)
         sub: Any = state.subscriptions.pop(key, None)
+        # Clear the overflow-log rate-limit entry alongside the
+        # subscription so repeatedly subscribing and unsubscribing the
+        # same ``(channel, subscriber)`` key cannot leak stale entries
+        # into ``state.last_overflow_log``. The dict is otherwise only
+        # pruned on the receive path (probe failure / healthy
+        # consumer), which never runs for an already-unsubscribed
+        # pair.
+        state.last_overflow_log.pop(key, None)
 
     await write_channel_to_kv(state, updated)
 

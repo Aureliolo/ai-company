@@ -22,6 +22,12 @@ SETTINGS_DEFAULT_DRIFT: Final[str] = "settings.default.drift"
 # ── Dispatcher & subscriber events ────────────────────────────────
 
 SETTINGS_DISPATCHER_STARTED: Final[str] = "settings.dispatcher.started"
+SETTINGS_DISPATCHER_START_REJECTED: Final[str] = "settings.dispatcher.start.rejected"
+"""Emitted when ``SettingsChangeDispatcher.start()`` refuses to start or
+rolls back partway through -- already running, unrestartable after a
+timed-out stop, or a post-subscribe task spawn failed. Kept distinct from
+``SETTINGS_DISPATCHER_STARTED`` so rejected starts do not inflate the
+successful-start metric."""
 SETTINGS_DISPATCHER_STOPPED: Final[str] = "settings.dispatcher.stopped"
 SETTINGS_DISPATCHER_POLL_ERROR: Final[str] = "settings.dispatcher.poll_error"
 SETTINGS_DISPATCHER_CHANNEL_DEAD: Final[str] = "settings.dispatcher.channel_dead"

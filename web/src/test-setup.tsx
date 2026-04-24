@@ -1,10 +1,11 @@
 import '@testing-library/jest-dom/vitest'
 import { createElement } from 'react'
 import type { ComponentProps, ReactNode, Ref } from 'react'
-import { afterAll, afterEach, beforeAll, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
 import { useToastStore } from '@/stores/toast'
+import { useThemeStore } from '@/stores/theme'
 import { cancelPendingPersist } from '@/stores/notifications'
 import { defaultHandlers } from '@/mocks/handlers'
 
@@ -260,9 +261,32 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
 // state to persist across a teardown boundary (e.g. asserting a toast is
 // still visible after a dialog closes) should inline its own assertion
 // within the test body, never rely on post-teardown state.
+beforeEach(() => {
+  // Reattach the theme store's ``prefers-reduced-motion`` listener
+  // for every test, paired with the ``teardown()`` in ``afterEach``
+  // below. Without this, the singleton store would stop reacting to
+  // OS preference changes after the first test's afterEach ran, and
+  // any subsequent test that exercises reduced-motion reactivity
+  // would false-pass silently.
+  //
+  // ``beforeEach`` runs BEFORE the test body, so it cannot pick up a
+  // ``window.matchMedia`` mock that the test installs later in the
+  // body. Tests that need runtime reactivity against a mocked
+  // ``matchMedia`` must call ``useThemeStore.getState().reattach()``
+  // themselves after installing their mock -- this beforeEach only
+  // restores the listener against whatever ``matchMedia`` is present
+  // at the moment it runs (typically the default ``test-setup`` mock).
+  useThemeStore.getState().reattach()
+})
+
 afterEach(() => {
   useToastStore.getState().dismissAll()
   // Notifications store debounces localStorage persistence with a 300ms
   // setTimeout; drop any pending handle so it does not outlive the test.
   cancelPendingPersist()
+  // Theme store subscribes to a `prefers-reduced-motion` MediaQueryList
+  // at factory time; detach the listener here so
+  // `--detect-async-leaks` does not count it per-test. Paired with
+  // the ``reattach()`` in the ``beforeEach`` above.
+  useThemeStore.getState().teardown()
 })

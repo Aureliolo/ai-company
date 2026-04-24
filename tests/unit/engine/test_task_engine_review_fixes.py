@@ -45,7 +45,7 @@ class TestLifecycleLock:
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
         )
-        eng.start()
+        await eng.start()
         await eng.stop(timeout=2.0)
         mutation = CreateTaskMutation(
             request_id="req-late",
@@ -64,7 +64,7 @@ class TestLifecycleLock:
             persistence=persistence,  # type: ignore[arg-type]
             config=TaskEngineConfig(max_queue_size=100),
         )
-        eng.start()
+        await eng.start()
 
         # Create a task first so the engine is clearly working
         task = await eng.create_task(
@@ -97,7 +97,7 @@ class TestLifecycleLock:
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
         )
-        eng.start()
+        await eng.start()
         await asyncio.gather(
             eng.stop(timeout=2.0),
             eng.stop(timeout=2.0),
@@ -300,7 +300,7 @@ class TestSnapshotPublishingTaskId:
             message_bus=message_bus,  # type: ignore[arg-type]
             config=TaskEngineConfig(publish_snapshots=True),
         )
-        eng.start()
+        await eng.start()
         task = await eng.create_task(
             make_create_data(),
             requested_by="alice",
@@ -325,7 +325,7 @@ class TestSnapshotPublishingTaskId:
             message_bus=message_bus,  # type: ignore[arg-type]
             config=TaskEngineConfig(publish_snapshots=True),
         )
-        eng.start()
+        await eng.start()
         task = await eng.create_task(
             make_create_data(),
             requested_by="alice",
@@ -582,7 +582,7 @@ class TestProcessingLoopExceptionRecovery:
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
         )
-        eng.start()
+        await eng.start()
         try:
             mutation = CreateTaskMutation(
                 request_id="req-boom",
@@ -616,7 +616,7 @@ class TestProcessingLoopExceptionRecovery:
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
         )
-        eng.start()
+        await eng.start()
         try:
             # First create fails
             m1 = CreateTaskMutation(
@@ -659,7 +659,7 @@ class TestSnapshotNewStatusNone:
             message_bus=message_bus,  # type: ignore[arg-type]
             config=TaskEngineConfig(publish_snapshots=True),
         )
-        eng.start()
+        await eng.start()
         # Create then delete -- delete snapshot has task=None and new_status=None
         task = await eng.create_task(make_create_data(), requested_by="alice")
         await eng.delete_task(task.id, requested_by="alice")

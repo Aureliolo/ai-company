@@ -45,11 +45,36 @@ _DEFAULT_CHANNELS: tuple[str, ...] = (
 )
 
 
+_MAX_SUBSCRIBER_QUEUE_SIZE_LIMIT: Final[int] = 65_535
+"""Upper bound on subscriber queue sizes.
+
+Chosen to match the typical operator-sane ceiling for JetStream
+``max_ack_pending`` and to keep single-subscriber memory bounded
+(``~65k envelopes * sizeof(DeliveryEnvelope)`` is tens of MB, not GB).
+Guards against a misconfiguration or untrusted-config-source DoS
+where an absurd value would exhaust memory at queue creation.
+"""
+
+
 class MessageRetentionConfig(BaseModel):
-    """Retention settings for channel message history.
+    """Retention settings for channel message history and subscriber delivery.
 
     Attributes:
-        max_messages_per_channel: Maximum messages kept per channel.
+        max_messages_per_channel: Maximum messages kept per channel
+            for both in-memory and NATS backends. In-memory backend:
+            ``collections.deque(maxlen=...)``. NATS backend:
+            ``max_msgs_per_subject`` on the JetStream stream.
+        max_subscriber_queue_size: Maximum in-flight envelopes per
+            (channel, subscriber). In-memory backend applies a
+            drop-newest policy with ``COMM_SUBSCRIBER_QUEUE_OVERFLOW``
+            emission when the cap is hit. NATS backend wires this
+            value into ``ConsumerConfig.max_ack_pending`` so JetStream
+            pauses delivery to a consumer whose unacked count reaches
+            the cap. The same configuration surface keeps the two
+            backends at parity. Bounded above by
+            :data:`_MAX_SUBSCRIBER_QUEUE_SIZE_LIMIT` to guard against
+            a misconfiguration or untrusted-config-source DoS
+            exhausting memory at queue creation.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -58,6 +83,16 @@ class MessageRetentionConfig(BaseModel):
         default=1000,
         gt=0,
         description="Maximum messages kept per channel",
+    )
+    max_subscriber_queue_size: int = Field(
+        default=1024,
+        gt=0,
+        le=_MAX_SUBSCRIBER_QUEUE_SIZE_LIMIT,
+        description=(
+            "Maximum in-flight envelopes per (channel, subscriber). "
+            "In-memory bus: hard cap with drop-newest policy. "
+            "NATS: ConsumerConfig.max_ack_pending."
+        ),
     )
 
 

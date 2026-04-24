@@ -25,6 +25,10 @@ from synthorg.observability.events.inflection import (
     PERF_INFLECTION_EMISSION_FAILED,
 )
 from synthorg.observability.events.performance import (
+    PERF_BACKGROUND_TASK_FAILED,
+    PERF_INFLECTION_SINK_BIND_REJECTED,
+    PERF_INFLECTION_SINK_BOUND,
+    PERF_INFLECTION_SINK_CLEARED,
     PERF_LLM_SAMPLE_FAILED,
     PERF_METRIC_RECORDED,
     PERF_OVERRIDE_APPLIED,
@@ -117,6 +121,11 @@ class PerformanceTracker:
         self._contributions: dict[str, list[AgentContribution]] = {}
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._metrics_lock = asyncio.Lock()
+        # Set to True while ``aclose()`` is draining so new background
+        # tasks cannot be enqueued between the task-set snapshot and
+        # the clear. Guarded by ``_metrics_lock`` on both read and
+        # write sides.
+        self._closing: bool = False
 
     @staticmethod
     def _default_quality() -> QualityScoringStrategy:
@@ -202,12 +211,81 @@ class PerformanceTracker:
         Should be called during application shutdown to prevent
         ``RuntimeError: Task was destroyed but it is pending!``
         warnings.
+
+        Sets ``_closing`` under ``_metrics_lock`` before snapshotting
+        so concurrent ``record_collaboration_event`` / ``get_snapshot``
+        calls (which schedule under the same lock) refuse to enqueue
+        new background tasks once shutdown has started. Without that
+        gate a task scheduled right after the snapshot would survive
+        aclose() with the result that the caller sees
+        ``aclose() returned`` while a live sampling / inflection task
+        keeps running and can still repopulate cache state.
         """
-        tasks = list(self._background_tasks)
+        async with self._metrics_lock:
+            self._closing = True
+            tasks = list(self._background_tasks)
+            self._background_tasks.clear()
         for t in tasks:
             t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        self._background_tasks.clear()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Preserve system-error signals: ``_maybe_sample`` and
+        # ``_do_emit_inflections`` explicitly re-raise MemoryError /
+        # RecursionError (and other BaseException subclasses other
+        # than CancelledError). Discarding them here would silently
+        # mask OS-level failures; log unexpected non-cancellation
+        # exceptions and re-raise the first BaseException seen so the
+        # lifecycle layer can surface it.
+        system_error: BaseException | None = None
+        for result in results:
+            if not isinstance(result, BaseException):
+                continue
+            if isinstance(result, asyncio.CancelledError):
+                continue
+            if isinstance(result, Exception):
+                logger.warning(
+                    PERF_BACKGROUND_TASK_FAILED,
+                    error_type=type(result).__name__,
+                )
+                continue
+            if system_error is None:
+                system_error = result
+        if system_error is not None:
+            raise system_error
+
+    async def aclear(self) -> None:
+        """Async-safe reset of all recorded metrics.
+
+        Acquires ``_metrics_lock`` so no recorder can observe a partial
+        clear and no reader can race the mutation of ``_task_metrics``
+        / ``_collab_metrics`` / ``_contributions`` /
+        ``_trend_direction_cache``. Cancels pending background tasks
+        *without* awaiting them (matches :meth:`clear` semantics) so
+        the call is cheap in hot tests.
+
+        Production callers that must drain outstanding tasks cleanly
+        should call :meth:`aclose` instead.
+        """
+        async with self._metrics_lock:
+            tasks_cancelled = len(self._background_tasks)
+            task_metrics_cleared = len(self._task_metrics)
+            collab_metrics_cleared = len(self._collab_metrics)
+            contributions_cleared = len(self._contributions)
+            trend_cache_cleared = len(self._trend_direction_cache)
+            for t in list(self._background_tasks):
+                t.cancel()
+            self._background_tasks.clear()
+            self._task_metrics.clear()
+            self._collab_metrics.clear()
+            self._contributions.clear()
+            self._trend_direction_cache.clear()
+        logger.info(
+            PERF_TRACKER_CLEARED,
+            tasks_cancelled=tasks_cancelled,
+            task_metrics_cleared=task_metrics_cleared,
+            collab_metrics_cleared=collab_metrics_cleared,
+            contributions_cleared=contributions_cleared,
+            trend_cache_cleared=trend_cache_cleared,
+        )
 
     async def record_task_metric(
         self,
@@ -304,14 +382,18 @@ class PerformanceTracker:
             if agent_key not in self._collab_metrics:
                 self._collab_metrics[agent_key] = []
             self._collab_metrics[agent_key].append(record)
+            # Schedule inside the lock so a concurrent aclear() cannot
+            # snapshot the tasks, cancel, and return before this task
+            # is added to ``_background_tasks`` -- otherwise the new
+            # task would survive the clear and could repopulate cache
+            # state after aclear() returned.
+            self._schedule_sampling(record)
 
         logger.debug(
             PERF_METRIC_RECORDED,
             agent_id=record.agent_id,
             metric_type="collaboration",
         )
-
-        self._schedule_sampling(record)
 
     async def get_collaboration_score(
         self,
@@ -352,7 +434,13 @@ class PerformanceTracker:
                     override_active=True,
                 )
 
-        records = tuple(self._collab_metrics.get(str(agent_id), []))
+        # Snapshot under the lock so a future refactor that introduces
+        # an ``await`` between the dict read and the tuple copy cannot
+        # tear the records list. Strategy scoring runs *outside* the
+        # lock -- it may do unbounded work and must not serialize
+        # concurrent record writes.
+        async with self._metrics_lock:
+            records = tuple(self._collab_metrics.get(str(agent_id), []))
         return await self._collaboration_strategy.score(
             agent_id=agent_id,
             records=records,
@@ -444,7 +532,13 @@ class PerformanceTracker:
 
         # Emit inflection events for trend direction changes.
         if self._inflection_sink is not None and trends:
-            self._schedule_inflection_emission(agent_id, trends)
+            # Schedule inside the lock so a concurrent aclear() cannot
+            # snapshot the tasks, cancel, and return before this task
+            # is added to ``_background_tasks`` -- otherwise the new
+            # task would survive the clear and could repopulate
+            # ``_trend_direction_cache`` after aclear() returned.
+            async with self._metrics_lock:
+                self._schedule_inflection_emission(agent_id, trends)
 
         # Overall quality: average of all scored records.
         scored = [r.quality_score for r in task_records if r.quality_score is not None]
@@ -628,7 +722,14 @@ class PerformanceTracker:
 
     @inflection_sink.setter
     def inflection_sink(self, value: InflectionSink | None) -> None:
-        """Set the inflection sink.
+        """Set the inflection sink (startup-phase sync path).
+
+        Not concurrency-safe: two concurrent setters both observing
+        ``None`` will both succeed, silently overwriting. Use this
+        setter only during single-writer startup wiring (e.g.
+        :func:`synthorg.engine.evolution.factory.build_evolution_service`).
+        For runtime binding from async contexts, call
+        :meth:`set_inflection_sink` instead.
 
         Args:
             value: The inflection sink to assign.
@@ -637,9 +738,48 @@ class PerformanceTracker:
             ValueError: If an inflection sink is already configured.
         """
         if self._inflection_sink is not None and value is not None:
+            logger.warning(
+                PERF_INFLECTION_SINK_BIND_REJECTED,
+                reason="already_configured",
+                path="sync_setter",
+            )
             msg = "Inflection sink is already configured"
             raise ValueError(msg)
         self._inflection_sink = value
+        if value is None:
+            logger.info(PERF_INFLECTION_SINK_CLEARED, path="sync_setter")
+        else:
+            logger.info(PERF_INFLECTION_SINK_BOUND, path="sync_setter")
+
+    async def set_inflection_sink(self, value: InflectionSink | None) -> None:
+        """Atomically set the inflection sink under ``_metrics_lock``.
+
+        The async counterpart to the sync :attr:`inflection_sink`
+        setter. Two concurrent callers will be serialized; exactly one
+        succeeds, the loser raises ``ValueError``. Use this from any
+        async context where concurrent binding is possible (task
+        engine observers, rolling evolution triggers, etc.).
+
+        Args:
+            value: The inflection sink to assign.
+
+        Raises:
+            ValueError: If an inflection sink is already configured.
+        """
+        async with self._metrics_lock:
+            if self._inflection_sink is not None and value is not None:
+                logger.warning(
+                    PERF_INFLECTION_SINK_BIND_REJECTED,
+                    reason="already_configured",
+                    path="async_setter",
+                )
+                msg = "Inflection sink is already configured"
+                raise ValueError(msg)
+            self._inflection_sink = value
+            if value is None:
+                logger.info(PERF_INFLECTION_SINK_CLEARED, path="async_setter")
+            else:
+                logger.info(PERF_INFLECTION_SINK_BOUND, path="async_setter")
 
     def _schedule_sampling(
         self,
@@ -648,9 +788,21 @@ class PerformanceTracker:
         """Schedule LLM sampling as a background task.
 
         The task is tracked in ``_background_tasks`` to prevent
-        garbage-collection warnings.  Failures are handled inside
+        garbage-collection warnings. Failures are handled inside
         ``_maybe_sample`` -- they never propagate.
+
+        MUST be called with ``_metrics_lock`` held so the
+        ``_background_tasks`` mutation is atomic with respect to
+        :meth:`aclear` and :meth:`aclose`; otherwise a task scheduled
+        here could survive a concurrent clear/close and repopulate
+        metric state (e.g. ``_trend_direction_cache``) after the
+        clear returned.
         """
+        # Refuse to enqueue after ``aclose()`` has started; otherwise
+        # the post-aclose task would leak and keep running against a
+        # tracker the caller considers shut down.
+        if self._closing:
+            return
         if self._sampler is None:
             return
         if record.interaction_summary is None:
@@ -721,7 +873,15 @@ class PerformanceTracker:
         Compares each trend's direction against the cached previous
         direction.  Emits a ``PerformanceInflection`` for every
         direction change.  The task is tracked to prevent GC warnings.
+
+        MUST be called with ``_metrics_lock`` held so the
+        ``_background_tasks`` mutation is atomic with respect to
+        :meth:`aclear` and :meth:`aclose`; otherwise a task scheduled
+        here could survive a concurrent clear/close and repopulate
+        ``_trend_direction_cache`` after the clear returned.
         """
+        if self._closing:
+            return
         task = asyncio.create_task(
             self._do_emit_inflections(agent_id, trends),
         )

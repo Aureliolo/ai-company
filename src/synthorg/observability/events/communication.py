@@ -37,6 +37,14 @@ COMM_BATCH_PUBLISHED: Final[str] = "communication.message.batch_published"
 COMM_SUBSCRIPTION_CREATED: Final[str] = "communication.subscription.created"
 COMM_SUBSCRIPTION_REMOVED: Final[str] = "communication.subscription.removed"
 COMM_SUBSCRIPTION_NOT_FOUND: Final[str] = "communication.subscription.not_found"
+# Client-side ``Subscription`` reference dropped after losing a concurrent
+# subscribe race on the same ``(channel, subscriber)`` durable consumer. This
+# is NOT a real unsubscribe -- the server-side consumer remains bound to the
+# winning coroutine -- so it must not be counted as ``COMM_SUBSCRIPTION_REMOVED``
+# in metrics, alerts, or audit trails.
+COMM_DUPLICATE_SUBSCRIPTION_DISCARDED: Final[str] = (
+    "communication.subscription.duplicate_discarded"
+)
 
 # History
 COMM_HISTORY_QUERIED: Final[str] = "communication.history.queried"
@@ -73,6 +81,13 @@ COMM_SEND_DIRECT_INVALID: Final[str] = "communication.message.send_direct_invali
 
 # Shutdown
 COMM_BUS_SHUTDOWN_SIGNAL: Final[str] = "communication.bus.shutdown_signal"
+
+# Subscriber delivery overflow
+# Both backends emit this when a subscriber cannot keep up with
+# inbound traffic. In-memory bus: the incoming envelope is dropped
+# (drop_policy=newest). NATS: the pull consumer reached its
+# ``max_ack_pending`` cap and JetStream pauses delivery.
+COMM_SUBSCRIBER_QUEUE_OVERFLOW: Final[str] = "communication.subscriber.queue_overflow"
 
 # Tool: email sending
 COMM_TOOL_EMAIL_SEND_START: Final[str] = "communication.tool.email.send_start"

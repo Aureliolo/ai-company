@@ -345,6 +345,32 @@ All metadata fields are nullable except `extra`, which is always present (defaul
 !!! info "Distributed bus backends"
     The `backend` field switches between the in-process `internal` default and the opt-in NATS JetStream backend for multi-process / multi-host deployments. See the [Distributed Runtime design](distributed-runtime.md) for the transport evaluation, stream layout, and migration path.
 
+### Retention and Subscriber Bounds
+
+Both bus backends are bounded on two independent axes so a slow subscriber cannot nuke the channel or leak memory without bound:
+
+| Setting | Scope | In-memory backend | NATS backend |
+|---------|-------|-------------------|--------------|
+| `retention.max_messages_per_channel` | Per-channel history | `collections.deque(maxlen=...)` per channel | JetStream stream `max_msgs_per_subject` |
+| `retention.max_subscriber_queue_size` | Per-(channel, subscriber) in-flight delivery | `asyncio.Queue(maxsize=...)` + drop-newest policy | `ConsumerConfig.max_ack_pending` (JetStream pauses delivery) |
+
+When a slow subscriber's delivery cap is reached:
+
+Internal backend
+:   The publisher's `put_nowait` trips `asyncio.QueueFull`; the framework **drops the incoming envelope** (drop-newest), emits `COMM_SUBSCRIBER_QUEUE_OVERFLOW` at `WARNING` with `channel`, `subscriber`, `queue_size`, `drop_policy=newest`, `backend=memory`. Older queued envelopes are preserved so causality is maintained, and publishers never block.
+
+NATS backend
+:   JetStream stops handing new messages to the pull consumer once `max_ack_pending` is reached. Messages remain in the stream (subject to `max_messages_per_channel`), so when the consumer catches up delivery resumes automatically. The same `COMM_SUBSCRIBER_QUEUE_OVERFLOW` event is emitted (rate-limited) with `backend=nats` so operators see a uniform signal across backends.
+
+The default `max_subscriber_queue_size` is `1024`, capped at `65535`. Raise it for bursty channels where subscribers are known to catch up within the burst; lower it to surface slow consumers faster. The upper limit guards against a misconfiguration or untrusted-config-source DoS.
+
+### Bus Bridge Lifecycle Synchronization
+
+`MessageBusBridge.start()` and `stop()` (the Litestar `ChannelsPlugin` bridge in `api/bus_bridge.py`) run under a dedicated `_lifecycle_lock` so the `_running` check-and-set + the per-channel `subscribe` + poll-task-spawn loop are atomic against concurrent lifecycle calls. A racing `stop()` cannot cancel in-flight subscribes while `start()` is still wiring channels, and two concurrent `start()` calls cannot both pass the `_running=False` check. Partial-subscribe failures are tracked per channel and escalated to `ERROR` with the full list of failed channels so a silent "started with incomplete channel coverage" state is always visible to operators. The drain in `stop()` (`asyncio.gather` on all in-flight poll tasks after cancellation) is spawned as a separate task, shielded from the outer `wait_for` cancellation, and capped at `_STOP_DRAIN_TIMEOUT_SECONDS = 10.0`s. On deadline, the bridge sets `_stop_failed = True`, logs an `ERROR`, and re-raises `TimeoutError`; the shielded drain continues running in the background but no longer holds the lifecycle lock. **After a timed-out stop, `start()` refuses all restart attempts on the same instance** (`_stop_failed` is the unrestartable flag) because orphaned poller tasks remain on the event loop; the only recovery is to construct a fresh `MessageBusBridge` -- callers must replace the instance rather than retry `start()` on the same object. See `CLAUDE.md` §"Lifecycle synchronization" for the shared pattern.
+
+!!! warning "Slow audit sinks"
+    The drop-newest policy means an audit/security sink that falls behind will silently lose new events. Run audit sinks on dedicated channels with `max_subscriber_queue_size` sized for the worst-case burst, or monitor `COMM_SUBSCRIBER_QUEUE_OVERFLOW` at WARNING and alert on it. Security-critical events should never share a channel with normal traffic.
+
 ---
 
 ## Loop Prevention

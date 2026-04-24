@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 import { createLogger } from '@/lib/logger'
@@ -50,73 +50,82 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
   const connected = useWebSocketStore((s) => s.connected)
   const reconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
   const [setupError, setSetupError] = useState<string | null>(null)
-  const disposedRef = useRef(false)
 
   const isEnabled = enabled !== undefined ? enabled : authStatus === 'authenticated'
 
   useEffect(() => {
-    disposedRef.current = false
-
     if (!isEnabled) return
 
     const wsStore = useWebSocketStore.getState()
     const uniqueChannels: WsChannel[] = [...new Set(bindings.map((b) => b.channel))]
 
+    // Effect-local cancellation token. Captured by async closures
+    // below so a stale setup() from a previous `enabled` toggle
+    // cannot register handlers into a newer effect's ledger after
+    // its cleanup already ran. A shared ref would let stale tasks
+    // race across mounts.
+    let cancelled = false
+
+    // List of (channel, handler) pairs wired by this effect instance.
+    // Declared before `setup()` so the declaration precedes all reads;
+    // populated during setup and iterated by the cleanup callback.
+    // Kept local to the effect so each mount owns its registration
+    // ledger.
+    const registered: Array<ChannelBinding> = []
+
+    // Flip to true after wsStore.subscribe() succeeds so cleanup knows
+    // whether there are channel subscriptions to tear down. Channel
+    // subscriptions are separate from per-handler registrations; the
+    // hook owns both and must unwind both on unmount.
+    let subscribed = false
+
+    // The hook does NOT wrap individual store mutation calls in
+    // try/catch per the project contract ("Callers MUST NOT wrap
+    // store mutation calls in try/catch -- the store owns the error
+    // UX"). Errors from connect/subscribe/onChannelEvent bubble to
+    // the top-level ``setup().catch()`` which sets a single generic
+    // ``setupError`` for the UI; the store emits toasts + logs from
+    // its own mutation actions. Cancellation guards remain so a
+    // stale effect cannot register handlers against a newer mount.
     const setup = async () => {
-      // Clear any stale error from a previous failed setup
       setSetupError(null)
-      try {
-        if (!wsStore.connected) {
-          await wsStore.connect()
-        }
-      } catch (err) {
-        if (disposedRef.current) return
-        setSetupError('WebSocket connection failed.')
-        log.error('Connect failed:', err)
-        return
+      if (!wsStore.connected) {
+        await wsStore.connect()
       }
+      if (cancelled) return
 
-      if (disposedRef.current) return
+      wsStore.subscribe(uniqueChannels, filters)
+      subscribed = true
+      if (cancelled) return
 
-      try {
-        wsStore.subscribe(uniqueChannels, filters)
-      } catch (err) {
-        setSetupError('WebSocket subscription failed.')
-        log.error('Subscribe failed:', err)
-        return
-      }
-
-      if (disposedRef.current) return
-
+      // Push to the ledger AFTER the call succeeds so a throw from
+      // ``onChannelEvent`` naturally aborts the loop without leaving
+      // the failed binding in the rollback ledger. The outer
+      // ``setup().catch()`` records the failure in setupError.
       for (const binding of bindings) {
-        try {
-          wsStore.onChannelEvent(binding.channel, binding.handler)
-        } catch (err) {
-          setSetupError('WebSocket handler setup failed.')
-          log.error('Handler wiring failed:', err)
-        }
+        if (cancelled) return
+        wsStore.onChannelEvent(binding.channel, binding.handler)
+        registered.push(binding)
       }
     }
 
     setup().catch((err) => {
-      if (!disposedRef.current) {
-        setSetupError('WebSocket setup failed unexpectedly.')
+      if (!cancelled) {
+        setSetupError('WebSocket setup failed.')
       }
       log.error('Setup failed:', err)
     })
 
     return () => {
-      disposedRef.current = true
-      // Only remove handlers -- do NOT unsubscribe channels globally since
-      // other hook instances may share the same channels. The store's
-      // handler set deduplication ensures cleanup is safe per-handler.
-      for (const binding of bindings) {
-        try {
-          wsStore.offChannelEvent(binding.channel, binding.handler)
-        } catch (err) {
-          log.error('Handler cleanup failed:', err)
-        }
-      }
+      cancelled = true
+      // Cleanup goes through a single non-throwing store action so the
+      // hook no longer owns store error UX. The store's rollback
+      // iterates handler bindings + optionally unsubscribes channels
+      // internally, matching the "store owns error UX" contract the
+      // rest of the Zustand stores follow.
+      wsStore.rollbackSubscriptions(uniqueChannels, registered, {
+        unsubscribe: subscribed,
+      })
     }
     // Bindings and filters are intentionally excluded -- they are captured
     // once on mount and remain stable for the component's lifetime. Changing

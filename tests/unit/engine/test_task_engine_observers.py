@@ -101,7 +101,7 @@ async def started_engine() -> AsyncGenerator[TaskEngine]:
     engine = TaskEngine(
         persistence=persistence,  # type: ignore[arg-type]
     )
-    engine.start()
+    await engine.start()
     yield engine
     await engine.stop()
 

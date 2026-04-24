@@ -12,7 +12,7 @@ import time
 from collections import deque
 from collections.abc import Sequence  # noqa: TC003
 from datetime import UTC, datetime
-from typing import Final, NoReturn
+from typing import Final, NoReturn, cast
 
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import MessageBusConfig  # noqa: TC001
@@ -48,6 +48,7 @@ from synthorg.observability.events.communication import (
     COMM_RECEIVE_SHUTDOWN,
     COMM_RECEIVE_UNSUBSCRIBED,
     COMM_SEND_DIRECT_INVALID,
+    COMM_SUBSCRIBER_QUEUE_OVERFLOW,
     COMM_SUBSCRIPTION_CREATED,
     COMM_SUBSCRIPTION_NOT_FOUND,
     COMM_SUBSCRIPTION_REMOVED,
@@ -107,7 +108,15 @@ class InMemoryMessageBus:
         self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope | None]] = {}
         self._history: dict[str, deque[Message]] = {}
         self._known_agents: set[str] = set()
-        self._waiters: dict[tuple[str, str], int] = {}
+        # Per-waiter one-shot futures keyed by (channel, subscriber).
+        # ``receive()`` appends a future on entry and removes it on
+        # exit; ``unsubscribe()`` pops the set and sets each future so
+        # every active waiter wakes up without relying on fitting
+        # sentinels into a bounded queue. Using futures (rather than
+        # an int counter + sentinel puts) means ``unsubscribe`` never
+        # blocks on queue backpressure even if waiter count exceeds
+        # ``max_subscriber_queue_size``.
+        self._waiters: dict[tuple[str, str], set[asyncio.Future[None]]] = {}
         self._running = False
         self._shutdown_event = asyncio.Event()
         self._idle_poll_count: int = 0
@@ -195,11 +204,55 @@ class InMemoryMessageBus:
         channel_name: str,
         subscriber_id: str,
     ) -> asyncio.Queue[DeliveryEnvelope | None]:
-        """Get or create a per-(channel, subscriber) queue."""
-        return self._queues.setdefault(
-            (channel_name, subscriber_id),
-            asyncio.Queue(),
-        )
+        """Get or create a per-(channel, subscriber) queue.
+
+        Bounded by ``retention.max_subscriber_queue_size`` so a slow
+        subscriber cannot leak unbounded memory. Overflow is handled
+        by :meth:`_enqueue_or_drop` with a drop-newest policy.
+        """
+        key = (channel_name, subscriber_id)
+        queue = self._queues.get(key)
+        if queue is None:
+            queue = asyncio.Queue(
+                maxsize=self._config.retention.max_subscriber_queue_size,
+            )
+            self._queues[key] = queue
+        return queue
+
+    def _enqueue_or_drop(
+        self,
+        queue: asyncio.Queue[DeliveryEnvelope | None],
+        envelope: DeliveryEnvelope,
+        *,
+        channel_name: str,
+        subscriber_id: str,
+    ) -> bool:
+        """Enqueue an envelope or drop it (newest) on overflow.
+
+        Emits ``COMM_SUBSCRIBER_QUEUE_OVERFLOW`` at WARNING when the
+        subscriber's queue is full so operators can tell the difference
+        between ``receive`` returning ``None`` on shutdown vs. messages
+        being silently dropped upstream.
+
+        Returns ``True`` on successful enqueue, ``False`` when the
+        envelope was dropped. Callers gate ``COMM_MESSAGE_DELIVERED``
+        emission on the return value so a dropped envelope is never
+        logged as delivered.
+        """
+        try:
+            queue.put_nowait(envelope)
+        except asyncio.QueueFull:
+            logger.warning(
+                COMM_SUBSCRIBER_QUEUE_OVERFLOW,
+                channel=channel_name,
+                subscriber=subscriber_id,
+                queue_size=queue.maxsize,
+                drop_policy="newest",
+                backend="memory",
+                message_id=str(envelope.message.id),
+            )
+            return False
+        return True
 
     async def publish(
         self,
@@ -237,13 +290,20 @@ class InMemoryMessageBus:
                     channel_name=channel_name,
                     delivered_at=now,
                 )
-                queue.put_nowait(envelope)
-                logger.debug(
-                    COMM_MESSAGE_DELIVERED,
-                    channel=channel_name,
-                    subscriber=sub_id,
-                    message_id=str(message.id),
-                )
+                # Gate the delivery log on actual enqueue success --
+                # a dropped envelope must not be counted as delivered.
+                if self._enqueue_or_drop(
+                    queue,
+                    envelope,
+                    channel_name=channel_name,
+                    subscriber_id=sub_id,
+                ):
+                    logger.debug(
+                        COMM_MESSAGE_DELIVERED,
+                        channel=channel_name,
+                        subscriber=sub_id,
+                        message_id=str(message.id),
+                    )
         logger.info(
             COMM_MESSAGE_PUBLISHED,
             channel=channel_name,
@@ -395,13 +455,18 @@ class InMemoryMessageBus:
                 channel_name=channel_name,
                 delivered_at=now,
             )
-            self._queues[(channel_name, agent_id)].put_nowait(envelope)
-            logger.debug(
-                COMM_MESSAGE_DELIVERED,
-                channel=channel_name,
-                subscriber=agent_id,
-                message_id=str(message.id),
-            )
+            if self._enqueue_or_drop(
+                self._queues[(channel_name, agent_id)],
+                envelope,
+                channel_name=channel_name,
+                subscriber_id=agent_id,
+            ):
+                logger.debug(
+                    COMM_MESSAGE_DELIVERED,
+                    channel=channel_name,
+                    subscriber=agent_id,
+                    message_id=str(message.id),
+                )
 
     async def subscribe(
         self,
@@ -468,6 +533,7 @@ class InMemoryMessageBus:
             MessageBusNotRunningError: If not running.
             NotSubscribedError: If the agent is not subscribed.
         """
+        waiters: set[asyncio.Future[None]] = set()
         async with self._lock:
             self._require_running()
             if channel_name not in self._channels:
@@ -480,16 +546,17 @@ class InMemoryMessageBus:
                 update={"subscribers": new_subs},
             )
             key = (channel_name, subscriber_id)
-            queue = self._queues.pop(key, None)
-            if queue is not None:
-                # Put a sentinel for each pending waiter so all
-                # concurrent receive() calls are woken up.
-                # Safe to use put_nowait: queues are unbounded
-                # (maxsize=0), so QueueFull cannot be raised.
-                pending = self._waiters.pop(key, 0)
-                sentinels = max(1, pending)
-                for _ in range(sentinels):
-                    queue.put_nowait(None)
+            self._queues.pop(key, None)
+            waiters = self._waiters.pop(key, set())
+        # Wake every pending ``receive()`` by resolving its per-waiter
+        # future. No sentinel puts, no bounded-queue backpressure --
+        # ``unsubscribe()`` cannot block regardless of how many
+        # waiters are active. ``set_result(None)`` on an already-done
+        # future is illegal, so guard against the rare case where a
+        # concurrent shutdown / timeout already resolved the future.
+        for waiter in waiters:
+            if not waiter.done():
+                waiter.set_result(None)
         logger.info(
             COMM_SUBSCRIPTION_REMOVED,
             channel=channel_name,
@@ -528,6 +595,7 @@ class InMemoryMessageBus:
             NotSubscribedError: If the subscriber is not subscribed
                 (for TOPIC and DIRECT channels).
         """
+        unsub_future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         async with self._lock:
             self._require_running()
             if channel_name not in self._channels:
@@ -540,24 +608,24 @@ class InMemoryMessageBus:
                 _raise_not_subscribed(channel_name, subscriber_id)
             queue = self._ensure_queue(channel_name, subscriber_id)
             key = (channel_name, subscriber_id)
-            self._waiters[key] = self._waiters.get(key, 0) + 1
+            self._waiters.setdefault(key, set()).add(unsub_future)
         try:
-            result = await self._await_with_shutdown(queue, timeout)
+            result = await self._await_with_shutdown(queue, timeout, unsub_future)
         finally:
-            # Decrement outside the lock: no ``await`` separates the
-            # read and write of ``_waiters``, so no other coroutine
-            # can interleave in a single-threaded asyncio event loop.
-            # The asymmetry with the lock-guarded increment is
-            # intentional -- the decrement must happen after
-            # _await_with_shutdown completes.
-            current = self._waiters.get(key)
-            if current is None:
-                # Key was removed (e.g. by unsubscribe); don't recreate.
-                pass
-            elif current <= 1:
-                self._waiters.pop(key, None)
-            else:
-                self._waiters[key] = current - 1
+            # Remove this waiter's future from the active set so the
+            # next ``unsubscribe`` only targets still-live waiters.
+            # No ``await`` separates the read and write of
+            # ``_waiters``, so no other coroutine can interleave on
+            # the single-threaded asyncio event loop. The asymmetry
+            # with the lock-guarded add is intentional -- the remove
+            # must run after ``_await_with_shutdown`` completes,
+            # which means after at least one ``await`` already
+            # released the lock.
+            active = self._waiters.get(key)
+            if active is not None:
+                active.discard(unsub_future)
+                if not active:
+                    self._waiters.pop(key, None)
         if result is None:
             await self._log_receive_null(channel_name, subscriber_id)
         return result
@@ -606,12 +674,17 @@ class InMemoryMessageBus:
         self,
         queue: asyncio.Queue[DeliveryEnvelope | None],
         timeout: float | None,  # noqa: ASYNC109
+        unsub_future: asyncio.Future[None],
     ) -> DeliveryEnvelope | None:
-        """Await next envelope, returning ``None`` on timeout or shutdown.
+        """Await next envelope, returning ``None`` on timeout, shutdown, or unsubscribe.
 
         Args:
             queue: The subscriber's delivery queue.
             timeout: Seconds to wait (``None`` = indefinitely).
+            unsub_future: Per-waiter one-shot future that ``unsubscribe()``
+                resolves to wake this receive. Resolving the future is
+                how the caller cancels an in-flight receive without
+                needing to send a sentinel through the bounded queue.
 
         Returns:
             The next envelope, or ``None``.
@@ -620,9 +693,18 @@ class InMemoryMessageBus:
         shutdown_task = asyncio.create_task(
             self._shutdown_event.wait(),
         )
+        # ``asyncio.wait`` requires awaitables of the same type. Cast
+        # the heterogeneous {get_task, shutdown_task, unsub_future} set
+        # through ``asyncio.Future[object]`` so the type checker is
+        # happy; at runtime all three are valid awaitables for wait().
+        wait_set: set[asyncio.Future[object]] = {
+            cast("asyncio.Future[object]", get_task),
+            cast("asyncio.Future[object]", shutdown_task),
+            cast("asyncio.Future[object]", unsub_future),
+        }
         try:
             done, _ = await asyncio.wait(
-                {get_task, shutdown_task},
+                wait_set,
                 timeout=timeout,
                 return_when=asyncio.FIRST_COMPLETED,
             )
@@ -638,6 +720,10 @@ class InMemoryMessageBus:
             shutdown_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await shutdown_task
+        # ``unsub_future`` is owned by ``receive()``; do not cancel it
+        # here. If it is not in ``done`` it stays pending for the
+        # remainder of the receive -- ``receive()``'s ``finally``
+        # removes it from ``_waiters`` regardless.
         if get_task in done and not get_task.cancelled():
             return get_task.result()
         return None

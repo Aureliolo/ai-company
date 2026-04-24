@@ -59,10 +59,17 @@ describe('useWebSocket', () => {
     expect(onChannelSpy).toHaveBeenCalledWith('tasks', handler)
   })
 
-  it('removes handlers on unmount (without global unsubscribe)', () => {
+  it('removes handlers AND unsubscribes channels on unmount', async () => {
+    // Contract (updated per CodeRabbit review on PR #1545): cleanup
+    // must remove per-handler registrations AND call wsStore.unsubscribe
+    // for the channels the hook subscribed to. Before the fix, cleanup
+    // only unwound handlers, leaking the channel subscriptions in the
+    // store's subscribedChannels set and keeping stale traffic routed
+    // to the unmounted view.
     useAuthStore.setState({ authStatus: 'authenticated' })
     useWebSocketStore.setState({ connected: true })
 
+    const subscribeSpy = vi.spyOn(useWebSocketStore.getState(), 'subscribe')
     const unsubscribeSpy = vi.spyOn(useWebSocketStore.getState(), 'unsubscribe')
     const offChannelSpy = vi.spyOn(
       useWebSocketStore.getState(),
@@ -76,10 +83,20 @@ describe('useWebSocket', () => {
       }),
     )
 
+    // Wait for the effect's setup() to complete the subscribe step
+    // so the local ``subscribed`` flag is true before we unmount;
+    // otherwise the cleanup races setup and the unsubscribe branch
+    // is skipped. Using ``vi.waitFor`` instead of counting microtask
+    // flushes keeps the test robust if the hook's async flow grows
+    // more await steps later.
+    await vi.waitFor(() => {
+      expect(subscribeSpy).toHaveBeenCalledWith(['tasks'], undefined)
+    })
+
     unmount()
 
-    expect(unsubscribeSpy).not.toHaveBeenCalled()
     expect(offChannelSpy).toHaveBeenCalledWith('tasks', handler)
+    expect(unsubscribeSpy).toHaveBeenCalledWith(['tasks'])
   })
 
   it('deduplicates channels from multiple bindings', () => {

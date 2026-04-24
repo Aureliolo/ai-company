@@ -55,6 +55,15 @@ logger = get_logger(__name__)
 # Minimum participants required for a meeting (leader + at least 1 other).
 _MIN_PARTICIPANTS: int = 2
 
+_STOP_DRAIN_TIMEOUT_SECONDS: float = 10.0
+"""Hard deadline for the ``stop()`` drain.
+
+Per CLAUDE.md ``## Code Conventions`` > Lifecycle synchronization:
+services whose ``stop()`` drains across ``await`` boundaries must
+wrap the drain in ``asyncio.wait_for`` so the lifecycle lock cannot
+be held indefinitely if a periodic task ignores cancellation.
+"""
+
 
 class MeetingScheduler:
     """Background service for scheduling and triggering meetings.
@@ -76,9 +85,11 @@ class MeetingScheduler:
         "_cooldown_lock",
         "_event_publisher",
         "_last_triggered",
+        "_lifecycle_lock",
         "_orchestrator",
         "_resolver",
         "_running",
+        "_stop_failed",
         "_tasks",
     )
 
@@ -97,8 +108,20 @@ class MeetingScheduler:
         self._event_publisher = event_publisher
         self._clock = clock or time.monotonic
         self._cooldown_lock = asyncio.Lock()
+        # Serializes start() / stop() so the _running check-and-set
+        # and the per-type periodic-task spawn loop are atomic
+        # against concurrent lifecycle calls. Scoped separately from
+        # _cooldown_lock so trigger_event() is never blocked by a
+        # lifecycle transition.
+        self._lifecycle_lock = asyncio.Lock()
         self._tasks: list[asyncio.Task[None]] = []
         self._running = False
+        # Set to True when a stop() drain exceeds the hard deadline.
+        # Prevents a subsequent start() from spawning a second set of
+        # periodic tasks on top of orphaned periodic tasks that
+        # ignored cancellation. Recovery requires reconstructing the
+        # scheduler.
+        self._stop_failed = False
         self._last_triggered: dict[str, float] = {}
 
     @property
@@ -111,74 +134,171 @@ class MeetingScheduler:
 
         No-op if ``config.enabled`` is False.
 
+        Holds ``_lifecycle_lock`` across the full body so the check-and-set
+        on ``_running`` and the per-type task-spawn loop are atomic
+        against concurrent ``start()`` / ``stop()`` calls.
+
         Raises:
             SchedulerAlreadyRunningError: If the scheduler is already running.
         """
-        if self._running:
-            logger.warning(
-                MEETING_SCHEDULER_ERROR,
-                reason="already_running",
-            )
-            msg = "Meeting scheduler is already running"
-            raise SchedulerAlreadyRunningError(msg)
+        async with self._lifecycle_lock:
+            if self._stop_failed:
+                logger.warning(
+                    MEETING_SCHEDULER_ERROR,
+                    reason="unrestartable_after_timeout",
+                )
+                msg = (
+                    "Meeting scheduler is unrestartable after a timed-out "
+                    "stop; construct a fresh MeetingScheduler instead"
+                )
+                raise SchedulerAlreadyRunningError(msg)
+            if self._running:
+                logger.warning(
+                    MEETING_SCHEDULER_ERROR,
+                    reason="already_running",
+                )
+                msg = "Meeting scheduler is already running"
+                raise SchedulerAlreadyRunningError(msg)
 
-        if not self._config.enabled:
+            if not self._config.enabled:
+                logger.info(
+                    MEETING_SCHEDULER_STARTED,
+                    enabled=False,
+                )
+                return
+
+            self._running = True
+
+            scheduled = self.get_scheduled_types()
+            # Transactional task-spawn loop: if any task creation or
+            # callback registration raises partway through the loop,
+            # cancel and drain every task already spawned, reset
+            # ``_tasks`` + ``_running``, and re-raise the original
+            # exception. Without this rollback an exception on meeting
+            # type N would leave periodic tasks for types 0..N-1 alive
+            # while ``start()`` reports failure, so the caller sees a
+            # stopped scheduler that is silently still firing.
+            spawned_tasks: list[asyncio.Task[None]] = []
+            try:
+                for mt in scheduled:
+                    task = asyncio.create_task(
+                        self._run_periodic(mt),
+                        name=f"meeting-{mt.name}",
+                    )
+                    task.add_done_callback(
+                        log_task_exceptions(
+                            logger,
+                            MEETING_SCHEDULER_TASK_DIED,
+                            meeting_type=mt.name,
+                        ),
+                    )
+                    spawned_tasks.append(task)
+            except BaseException:
+                for task in spawned_tasks:
+                    task.cancel()
+                if spawned_tasks:
+                    await asyncio.gather(*spawned_tasks, return_exceptions=True)
+                self._tasks = []
+                self._running = False
+                raise
+            self._tasks = spawned_tasks
+
             logger.info(
                 MEETING_SCHEDULER_STARTED,
-                enabled=False,
+                periodic_count=len(scheduled),
+                triggered_count=len(self.get_triggered_types()),
             )
-            return
-
-        self._running = True
-
-        scheduled = self.get_scheduled_types()
-        self._tasks = []
-        for mt in scheduled:
-            task = asyncio.create_task(
-                self._run_periodic(mt),
-                name=f"meeting-{mt.name}",
-            )
-            task.add_done_callback(
-                log_task_exceptions(
-                    logger,
-                    MEETING_SCHEDULER_TASK_DIED,
-                    meeting_type=mt.name,
-                ),
-            )
-            self._tasks.append(task)
-
-        logger.info(
-            MEETING_SCHEDULER_STARTED,
-            periodic_count=len(scheduled),
-            triggered_count=len(self.get_triggered_types()),
-        )
 
     async def stop(self) -> None:
-        """Cancel all periodic tasks and wait for completion."""
-        if not self._running:
-            return
+        """Cancel all periodic tasks and wait for completion.
 
-        for task in self._tasks:
-            task.cancel()
-        if self._tasks:
-            results = await asyncio.gather(
-                *self._tasks,
-                return_exceptions=True,
-            )
-            for result in results:
-                if isinstance(result, asyncio.CancelledError):
-                    continue
-                if isinstance(result, Exception):
-                    logger.warning(
-                        MEETING_SCHEDULER_ERROR,
-                        note="periodic task error during shutdown",
-                        error=str(result),
-                        error_type=type(result).__name__,
+        Holds ``_lifecycle_lock`` so ``stop()`` cannot race a
+        partially-constructed ``start()``.
+        """
+        async with self._lifecycle_lock:
+            if not self._running:
+                return
+
+            for task in self._tasks:
+                task.cancel()
+            if self._tasks:
+                results: list[BaseException | None]
+
+                # Spawn the drain as a separate task and ``shield`` it
+                # from the outer ``wait_for`` cancellation: if a
+                # periodic task suppresses ``CancelledError`` and
+                # continues working, ``wait_for(gather(...))`` would
+                # block INSIDE the lifecycle lock waiting for the
+                # suppressed cancellation to take effect -- the
+                # "hard deadline" would be soft. With ``shield``, the
+                # outer ``wait_for`` times out the *wait* only; the
+                # shielded drain continues running in the background
+                # but does not prevent ``stop()`` from exiting and
+                # releasing ``_lifecycle_lock``.
+                async def _drain() -> list[BaseException | None]:
+                    return await asyncio.gather(
+                        *self._tasks,
+                        return_exceptions=True,
                     )
-        self._tasks = []
-        self._running = False
 
-        logger.info(MEETING_SCHEDULER_STOPPED)
+                drain_task: asyncio.Task[list[BaseException | None]] = (
+                    asyncio.create_task(_drain())
+                )
+                try:
+                    results = await asyncio.wait_for(
+                        asyncio.shield(drain_task),
+                        timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    # Hard deadline hit. Mark unrestartable and
+                    # re-raise: a future start() must not spawn a
+                    # second set of periodic tasks alongside the
+                    # orphaned drain_task (which may still be waiting
+                    # on cancellation-suppressing periodic tasks).
+                    # Leave ``_tasks`` + ``_running`` intact; caller
+                    # receives TimeoutError and must reconstruct a
+                    # fresh ``MeetingScheduler``.
+                    self._stop_failed = True
+                    # TRY400: logger.exception here would append a
+                    # TimeoutError traceback with no actionable diagnostic
+                    # information beyond the structured fields below.
+                    logger.error(  # noqa: TRY400
+                        MEETING_SCHEDULER_ERROR,
+                        note=(
+                            "stop exceeded hard deadline; "
+                            "scheduler marked unrestartable"
+                        ),
+                        timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
+                        pending_tasks=sum(1 for t in self._tasks if not t.done()),
+                    )
+                    raise
+                for result in results:
+                    if isinstance(result, asyncio.CancelledError):
+                        continue
+                    # Propagate system-critical errors -- a periodic
+                    # task that died with MemoryError / RecursionError
+                    # must surface to the caller, not be hidden behind
+                    # a log line and a reported-clean shutdown.
+                    if isinstance(result, MemoryError | RecursionError):
+                        raise result
+                    if isinstance(result, Exception):
+                        # Log at ERROR with exc_info so the traceback
+                        # reaches operators -- str(result) alone loses
+                        # the call stack, which is exactly what you
+                        # need to diagnose a periodic-task shutdown
+                        # failure that may have leaked a resource
+                        # (connection, lock, file handle).
+                        logger.error(
+                            MEETING_SCHEDULER_ERROR,
+                            note="periodic task error during shutdown",
+                            error=str(result),
+                            error_type=type(result).__name__,
+                            exc_info=result,
+                        )
+            self._tasks = []
+            self._running = False
+
+            logger.info(MEETING_SCHEDULER_STOPPED)
 
     async def trigger_event(
         self,

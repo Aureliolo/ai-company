@@ -4,6 +4,18 @@ from typing import Final
 
 TASK_ENGINE_CREATED: Final[str] = "task_engine.created"
 TASK_ENGINE_STARTED: Final[str] = "task_engine.started"
+TASK_ENGINE_STOP_REJECTED: Final[str] = "task_engine.stop.rejected"
+"""Emitted when ``TaskEngine.stop()`` refuses a call because of an invalid
+caller argument (e.g. non-positive ``timeout``). Kept distinct from
+``TASK_ENGINE_STOPPED`` so rejected stops do not inflate successful-stop
+metrics, and from ``TASK_ENGINE_DRAIN_TIMEOUT`` which is specifically the
+hard-deadline / cancellation path."""
+TASK_ENGINE_START_REJECTED: Final[str] = "task_engine.start.rejected"
+"""Emitted when ``TaskEngine.start()`` refuses to start -- already running,
+or unrestartable after a timed-out stop -- and when a ``start()`` attempt
+rolls back mid-boot (``reason="startup_rollback"``). Kept distinct from
+``TASK_ENGINE_STARTED`` so rejected / rolled-back starts do not inflate
+successful-start metrics or alerts."""
 TASK_ENGINE_STOPPED: Final[str] = "task_engine.stopped"
 TASK_ENGINE_MUTATION_RECEIVED: Final[str] = "task_engine.mutation.received"
 TASK_ENGINE_MUTATION_APPLIED: Final[str] = "task_engine.mutation.applied"

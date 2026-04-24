@@ -197,6 +197,12 @@ names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 
 All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` on credential-sensitive paths -- never `logger.exception(..., error=str(exc))` -- to avoid leaking secrets through traceback frame-locals (SEC-1).
 
+**Communication subscriber backpressure (`observability/events/communication.py`):**
+
+| Constant | Level | When fired |
+|----------|-------|------------|
+| `COMM_SUBSCRIBER_QUEUE_OVERFLOW` | WARNING | A subscriber cannot keep up with inbound traffic. In-memory bus: the incoming envelope is dropped (`drop_policy=newest`). NATS: the pull consumer reached its `max_ack_pending` cap and JetStream is pausing delivery (`drop_policy=delivery_paused`). Fields: `channel`, `subscriber`, `queue_size`, `drop_policy`, `backend`, `num_ack_pending` (NATS only). NATS emissions are rate-limited to one per (channel, subscriber) pair per 60s to prevent log flooding (per-pair, not per-subscriber globally, so a subscriber overflowing on two channels still produces one warning per channel). |
+
 ### Uvicorn Integration
 
 Uvicorn's default access logger is **disabled** (`access_log=False`, `log_config=None`).

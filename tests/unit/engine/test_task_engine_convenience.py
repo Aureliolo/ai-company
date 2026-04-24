@@ -283,7 +283,7 @@ class TestStartAlreadyRunning:
     ) -> None:
         # engine fixture already called start()
         with pytest.raises(RuntimeError, match="already running"):
-            engine.start()
+            await engine.start()
 
 
 # ── Stop idempotency ─────────────────────────────────────────

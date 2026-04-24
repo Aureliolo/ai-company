@@ -42,6 +42,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_CREATED,
+    TASK_ENGINE_DRAIN_TIMEOUT,
     TASK_ENGINE_LIST_CAPPED,
     TASK_ENGINE_LOOP_DIED,
     TASK_ENGINE_MUTATION_FAILED,
@@ -49,7 +50,9 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_OBSERVER_LOOP_DIED,
     TASK_ENGINE_QUEUE_FULL,
     TASK_ENGINE_READ_FAILED,
+    TASK_ENGINE_START_REJECTED,
     TASK_ENGINE_STARTED,
+    TASK_ENGINE_STOP_REJECTED,
     TASK_ENGINE_STOPPED,
 )
 
@@ -96,11 +99,24 @@ class TaskEngine(TaskEngineLoopsMixin):
         self._in_flight: _MutationEnvelope | None = None
         self._running = False
         self._lifecycle_lock = asyncio.Lock()
+        # Hot-path admission lock: held only for the atomic check-
+        # and-put in :meth:`submit`. ``stop()`` briefly acquires it
+        # just long enough to publish ``_running = False`` so new
+        # submits fast-fail immediately, then drains under
+        # ``_lifecycle_lock`` only. Keeping this lock separate from
+        # ``_lifecycle_lock`` is mandated by CLAUDE.md -- hot-path
+        # traffic must not serialize against lifecycle transitions.
+        self._admission_lock = asyncio.Lock()
         self._observers: list[Callable[[TaskStateChanged], Awaitable[None]]] = []
         self._observer_queue: asyncio.Queue[TaskStateChanged | None] = asyncio.Queue(
             maxsize=self._config.effective_observer_queue_size,
         )
         self._observer_task: asyncio.Task[None] | None = None
+        # Set to True when a stop() drain exceeds the hard deadline.
+        # Prevents a subsequent start() from creating a second loop
+        # pair on top of the orphaned first generation. Clearing
+        # requires reconstructing the engine -- there is no reset().
+        self._unrestartable: bool = False
         logger.debug(
             TASK_ENGINE_CREATED,
             max_queue_size=self._config.max_queue_size,
@@ -122,49 +138,247 @@ class TaskEngine(TaskEngineLoopsMixin):
 
     # -- Lifecycle ---------------------------------------------------------
 
-    def start(self) -> None:
+    async def start(self) -> None:
         """Spawn the background processing loop.
+
+        Holds ``_lifecycle_lock`` across the check-and-set +
+        task-spawn so concurrent ``start()`` calls yield exactly one
+        success, and a ``start()`` racing an in-flight ``stop()``
+        cannot spawn a new processing task that escapes the stop's
+        drain.
 
         Raises:
             RuntimeError: If already running.
         """
-        if self._running:
-            msg = "TaskEngine is already running"
-            logger.warning(TASK_ENGINE_STARTED, error=msg)
-            raise RuntimeError(msg)
-        self._running = True
-        self._processing_task = asyncio.create_task(
-            self._processing_loop(),
-            name="task-engine-loop",
-        )
-        self._processing_task.add_done_callback(
-            log_task_exceptions(logger, TASK_ENGINE_LOOP_DIED),
-        )
-        self._observer_task = asyncio.create_task(
-            self._observer_dispatch_loop(),
-            name="task-engine-observer-dispatcher",
-        )
-        self._observer_task.add_done_callback(
-            log_task_exceptions(logger, TASK_ENGINE_OBSERVER_LOOP_DIED),
-        )
-        logger.info(
-            TASK_ENGINE_STARTED,
-            max_queue_size=self._config.max_queue_size,
-        )
+        async with self._lifecycle_lock:
+            if self._unrestartable:
+                # ``_unrestartable`` is set by ``stop()`` for BOTH the
+                # hard-deadline (``TimeoutError``) path AND the caller
+                # mid-drain cancellation (``CancelledError``) path.
+                # Keep the message neutral so operators are not pointed
+                # at the wrong failure mode.
+                msg = (
+                    "TaskEngine is unrestartable after a failed stop drain; "
+                    "construct a fresh TaskEngine instead"
+                )
+                # Use the dedicated rejection event so a rejected
+                # start does not inflate the successful-start metric.
+                logger.warning(
+                    TASK_ENGINE_START_REJECTED,
+                    error=msg,
+                    reason="unrestartable",
+                )
+                raise RuntimeError(msg)
+            if self._running:
+                msg = "TaskEngine is already running"
+                logger.warning(
+                    TASK_ENGINE_START_REJECTED,
+                    error=msg,
+                    reason="already_running",
+                )
+                raise RuntimeError(msg)
+            # Hold ``_admission_lock`` across the entire startup so
+            # a racing ``submit()`` cannot admit an envelope into the
+            # queue between ``_running = True`` and the commit of both
+            # loop tasks -- an envelope admitted in that window would
+            # be orphaned if the rollback path fired, because both
+            # loops would then be torn down with the future pending.
+            # ``_running`` is published ONLY after both tasks are
+            # created and their done-callbacks registered, so submit()
+            # either sees False (and fast-fails cleanly) or sees True
+            # with both loops committed.
+            #
+            # Transactional two-loop startup: if observer-task creation
+            # or callback registration raises after the processing task
+            # is up, cancel and drain any partially-created tasks,
+            # reset the handles, leave ``_running = False``, and
+            # re-raise so the caller observes a fully-rolled-back
+            # state and can retry start() cleanly.
+            async with self._admission_lock:
+                try:
+                    self._processing_task = asyncio.create_task(
+                        self._processing_loop(),
+                        name="task-engine-loop",
+                    )
+                    self._processing_task.add_done_callback(
+                        log_task_exceptions(logger, TASK_ENGINE_LOOP_DIED),
+                    )
+                    self._observer_task = asyncio.create_task(
+                        self._observer_dispatch_loop(),
+                        name="task-engine-observer-dispatcher",
+                    )
+                    self._observer_task.add_done_callback(
+                        log_task_exceptions(
+                            logger,
+                            TASK_ENGINE_OBSERVER_LOOP_DIED,
+                        ),
+                    )
+                except BaseException:
+                    partial_tasks = [
+                        t
+                        for t in (self._processing_task, self._observer_task)
+                        if t is not None
+                    ]
+                    for t in partial_tasks:
+                        t.cancel()
+                    if partial_tasks:
+                        # Best-effort drain; swallow exceptions so we
+                        # do not mask the original failure we are
+                        # about to re-raise. ``return_exceptions=True``
+                        # collects CancelledError cleanly.
+                        await asyncio.gather(
+                            *partial_tasks,
+                            return_exceptions=True,
+                        )
+                    self._processing_task = None
+                    self._observer_task = None
+                    # Log the rollback so operators see *why* the
+                    # engine never came up -- without this the caller
+                    # would receive the original exception but the
+                    # structured breadcrumb for the partial-startup
+                    # cleanup would be lost.
+                    logger.error(
+                        TASK_ENGINE_START_REJECTED,
+                        reason="startup_rollback",
+                        partial_tasks_cancelled=len(partial_tasks),
+                        exc_info=True,
+                    )
+                    raise
+                # Only publish ``_running = True`` after BOTH tasks are
+                # fully committed. A racing submit() that reached the
+                # admission lock before this point is now blocked on
+                # it; once we release the lock submit() will read True
+                # and proceed safely.
+                self._running = True
+            logger.info(
+                TASK_ENGINE_STARTED,
+                max_queue_size=self._config.max_queue_size,
+            )
 
     async def stop(self, *, timeout: float | None = None) -> None:  # noqa: ASYNC109
         """Stop the engine and drain pending mutations and observer events.
 
+        Holds ``_lifecycle_lock`` across the entire stop body --
+        including the drain awaits -- so a concurrent ``start()``
+        cannot see ``_running=False`` mid-drain and spawn a new
+        processing task that stop never waits on.
+
         Args:
             timeout: Seconds to wait for drain (default: config value).
+                Must be positive when provided; ``None`` means "use the
+                config default".
+
+        Raises:
+            ValueError: If ``timeout`` is not ``None`` and ``<= 0``.
         """
+        # Validate at the system boundary so callers with a bad
+        # argument never mutate lifecycle state. A zero / negative
+        # timeout would otherwise immediately trip ``asyncio.wait_for``
+        # and mark the engine ``_unrestartable`` even though nothing
+        # actually hung -- the fresh instance rule exists for genuine
+        # hung drains, not for malformed input.
+        if timeout is not None and timeout <= 0:
+            # Log before raising so malformed caller input reaches
+            # task-engine telemetry rather than vanishing silently
+            # (CLAUDE.md: "All error paths must log at WARNING or
+            # ERROR with context before raising").
+            logger.warning(
+                TASK_ENGINE_STOP_REJECTED,
+                note="stop() called with invalid timeout; raising ValueError",
+                timeout=timeout,
+                reason="invalid_timeout",
+            )
+            msg = f"stop() timeout must be > 0, got {timeout!r}"
+            raise ValueError(msg)
         async with self._lifecycle_lock:
             if not self._running:
                 return
-            self._running = False
-        effective_timeout = (
-            timeout if timeout is not None else self._config.drain_timeout_seconds
-        )
+            # Publish the shutdown flag under the admission lock so
+            # racing ``submit()`` calls fast-fail with
+            # ``TaskEngineNotRunningError`` instead of blocking on the
+            # drain. The admission lock is only held for the atomic
+            # flag flip -- the drain itself runs with only the
+            # lifecycle lock, so hot-path callers don't pay for
+            # shutdown latency.
+            async with self._admission_lock:
+                self._running = False
+            effective_timeout = (
+                timeout if timeout is not None else self._config.drain_timeout_seconds
+            )
+            # Outer hard deadline: even if individual drain stages
+            # hang (e.g. a processing task ignores CancelledError or
+            # is stuck in an uninterruptible sync block), the whole
+            # stop sequence is bounded to ~2x the nominal drain
+            # budget. Beyond that, we log CRITICAL and release the
+            # lifecycle lock so subsequent start() calls do not block
+            # forever -- the leaked tasks will be surfaced by the
+            # done-callbacks registered in start().
+            hard_deadline = effective_timeout * 2.0
+            try:
+                await asyncio.wait_for(
+                    self._drain_all(effective_timeout),
+                    timeout=hard_deadline,
+                )
+            except TimeoutError:
+                # Mark the engine unrestartable so a subsequent start()
+                # cannot attach a second loop pair on top of orphaned
+                # processing / observer tasks that ignored cancellation.
+                # Without this guard the single-writer invariant would
+                # be silently broken: two generations of the loop pair
+                # would concurrently pop from the same _queue and
+                # dispatch to the same observers. Operator must
+                # reconstruct a fresh TaskEngine to recover.
+                self._unrestartable = True
+                # TRY400: logger.exception here would append a
+                # TimeoutError traceback with no actionable diagnostic
+                # information beyond the structured fields below.
+                # Use the dedicated drain-timeout event, NOT
+                # TASK_ENGINE_STOPPED -- reserving the success event
+                # for the clean-shutdown branch so failed drains are
+                # classified correctly in metrics and alerts.
+                logger.error(  # noqa: TRY400
+                    TASK_ENGINE_DRAIN_TIMEOUT,
+                    note=(
+                        "stop exceeded hard deadline; "
+                        "engine marked unrestartable (orphaned drain tasks)"
+                    ),
+                    hard_deadline_seconds=hard_deadline,
+                )
+                raise
+            except asyncio.CancelledError:
+                # Caller cancelled stop() while the drain was in
+                # flight (e.g. the lifespan supervisor is itself being
+                # cancelled). Mirror the TimeoutError branch: the
+                # drain may still be running in the background with
+                # orphaned processing / observer tasks attached to
+                # ``_queue`` / ``_observer_queue``; allowing a later
+                # ``start()`` would attach a second loop pair on top
+                # of those and silently duplicate writes. Mark the
+                # engine unrestartable, log, and re-raise the
+                # cancellation so the caller's cancellation contract
+                # is honoured.
+                self._unrestartable = True
+                # TRY400: attaching a CancelledError traceback here
+                # adds no actionable context over the structured
+                # fields below.
+                logger.error(  # noqa: TRY400
+                    TASK_ENGINE_DRAIN_TIMEOUT,
+                    note=(
+                        "stop cancelled mid-drain; "
+                        "engine marked unrestartable (orphaned drain tasks)"
+                    ),
+                    hard_deadline_seconds=hard_deadline,
+                    cancellation=True,
+                )
+                raise
+            logger.info(TASK_ENGINE_STOPPED)
+
+    async def _drain_all(self, effective_timeout: float) -> None:
+        """Drain the mutation queue + observer queue within the given budget.
+
+        Extracted from :meth:`stop` so the outer ``asyncio.wait_for``
+        hard-deadline guard has a single awaitable to bound.
+        """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + effective_timeout
 
@@ -181,8 +395,6 @@ class TaskEngine(TaskEngineLoopsMixin):
             )
         observer_budget = max(0.0, deadline - loop.time())
         await self._drain_observer(observer_budget)
-
-        logger.info(TASK_ENGINE_STOPPED)
 
     @property
     def is_running(self) -> bool:
@@ -204,7 +416,14 @@ class TaskEngine(TaskEngineLoopsMixin):
             TaskEngineNotRunningError: If the engine is not running.
             TaskEngineQueueFullError: If the queue is at capacity.
         """
-        async with self._lifecycle_lock:
+        # Use ``_admission_lock`` (hot-path) -- not ``_lifecycle_lock``
+        # -- so new submits are not serialized against an in-flight
+        # ``stop()`` drain, which can hold ``_lifecycle_lock`` for up
+        # to the hard-deadline budget. ``stop()`` briefly takes
+        # ``_admission_lock`` to publish ``_running=False``, so any
+        # racing submit either sees the flag and fast-fails or wins
+        # the race and lands cleanly in the queue before drain.
+        async with self._admission_lock:
             if not self._running:
                 logger.warning(
                     TASK_ENGINE_NOT_RUNNING,

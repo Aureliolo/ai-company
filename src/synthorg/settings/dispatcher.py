@@ -5,7 +5,6 @@ Follows the same polling-loop pattern as
 """
 
 import asyncio
-import contextlib
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
@@ -17,6 +16,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_CHANNEL_CREATED,
     SETTINGS_DISPATCHER_CHANNEL_DEAD,
     SETTINGS_DISPATCHER_POLL_ERROR,
+    SETTINGS_DISPATCHER_START_REJECTED,
     SETTINGS_DISPATCHER_STARTED,
     SETTINGS_DISPATCHER_STOPPED,
     SETTINGS_SUBSCRIBER_ERROR,
@@ -38,6 +38,14 @@ _BOOTSTRAP_ERROR_BACKOFF: Final[float] = 1.0
 _BOOTSTRAP_MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 """Fallback error budget used before the settings resolver is ready."""
 _SETTINGS_CHANNEL: Final[str] = "#settings"
+_STOP_DRAIN_TIMEOUT_SECONDS: Final[float] = 10.0
+"""Hard deadline for the ``stop()`` drain.
+
+Per CLAUDE.md ``## Code Conventions`` > Lifecycle synchronization:
+services whose ``stop()`` drains across ``await`` boundaries must
+wrap the drain in ``asyncio.wait_for`` so the lifecycle lock cannot
+be held indefinitely if the polling task ignores cancellation.
+"""
 
 # Legacy aliases (retain name-compat for callers reaching into this module).
 _POLL_TIMEOUT = _BOOTSTRAP_POLL_TIMEOUT
@@ -81,6 +89,18 @@ class SettingsChangeDispatcher:
         self._subscribers = subscribers
         self._task: asyncio.Task[None] | None = None
         self._running: bool = False
+        # Set to True when a stop() drain exceeds the hard deadline.
+        # Prevents a subsequent start() from spawning a second poll
+        # task while the first one is still consuming ``#settings``
+        # (would double-deliver every settings change to each
+        # subscriber). Recovery requires reconstructing the dispatcher.
+        self._stop_failed: bool = False
+        # Serializes start() / stop() so the _running check-and-set
+        # and the subsequent _task assignment are atomic against
+        # concurrent lifecycle calls. Two concurrent start() calls
+        # both observing _running=False would otherwise both
+        # subscribe to #settings and both spawn a poll task.
+        self._lifecycle_lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Start the polling loop.
@@ -88,38 +108,190 @@ class SettingsChangeDispatcher:
         Raises:
             RuntimeError: If the dispatcher is already running.
         """
-        if self._running:
-            msg = "SettingsChangeDispatcher is already running"
-            logger.warning(SETTINGS_DISPATCHER_STARTED, error=msg)
-            raise RuntimeError(msg)
+        async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "SettingsChangeDispatcher is unrestartable after a "
+                    "timed-out stop; construct a fresh dispatcher instead"
+                )
+                # Dedicated rejection event -- do not reuse
+                # SETTINGS_DISPATCHER_STARTED, which would inflate
+                # successful-start metrics/alerts.
+                logger.warning(
+                    SETTINGS_DISPATCHER_START_REJECTED,
+                    error=msg,
+                    reason="unrestartable",
+                )
+                raise RuntimeError(msg)
+            if self._running:
+                msg = "SettingsChangeDispatcher is already running"
+                logger.warning(
+                    SETTINGS_DISPATCHER_START_REJECTED,
+                    error=msg,
+                    reason="already_running",
+                )
+                raise RuntimeError(msg)
 
-        await self._ensure_channel()
-        await self._bus.subscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
-
-        self._running = True
-        self._task = asyncio.create_task(
-            self._poll_loop(),
-            name="settings-dispatcher",
-        )
-        self._task.add_done_callback(self._on_task_done)
-        logger.info(
-            SETTINGS_DISPATCHER_STARTED,
-            subscriber_count=len(self._subscribers),
-        )
+            # Pre-spawn failures (channel ensure / bus subscribe) are
+            # a distinct lifecycle error path from the spawn-rollback
+            # below. Log SETTINGS_DISPATCHER_START_REJECTED so both
+            # failure modes surface in observability; without this the
+            # pre-spawn path would leak the exception without a
+            # dispatcher-specific event.
+            try:
+                await self._ensure_channel()
+                # Subscribe + spawn must be transactional: if
+                # subscribe() succeeds but the task spawn (or any
+                # subsequent step that could be added later) raises,
+                # we must roll back the subscription so a retried
+                # start() does not double-subscribe and stop() does
+                # not silently skip cleanup (stop() early-returns on
+                # ``_running=False``).
+                await self._bus.subscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
+            except Exception:
+                logger.warning(
+                    SETTINGS_DISPATCHER_START_REJECTED,
+                    error="channel ensure/subscribe failed during start()",
+                    reason="subscribe_failed",
+                    exc_info=True,
+                )
+                raise
+            try:
+                self._running = True
+                self._task = asyncio.create_task(
+                    self._poll_loop(),
+                    name="settings-dispatcher",
+                )
+                self._task.add_done_callback(self._on_task_done)
+            except BaseException:
+                self._running = False
+                self._task = None
+                try:
+                    await self._bus.unsubscribe(
+                        _SETTINGS_CHANNEL,
+                        _SUBSCRIBER_ID,
+                    )
+                except Exception:
+                    # Best-effort rollback -- a failed unsubscribe
+                    # during already-failed start() leaves the bus with
+                    # a stale ``__settings_dispatcher__`` registration
+                    # on ``#settings``. Mark the dispatcher as
+                    # half-stopped (``_running=True`` + ``_stop_failed
+                    # =True``) so a subsequent ``stop()`` still runs
+                    # the clean-stop unsubscribe instead of early-
+                    # returning on ``_running=False`` and leaking the
+                    # subscription. The original start() exception is
+                    # still raised below.
+                    self._running = True
+                    self._stop_failed = True
+                    logger.warning(
+                        SETTINGS_DISPATCHER_START_REJECTED,
+                        error="rollback unsubscribe failed during start() cleanup",
+                        reason="rollback_unsubscribe_failed",
+                        exc_info=True,
+                    )
+                raise
+            logger.info(
+                SETTINGS_DISPATCHER_STARTED,
+                subscriber_count=len(self._subscribers),
+            )
 
     async def stop(self) -> None:
-        """Cancel the polling task.  Idempotent."""
-        if not self._running:
-            return
+        """Cancel the polling task.  Idempotent.
 
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
+        Holds ``_lifecycle_lock`` so ``stop()`` cannot race a
+        partially-constructed ``start()`` (e.g. channel subscribed but
+        ``_task`` not yet assigned).
+        """
+        async with self._lifecycle_lock:
+            if not self._running:
+                return
 
-        self._running = False
-        logger.info(SETTINGS_DISPATCHER_STOPPED)
+            if self._task is not None:
+                self._task.cancel()
+                try:
+                    # ``asyncio.shield`` guarantees the hard deadline
+                    # applies to the wait only, not to the underlying
+                    # task. Without the shield, a poll task that
+                    # swallows ``CancelledError`` would keep the outer
+                    # ``wait_for`` blocked inside ``_lifecycle_lock``
+                    # forever; the shield lets the wait time out so
+                    # ``stop()`` can release the lock and mark the
+                    # dispatcher unrestartable even if the task itself
+                    # refuses to exit.
+                    await asyncio.wait_for(
+                        asyncio.shield(self._task),
+                        timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    # Drain exceeded the hard deadline. Mark the
+                    # dispatcher unrestartable and re-raise: a future
+                    # start() must not spawn a second poll task
+                    # alongside an orphaned one that ignored
+                    # cancellation (would double-deliver every
+                    # #settings message to each subscriber). Leave
+                    # ``_task`` + ``_running`` intact so the caller
+                    # sees an honest incomplete shutdown; they must
+                    # reconstruct the dispatcher to recover.
+                    self._stop_failed = True
+                    # TRY400: logger.exception here would append a
+                    # TimeoutError traceback with no actionable
+                    # diagnostic beyond the structured fields below.
+                    logger.error(  # noqa: TRY400
+                        SETTINGS_DISPATCHER_STOPPED,
+                        error=(
+                            "stop exceeded hard deadline; "
+                            "dispatcher marked unrestartable"
+                        ),
+                        timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
+                    )
+                    raise
+                except asyncio.CancelledError:
+                    # Only suppress when the cancellation came from
+                    # the poll task completing (expected). If the
+                    # task is still running, the CancelledError came
+                    # from the outer caller cancelling ``stop()`` --
+                    # propagate it so lifecycle state does not get
+                    # silently cleared mid-drain. Suppressing caller
+                    # cancellation would violate the asyncio
+                    # cancellation contract and leave the dispatcher
+                    # in an inconsistent state.
+                    if not self._task.done():
+                        raise
+                self._task = None
+
+            # Clean-stop path must mirror the rollback unsubscribe so
+            # the bus does not keep ``__settings_dispatcher__``
+            # registered on ``#settings`` across stop/start cycles.
+            # Without this, the next ``start()`` would re-enter
+            # ``_bus.subscribe`` for an already-registered subscriber
+            # (idempotent on the in-memory bus but not necessarily on
+            # the NATS bus), and the stopped dispatcher would still be
+            # buffering ``#settings`` messages in the bus's per-sub
+            # queue until channel cleanup.
+            try:
+                await self._bus.unsubscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
+            except Exception:
+                # Unsubscribe failure means the bus still holds a
+                # stale ``__settings_dispatcher__`` registration on
+                # ``#settings``. Mark the dispatcher unrestartable so
+                # a retry on the same instance does not double-
+                # subscribe (the operator must reconstruct the
+                # dispatcher to recover). Leave ``_running`` at True
+                # so a subsequent ``stop()`` still runs the clean-
+                # stop unsubscribe instead of early-returning.
+                self._stop_failed = True
+                logger.error(
+                    SETTINGS_DISPATCHER_STOPPED,
+                    error=(
+                        "clean-stop unsubscribe failed; dispatcher marked unrestartable"
+                    ),
+                    exc_info=True,
+                )
+                raise
+
+            self._running = False
+            logger.info(SETTINGS_DISPATCHER_STOPPED)
 
     def _on_task_done(self, task: asyncio.Task[None]) -> None:
         """Handle unexpected poll-loop exit.
