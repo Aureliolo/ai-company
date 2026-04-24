@@ -98,6 +98,93 @@ class TestSubworkflowCrud:
         assert items[0]["latest_version"] == "1.0.0"
         assert items[0]["input_count"] == 1
         assert items[0]["output_count"] == 1
+        assert body["pagination"]["limit"] == 50
+        # ``total`` is ``null`` under keyset pagination -- clients
+        # derive display counts from ``data.length`` per the frontend
+        # contract in ``web/CLAUDE.md``.
+        assert body["pagination"]["total"] is None
+        assert body["pagination"]["has_more"] is False
+
+    def test_list_paginates_with_explicit_limit(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _create_subworkflow(
+            test_client, _sub_payload(subworkflow_id="sub-a", name="Sub A")
+        )
+        _create_subworkflow(
+            test_client, _sub_payload(subworkflow_id="sub-b", name="Sub B")
+        )
+        _create_subworkflow(
+            test_client, _sub_payload(subworkflow_id="sub-c", name="Sub C")
+        )
+
+        first = test_client.get(
+            "/api/v1/subworkflows",
+            params={"limit": 2},
+            headers=make_auth_headers("ceo"),
+        ).json()
+        assert len(first["data"]) == 2
+        assert first["pagination"]["has_more"] is True
+        cursor = first["pagination"]["next_cursor"]
+        assert cursor is not None
+
+        second = test_client.get(
+            "/api/v1/subworkflows",
+            params={"limit": 2, "cursor": cursor},
+            headers=make_auth_headers("ceo"),
+        ).json()
+        assert len(second["data"]) == 1
+        assert second["pagination"]["has_more"] is False
+        first_ids = {s["subworkflow_id"] for s in first["data"]}
+        second_ids = {s["subworkflow_id"] for s in second["data"]}
+        assert first_ids.isdisjoint(second_ids)
+
+    def test_list_sort_tiebreaks_on_subworkflow_id(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        # Two summaries sharing (name, latest_version) must paginate
+        # in a stable, total order. Without the subworkflow_id
+        # tie-breaker, ``registry.list_all()`` could return them in
+        # different orders across requests, producing duplicates or
+        # skips when clients follow ``next_cursor``. Distinct IDs
+        # `sub-a` < `sub-b` lexicographically, so a correct total sort
+        # places `sub-a` first regardless of insertion order.
+        _create_subworkflow(
+            test_client, _sub_payload(subworkflow_id="sub-b", name="shared-name")
+        )
+        _create_subworkflow(
+            test_client, _sub_payload(subworkflow_id="sub-a", name="shared-name")
+        )
+
+        body = test_client.get(
+            "/api/v1/subworkflows",
+            params={"limit": 1},
+            headers=make_auth_headers("ceo"),
+        ).json()
+        assert [s["subworkflow_id"] for s in body["data"]] == ["sub-a"]
+        cursor = body["pagination"]["next_cursor"]
+        assert cursor is not None
+
+        second = test_client.get(
+            "/api/v1/subworkflows",
+            params={"limit": 1, "cursor": cursor},
+            headers=make_auth_headers("ceo"),
+        ).json()
+        assert [s["subworkflow_id"] for s in second["data"]] == ["sub-b"]
+        assert second["pagination"]["has_more"] is False
+
+    def test_list_invalid_cursor_returns_400(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _create_subworkflow(test_client)
+        resp = test_client.get(
+            "/api/v1/subworkflows?cursor=not-a-real-cursor",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
 
     def test_list_versions_semver_descending(
         self,

@@ -1,17 +1,21 @@
 """Tests for BaseCompletionProvider logging."""
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import pytest
 import structlog
 
 from synthorg.observability.events.provider import (
+    PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
     PROVIDER_CALL_START,
     PROVIDER_CALL_SUCCESS,
     PROVIDER_STREAM_START,
 )
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.errors import ProviderInternalError
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -195,3 +199,110 @@ class TestBaseProviderMetadataEnrichment:
         response = await provider.complete([_msg()], "test-model")
         assert response.provider_metadata["_synthorg_retry_count"] == 2
         assert response.provider_metadata["_synthorg_retry_reason"] == "RateLimitError"
+
+
+def _caps(model_id: str) -> ModelCapabilities:
+    return ModelCapabilities(
+        model_id=model_id,
+        provider="test-provider",
+        max_context_tokens=1000,
+        max_output_tokens=500,
+        cost_per_1k_input=0.001,
+        cost_per_1k_output=0.002,
+    )
+
+
+@pytest.mark.unit
+class TestBatchGetCapabilitiesDefault:
+    """``BaseCompletionProvider.batch_get_capabilities`` default impl."""
+
+    async def test_empty_models_returns_empty_dict(self) -> None:
+        provider = _StubProvider()
+        result = await provider.batch_get_capabilities(())
+        assert result == {}
+
+    async def test_returns_per_model_capabilities(self) -> None:
+        class _Provider(_StubProvider):
+            async def _do_get_model_capabilities(
+                self,
+                model: str,
+            ) -> ModelCapabilities:
+                return _caps(model)
+
+        provider = _Provider()
+        result = await provider.batch_get_capabilities(("alpha", "beta"))
+        assert set(result) == {"alpha", "beta"}
+        assert result["alpha"] is not None
+        assert result["alpha"].model_id == "alpha"
+        assert result["beta"] is not None
+        assert result["beta"].model_id == "beta"
+
+    async def test_per_model_failures_become_none(self) -> None:
+        class _PartialProvider(_StubProvider):
+            async def _do_get_model_capabilities(
+                self,
+                model: str,
+            ) -> ModelCapabilities:
+                if model == "broken":
+                    msg = "boom"
+                    raise ProviderInternalError(msg)
+                return _caps(model)
+
+        provider = _PartialProvider()
+        with structlog.testing.capture_logs() as cap:
+            result = await provider.batch_get_capabilities(("ok", "broken"))
+
+        assert result["ok"] is not None
+        assert result["broken"] is None
+        partials = [
+            e for e in cap if e.get("event") == PROVIDER_BATCH_CAPABILITIES_PARTIAL
+        ]
+        assert len(partials) == 1
+        assert partials[0]["model"] == "broken"
+        assert partials[0]["error_type"] == "ProviderInternalError"
+
+    async def test_runs_in_parallel(self) -> None:
+        # Deterministic concurrency assertion: every probe blocks on a
+        # shared gate that only opens once all probes have signalled they
+        # are in-flight. Sequential execution would deadlock on the gate;
+        # parallel execution proceeds. No wall-clock timing.
+        models = tuple(f"m{i}" for i in range(5))
+        in_flight = 0
+        peak_in_flight = 0
+        gate = asyncio.Event()
+        lock = asyncio.Lock()
+
+        class _GatedProvider(_StubProvider):
+            async def _do_get_model_capabilities(
+                self,
+                model: str,
+            ) -> ModelCapabilities:
+                nonlocal in_flight, peak_in_flight
+                async with lock:
+                    in_flight += 1
+                    peak_in_flight = max(peak_in_flight, in_flight)
+                    if in_flight == len(models):
+                        gate.set()
+                await gate.wait()
+                async with lock:
+                    in_flight -= 1
+                return _caps(model)
+
+        provider = _GatedProvider()
+        result = await provider.batch_get_capabilities(models)
+        assert peak_in_flight == len(models)
+        assert set(result) == set(models)
+
+    async def test_propagates_memory_error(self) -> None:
+        class _BadProvider(_StubProvider):
+            async def _do_get_model_capabilities(
+                self,
+                model: str,
+            ) -> ModelCapabilities:
+                raise MemoryError
+
+        provider = _BadProvider()
+        with pytest.raises(BaseExceptionGroup) as exc_info:
+            await provider.batch_get_capabilities(("doomed",))
+        # TaskGroup wraps escaped exceptions; one of them is the MemoryError.
+        assert any(isinstance(exc, MemoryError) for exc in exc_info.value.exceptions)

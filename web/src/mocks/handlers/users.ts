@@ -5,7 +5,7 @@ import type {
   UserResponse,
 } from '@/api/endpoints/users'
 import type { OrgRole } from '@/api/types/enums'
-import { successFor, voidSuccess } from './helpers'
+import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 export function buildUser(overrides: Partial<UserResponse> = {}): UserResponse {
   return {
@@ -23,7 +23,7 @@ export function buildUser(overrides: Partial<UserResponse> = {}): UserResponse {
 
 export const usersHandlers = [
   http.get('/api/v1/users', () =>
-    HttpResponse.json(successFor<typeof listUsers>([])),
+    HttpResponse.json(paginatedFor<typeof listUsers>(emptyPage<UserResponse>())),
   ),
   http.post('/api/v1/users/:id/org-roles', async ({ params, request }) => {
     const body = (await request.json()) as {

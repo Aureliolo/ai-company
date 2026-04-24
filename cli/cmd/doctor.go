@@ -39,6 +39,7 @@ var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Run diagnostics and generate a bug report",
 	Long:  "Collects system info, container states, health, and logs. Saves a diagnostic file and prints a pre-filled GitHub issue URL.",
+	Args:  cobra.NoArgs,
 	Example: `  synthorg doctor                          # full diagnostics
   synthorg doctor --checks health,containers  # run specific checks only
   synthorg doctor --fix                    # auto-fix detected issues`,

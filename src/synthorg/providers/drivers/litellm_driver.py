@@ -6,6 +6,9 @@ API.
 """
 
 import time
+from collections.abc import (
+    Mapping,  # noqa: TC003  # runtime annotation on driver method
+)
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -41,9 +44,10 @@ from litellm.exceptions import (
     Timeout as LiteLLMTimeout,
 )
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_AUTH_ERROR,
+    PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
     PROVIDER_CONNECTION_ERROR,
     PROVIDER_MODEL_INFO_UNAVAILABLE,
@@ -272,6 +276,60 @@ class LiteLLMDriver(BaseCompletionProvider):
         capped at the model's configured ``max_context``.
         """
         model_config = self._resolve_model(model)
+        return self._build_capabilities(model_config)
+
+    async def batch_get_capabilities(
+        self,
+        models: tuple[str, ...],
+    ) -> Mapping[str, ModelCapabilities | None]:
+        """Resolve capabilities for many models in a single tight loop.
+
+        Overrides the base implementation: each capability is built
+        from the static preset catalog plus a LiteLLM model-info
+        lookup, all of which is synchronous and in-process. Per-model
+        failures (unknown ids, validation errors) collapse to ``None``
+        entries; ``MemoryError`` and ``RecursionError`` propagate.
+        """
+        results: dict[str, ModelCapabilities | None] = {}
+        for model in models:
+            # Skip _resolve_model() because its miss path emits
+            # PROVIDER_MODEL_NOT_FOUND at ERROR; an expected partial
+            # miss in a batch lookup must not be recorded as a failed
+            # request. Read the lookup directly and degrade silently to
+            # ``None`` (the partial-failure event is reserved for real
+            # capability-build errors below).
+            model_config = self._model_lookup.get(model)
+            if model_config is None:
+                results[model] = None
+                continue
+            try:
+                results[model] = self._build_capabilities(model_config)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    PROVIDER_BATCH_CAPABILITIES_PARTIAL,
+                    provider=self._provider_name,
+                    model=model,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                results[model] = None
+        # Return a read-only view so callers cannot mutate the batch
+        # snapshot in place (matches the immutability pattern used by
+        # ``_model_lookup`` itself).
+        return MappingProxyType(results)
+
+    def _build_capabilities(
+        self,
+        model_config: ProviderModelConfig,
+    ) -> ModelCapabilities:
+        """Construct ``ModelCapabilities`` from a resolved model config.
+
+        Shared between single ``_do_get_model_capabilities`` and the
+        batched ``batch_get_capabilities`` so both paths produce
+        identical results.
+        """
         litellm_model = f"{self._routing_key}/{model_config.id}"
         info = self._get_litellm_model_info(litellm_model)
 

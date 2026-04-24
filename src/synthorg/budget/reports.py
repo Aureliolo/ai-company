@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.budget._aggregation import sum_tokens
 from synthorg.budget.spending_summary import SpendingSummary  # noqa: TC001
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -376,7 +377,7 @@ def _build_task_spendings(
             math.fsum(r.cost for r in task_records),
             BUDGET_ROUNDING_PRECISION,
         )
-        total_tokens = sum(r.input_tokens + r.output_tokens for r in task_records)
+        total_tokens = sum_tokens(task_records)
         spendings.append(
             TaskSpending(
                 task_id=task_id,

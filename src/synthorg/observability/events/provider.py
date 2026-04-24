@@ -23,6 +23,7 @@ PROVIDER_MODEL_INFO_UNAVAILABLE: Final[str] = "provider.model_info.unavailable"
 PROVIDER_MODEL_INFO_UNEXPECTED_ERROR: Final[str] = (
     "provider.model_info.unexpected_error"
 )
+PROVIDER_BATCH_CAPABILITIES_PARTIAL: Final[str] = "provider.batch_capabilities.partial"
 PROVIDER_TOOL_CALL_ARGUMENTS_TRUNCATED: Final[str] = (
     "provider.tool_call.arguments_truncated"
 )

@@ -16,7 +16,7 @@ from synthorg.api.auth.models import ApiKey, OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_API_KEY_DELETE_FAILED,
     PERSISTENCE_API_KEY_DELETED,
@@ -304,6 +304,67 @@ ON CONFLICT(id) DO UPDATE SET
         except (ValueError, TypeError, ValidationError) as exc:
             msg = "Failed to deserialize users"
             logger.exception(PERSISTENCE_USER_LIST_FAILED, error=str(exc))
+            raise QueryError(msg) from exc
+        logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
+        return users
+
+    async def list_users_paginated(
+        self,
+        *,
+        after_id: NotBlankStr | None,
+        limit: int,
+    ) -> tuple[User, ...]:
+        """Return a single keyset page of human users sorted by ``id``.
+
+        ``WHERE id > after_id ORDER BY id LIMIT N`` so cursor pages
+        stay stable under concurrent writes -- offset-based pagination
+        would duplicate or skip rows when items shift in the visible
+        window between page fetches.
+
+        Args:
+            after_id: ``None`` for the first page; the previous
+                page's last ``id`` for follow-up pages.
+            limit: Page size (rows to return).
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
+        try:
+            if after_id is None:
+                cursor = await self._db.execute(
+                    "SELECT * FROM users WHERE role != ? ORDER BY id LIMIT ?",
+                    (HumanRole.SYSTEM.value, limit),
+                )
+            else:
+                cursor = await self._db.execute(
+                    "SELECT * FROM users WHERE role != ? AND id > ? "
+                    "ORDER BY id LIMIT ?",
+                    (HumanRole.SYSTEM.value, after_id, limit),
+                )
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list users (paginated)"
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
+            users = tuple(_row_to_user(row) for row in rows)
+        except (ValueError, TypeError, ValidationError, KeyError) as exc:
+            # KeyError covers a missing column name in the row factory
+            # output (schema drift between the SQL SELECT and the
+            # ``_row_to_user`` decoder). Matches the Postgres impl's
+            # except tuple so both backends translate the same set of
+            # corruption modes into ``QueryError`` instead of leaking
+            # the raw exception to the API.
+            msg = "Failed to deserialize users (paginated)"
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
         return users

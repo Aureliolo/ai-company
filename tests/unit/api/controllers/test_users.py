@@ -161,6 +161,108 @@ class TestListUsers:
         )
         assert resp.status_code == 403
 
+    def test_list_pagination_metadata_present(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get(_BASE, headers=_CEO_HEADERS)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert "pagination" in body
+        assert body["pagination"]["limit"] == 50
+        # ``total`` is ``null`` under keyset pagination because the
+        # endpoint skips the COUNT(*) round-trip on every request --
+        # clients derive display counts from ``data.length`` per the
+        # frontend contract in ``web/CLAUDE.md``.
+        assert body["pagination"]["total"] is None
+        assert body["pagination"]["has_more"] is False
+        assert body["pagination"]["next_cursor"] is None
+
+    def test_list_limit_page_chain(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        # 5 seeded users, limit=2: walk all three pages so a backend
+        # that drops the fifth user or clears ``has_more`` one page
+        # early cannot pass on just the first two pages.
+        first_resp = test_client.get(
+            _BASE,
+            params={"limit": 2},
+            headers=_CEO_HEADERS,
+        )
+        assert first_resp.status_code == 200, first_resp.text
+        first = first_resp.json()
+        assert len(first["data"]) == 2
+        assert first["pagination"]["has_more"] is True
+        cursor = first["pagination"]["next_cursor"]
+        assert cursor is not None
+
+        second_resp = test_client.get(
+            _BASE,
+            params={"limit": 2, "cursor": cursor},
+            headers=_CEO_HEADERS,
+        )
+        assert second_resp.status_code == 200, second_resp.text
+        second = second_resp.json()
+        assert len(second["data"]) == 2
+        assert second["pagination"]["has_more"] is True
+        third_cursor = second["pagination"]["next_cursor"]
+        assert third_cursor is not None
+        first_ids = {u["id"] for u in first["data"]}
+        second_ids = {u["id"] for u in second["data"]}
+        assert first_ids.isdisjoint(second_ids)
+
+        third_resp = test_client.get(
+            _BASE,
+            params={"limit": 2, "cursor": third_cursor},
+            headers=_CEO_HEADERS,
+        )
+        assert third_resp.status_code == 200, third_resp.text
+        third = third_resp.json()
+        assert len(third["data"]) == 1
+        assert third["pagination"]["has_more"] is False
+        assert third["pagination"]["next_cursor"] is None
+        third_ids = {u["id"] for u in third["data"]}
+        assert first_ids.isdisjoint(third_ids)
+        assert second_ids.isdisjoint(third_ids)
+
+    def test_list_invalid_cursor_returns_400(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get(
+            f"{_BASE}?cursor=not-a-real-cursor",
+            headers=_CEO_HEADERS,
+        )
+        assert resp.status_code == 400
+
+    def test_list_stable_ordering(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        first_resp = test_client.get(
+            _BASE,
+            params={"limit": 5},
+            headers=_CEO_HEADERS,
+        )
+        assert first_resp.status_code == 200, first_resp.text
+        first = first_resp.json()["data"]
+        second_resp = test_client.get(
+            _BASE,
+            params={"limit": 5},
+            headers=_CEO_HEADERS,
+        )
+        assert second_resp.status_code == 200, second_resp.text
+        second = second_resp.json()["data"]
+        assert first == second
+        # Lock the ordering contract to ascending ``id`` -- repeatability
+        # alone would also pass for a backend that returns rows in
+        # ``created_at`` (or any other) order.  ``id`` is the sort key
+        # the keyset cursor advances on, so any drift here would
+        # break cursor pagination semantics.
+        ids = [u["id"] for u in first]
+        assert ids == sorted(ids)
+
 
 @pytest.mark.unit
 class TestGetUser:

@@ -370,6 +370,64 @@ class SettingsService:
             entries.append(entry)
         return tuple(entries)
 
+    async def get_page(
+        self,
+        *,
+        after_key: str | None,
+        limit: int,
+    ) -> tuple[tuple[SettingEntry, ...], bool]:
+        """Resolve a single keyset page of settings sorted by ``namespace:key``.
+
+        Slices the in-memory definition registry before resolving DB
+        overrides, so the controller only pays the resolve cost for
+        the rows it actually returns.  Cursor pages are keyset-stable
+        on ``f"{namespace}:{key}"``: a new override or definition
+        added between requests does not duplicate or skip rows the
+        client has already seen.
+
+        Args:
+            after_key: ``None`` for the first page; the previous
+                page's last ``f"{namespace}:{key}"`` for follow-up
+                pages.
+            limit: Page size requested.
+
+        Returns:
+            ``(page, has_more)`` where ``page`` is at most ``limit``
+            entries in ``(namespace, key)`` order and ``has_more`` is
+            ``True`` when an additional definition was observed past
+            the requested page.
+        """
+        sorted_defs = sorted(
+            self._registry.list_all(),
+            key=lambda d: (d.namespace, d.key),
+        )
+        if after_key is not None:
+            sorted_defs = [
+                d for d in sorted_defs if f"{d.namespace}:{d.key}" > after_key
+            ]
+        # Over-fetch by one to detect has_more without a separate count.
+        page_defs = sorted_defs[: limit + 1]
+        has_more = len(page_defs) > limit
+        page_defs = page_defs[:limit]
+        if not page_defs:
+            return (), has_more
+
+        # Single DB round-trip for the override values; bounded by the
+        # number of overridden settings (typically << total definition
+        # count) so we keep the existing batch shape.
+        db_rows = await self._repository.get_all()
+        db_lookup: dict[tuple[str, str], tuple[str, str]] = {
+            (ns, k): (v, ts) for ns, k, v, ts in db_rows
+        }
+        entries = tuple(
+            self._resolve_with_db_lookup(
+                defn,
+                db_lookup.get((defn.namespace, defn.key)),
+            )
+            for defn in page_defs
+        )
+        return entries, has_more
+
     def _resolve_fallback(
         self,
         definition: SettingDefinition,

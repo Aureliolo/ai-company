@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react'
-import { Search } from 'lucide-react'
 import { useSubworkflowsData } from '@/hooks/useSubworkflowsData'
 import { useSubworkflowsStore } from '@/stores/subworkflows'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { InputField } from '@/components/ui/input-field'
+import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { SubworkflowSummary } from '@/api/types/workflows'
 import { SubworkflowCard } from './subworkflows/SubworkflowCard'
@@ -15,6 +15,9 @@ export default function SubworkflowsPage() {
   const { filteredSubworkflows, loading, error } = useSubworkflowsData()
   const searchQuery = useSubworkflowsStore((s) => s.searchQuery)
   const setSearchQuery = useSubworkflowsStore((s) => s.setSearchQuery)
+  const hasMore = useSubworkflowsStore((s) => s.hasMore)
+  const loadingMore = useSubworkflowsStore((s) => s.loadingMore)
+  const fetchMoreSubworkflows = useSubworkflowsStore((s) => s.fetchMoreSubworkflows)
 
   const handleSearch = useCallback(
     (value: string) => {
@@ -26,6 +29,10 @@ export default function SubworkflowsPage() {
   const handleCardClick = useCallback((sub: SubworkflowSummary) => {
     setSelected(sub)
   }, [])
+
+  const handleLoadMore = useCallback(() => {
+    void fetchMoreSubworkflows()
+  }, [fetchMoreSubworkflows])
 
   if (loading && filteredSubworkflows.length === 0) {
     return (
@@ -54,15 +61,13 @@ export default function SubworkflowsPage() {
       )}
 
       <div className="max-w-sm">
-        <InputField
-          label="Search subworkflows"
+        <SearchInput
           value={searchQuery}
-          onValueChange={handleSearch}
+          onChange={handleSearch}
           placeholder="Search by name, description, or ID..."
-          type="text"
-        >
-          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-        </InputField>
+          ariaLabel="Search subworkflows"
+          focusShortcut
+        />
       </div>
 
       {filteredSubworkflows.length === 0 ? (
@@ -75,15 +80,31 @@ export default function SubworkflowsPage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
-          {filteredSubworkflows.map((sub) => (
-            <SubworkflowCard
-              key={sub.subworkflow_id}
-              subworkflow={sub}
-              onClick={handleCardClick}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
+            {filteredSubworkflows.map((sub) => (
+              <SubworkflowCard
+                key={sub.subworkflow_id}
+                subworkflow={sub}
+                onClick={handleCardClick}
+              />
+            ))}
+          </div>
+          {hasMore && searchQuery.trim() === '' && (
+            // Mirror the store's gate (``searchQuery.trim() !== ''``)
+            // so a whitespace-only query does not hide the Load More
+            // button and strand the user without a way to advance.
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? 'Loading...' : 'Load more'}
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       <SubworkflowDetailDrawer

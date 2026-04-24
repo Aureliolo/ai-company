@@ -22,8 +22,10 @@ from pydantic import (
 )
 
 from synthorg.api.concurrency import check_if_match, compute_etag
-from synthorg.api.dto import ApiResponse
+from synthorg.api.cursor import decode_keyset_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
+from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -281,20 +283,54 @@ class SettingsController(Controller):
     async def list_all_settings(
         self,
         state: State,
-    ) -> ApiResponse[tuple[SettingEntry, ...]]:
-        """List all settings with resolved values.
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[SettingEntry]:
+        """List settings with resolved values, keyset-paginated.
 
-        Sensitive values are masked.
+        Sensitive values are masked. Sorted by ``(namespace, key)``
+        with the cursor encoding the last seen ``f"{namespace}:{key}"``;
+        the next page reads ``WHERE sort_key > after_key``. Keyset
+        contract is stable under concurrent definition / override
+        changes -- no duplicates or skips when the registry shifts
+        between requests. Pagination is pushed into
+        :meth:`SettingsService.get_page`, so the controller only pays
+        the resolve cost for the rows it actually returns.
 
         Args:
             state: Application state.
+            cursor: Opaque keyset cursor from a previous page.
+            limit: Page size (default 50, max defined by ``MAX_LIMIT``).
 
         Returns:
-            All resolved setting entries.
+            Paginated response of resolved setting entries.
+
+        Raises:
+            InvalidCursorError: HTTP 400 -- malformed, tampered, or
+                signed by a different secret.
         """
         app_state: AppState = state.app_state
-        entries = await app_state.settings_service.get_all()
-        return ApiResponse(data=entries)
+        after_key = (
+            decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+            if cursor is not None
+            else None
+        )
+        page, has_more = await app_state.settings_service.get_page(
+            after_key=after_key,
+            limit=limit,
+        )
+        next_after_key = (
+            f"{page[-1].definition.namespace}:{page[-1].definition.key}"
+            if has_more and page
+            else None
+        )
+        meta = encode_keyset_meta(
+            next_after_key=next_after_key,
+            has_more=has_more,
+            limit=limit,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{namespace:str}")
     async def get_namespace_settings(
