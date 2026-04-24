@@ -38,7 +38,8 @@ from synthorg.engine.workflow.subworkflow_registry import (
     SubworkflowRegistry,
     encode_subworkflow_keyset,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_CURSOR_INVALID
 from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_INVALID_REQUEST,
 )
@@ -126,10 +127,16 @@ class SubworkflowController(Controller):
         Sorted by ``(name, latest_version, subworkflow_id)`` -- the
         ``subworkflow_id`` tail is the required tie-breaker so two
         summaries sharing ``(name, latest_version)`` cannot drift
-        between pages.  The cursor encodes
-        ``"name|latest_version|subworkflow_id"``; the next page reads
-        ``WHERE sort_key > after_key``.  Keyset contract is stable
-        under concurrent inserts and deletes.
+        between pages.  The cursor encodes a JSON-serialised triple
+        ``["name", "latest_version", "subworkflow_id"]`` (see
+        :func:`encode_subworkflow_keyset`); a naive
+        ``f"{name}|{version}|{id}"`` join could collide whenever any
+        component contains the delimiter, since ``NotBlankStr`` does
+        not forbid pipes / colons / etc.  The next page reads where
+        the composite sort key tuple ``(name, latest_version,
+        subworkflow_id)`` is strictly greater than the decoded
+        triple.  Keyset contract is stable under concurrent inserts
+        and deletes.
 
         Args:
             state: Application state.
@@ -145,11 +152,22 @@ class SubworkflowController(Controller):
         """
         app_state: AppState = state.app_state
         registry = _registry(state)
-        after_key = (
-            decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
-            if cursor is not None
-            else None
-        )
+        try:
+            after_key = (
+                decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+                if cursor is not None
+                else None
+            )
+        except InvalidCursorError:
+            # The cursor is attacker-controlled input and may carry
+            # secret fragments from tampering attempts -- log only
+            # the failure reason, never the cursor itself.  Mirrors
+            # ``paginate_cursor`` in ``api/pagination.py``.
+            logger.warning(
+                API_CURSOR_INVALID,
+                reason="subworkflow_cursor_decode_failed",
+            )
+            raise
         try:
             page, has_more = await registry.list_page(
                 after_key=after_key,
@@ -163,6 +181,12 @@ class SubworkflowController(Controller):
             # signature step. Surface as HTTP 400 instead of letting
             # it bubble up as a 500 -- the cursor is attacker-
             # controllable input.
+            logger.warning(
+                API_CURSOR_INVALID,
+                reason="subworkflow_keyset_payload_malformed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = "subworkflow keyset cursor payload is malformed"
             raise InvalidCursorError(msg) from exc
         # JSON-encode the composite sort key so names containing

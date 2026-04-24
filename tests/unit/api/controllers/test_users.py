@@ -166,6 +166,7 @@ class TestListUsers:
         test_client: TestClient[Any],
     ) -> None:
         resp = test_client.get(_BASE, headers=_CEO_HEADERS)
+        assert resp.status_code == 200, resp.text
         body = resp.json()
         assert "pagination" in body
         assert body["pagination"]["limit"] == 50
@@ -239,14 +240,20 @@ class TestListUsers:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        first = test_client.get(
-            f"{_BASE}?limit=5",
+        first_resp = test_client.get(
+            _BASE,
+            params={"limit": 5},
             headers=_CEO_HEADERS,
-        ).json()["data"]
-        second = test_client.get(
-            f"{_BASE}?limit=5",
+        )
+        assert first_resp.status_code == 200, first_resp.text
+        first = first_resp.json()["data"]
+        second_resp = test_client.get(
+            _BASE,
+            params={"limit": 5},
             headers=_CEO_HEADERS,
-        ).json()["data"]
+        )
+        assert second_resp.status_code == 200, second_resp.text
+        second = second_resp.json()["data"]
         assert first == second
 
 

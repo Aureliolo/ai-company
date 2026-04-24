@@ -112,7 +112,9 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
     if (searchQuery.trim() !== '') return
     if (loadingMore || listLoading) return
     if (!hasMore || !nextCursor) return
-    set(() => ({ loadingMore: true }))
+    // Clear listError on retry so a previous failure does not stay
+    // pinned to the page once the user reattempts Load More.
+    set(() => ({ loadingMore: true, listError: null }))
     try {
       const page = await listSubworkflows({
         cursor: nextCursor,
@@ -124,6 +126,7 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
         loadingMore: false,
+        listError: null,
       }))
     } catch (err) {
       if (isStaleRequest(token)) return

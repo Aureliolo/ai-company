@@ -20,12 +20,11 @@ instantiating either backend.
 import json
 from datetime import datetime
 from typing import Any
-from uuid import UUID
 
 from pydantic import ValidationError
 
-from synthorg.meta.models import ProposalAltitude, RuleSeverity
-from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
+from synthorg.meta.models import ProposalAltitude
+from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_CUSTOM_RULE_FETCH_FAILED
 from synthorg.persistence._shared import normalize_utc
@@ -45,6 +44,15 @@ def serialize_altitudes(rule: CustomRuleDefinition) -> list[str]:
 
     Backends wrap this in ``json.dumps`` (SQLite TEXT) or
     ``psycopg.types.json.Jsonb`` (Postgres JSONB).
+
+    Args:
+        rule: The custom rule whose ``target_altitudes`` tuple should
+            be serialised.
+
+    Returns:
+        ``list[str]`` of the rule's altitude enum ``.value`` strings,
+        in the original tuple order.  Safe to pass to ``json.dumps``
+        or wrap in a JSONB adapter.
     """
     return [a.value for a in rule.target_altitudes]
 
@@ -58,12 +66,24 @@ def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
     Timestamps are normalised to UTC before being stored on the model
     so backend round-trips compare equal in conformance tests.
 
+    Scalar fields (``id``, ``name``, ``description``, ``metric_path``,
+    ``comparator``, ``threshold``, ``severity``, ``enabled``) are
+    passed through to the Pydantic constructor without coercion so
+    the model's own validators can flag malformed rows -- a manual
+    ``str(...)``/``bool(...)`` wrapper would silently mask a corrupt
+    column (e.g. truthy non-bool, non-string identifier) and produce
+    a usable model that no longer represents what the database held.
+
     Args:
         row: Mapping from column name to raw driver value. Required
             keys: ``id``, ``name``, ``description``, ``metric_path``,
             ``comparator``, ``threshold``, ``severity``,
             ``target_altitudes``, ``enabled``, ``created_at``,
             ``updated_at``.
+
+    Returns:
+        A validated :class:`CustomRuleDefinition` reconstructed from
+        the row.
 
     Raises:
         MalformedRowError: If parsing or validation fails. Non-retryable
@@ -93,15 +113,15 @@ def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
         altitudes_list = [str(a) for a in decoded_altitudes]
 
         return CustomRuleDefinition(
-            id=UUID(str(row["id"])),
-            name=str(row["name"]),
-            description=str(row["description"]),
-            metric_path=str(row["metric_path"]),
-            comparator=Comparator(str(row["comparator"])),
-            threshold=float(row["threshold"]),
-            severity=RuleSeverity(str(row["severity"])),
+            id=row["id"],
+            name=row["name"],
+            description=row["description"],
+            metric_path=row["metric_path"],
+            comparator=row["comparator"],
+            threshold=row["threshold"],
+            severity=row["severity"],
             target_altitudes=tuple(ProposalAltitude(a) for a in altitudes_list),
-            enabled=bool(row["enabled"]),
+            enabled=row["enabled"],
             created_at=_coerce_datetime(row["created_at"]),
             updated_at=_coerce_datetime(row["updated_at"]),
         )

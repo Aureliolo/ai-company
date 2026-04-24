@@ -163,7 +163,7 @@ class TestRowToCustomRule:
         row = _row_for(rule, severity="catastrophic")
         with (
             structlog.testing.capture_logs() as cap,
-            pytest.raises(MalformedRowError),
+            pytest.raises(MalformedRowError) as raised,
         ):
             row_to_custom_rule(row)
         events = [e for e in cap if e.get("event") == META_CUSTOM_RULE_FETCH_FAILED]
@@ -171,13 +171,15 @@ class TestRowToCustomRule:
         evt = events[0]
         assert evt["row_id"] == str(rule.id)
         assert "error_type" in evt
-        # Reproduce the exact ValueError that the helper catches and
-        # assert the logged ``error`` field is the redacted
-        # description, not raw ``str(exc)``. A regression to
-        # ``str(exc)`` would silently surface raw column payloads.
-        with pytest.raises(ValueError, match="catastrophic") as captured:
-            RuleSeverity("catastrophic")
-        assert evt["error"] == safe_error_description(captured.value)
+        # The logged ``error`` field MUST be the redacted
+        # ``safe_error_description`` of the underlying exception, not
+        # ``str(exc)``. A regression to ``str(exc)`` would silently
+        # surface the raw row payload (here, the corrupt
+        # ``"catastrophic"`` severity value would land verbatim in
+        # the structured log).
+        underlying = raised.value.__cause__
+        assert underlying is not None
+        assert evt["error"] == safe_error_description(underlying)
 
 
 @pytest.mark.unit

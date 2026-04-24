@@ -352,7 +352,13 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             users = tuple(_row_to_user(row) for row in rows)
-        except (ValueError, TypeError, ValidationError) as exc:
+        except (ValueError, TypeError, ValidationError, KeyError) as exc:
+            # KeyError covers a missing column name in the row factory
+            # output (schema drift between the SQL SELECT and the
+            # ``_row_to_user`` decoder). Matches the Postgres impl's
+            # except tuple so both backends translate the same set of
+            # corruption modes into ``QueryError`` instead of leaking
+            # the raw exception to the API.
             msg = "Failed to deserialize users (paginated)"
             logger.warning(
                 PERSISTENCE_USER_LIST_FAILED,

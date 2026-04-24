@@ -90,7 +90,10 @@ export default function SubworkflowsPage() {
               />
             ))}
           </div>
-          {hasMore && searchQuery === '' && (
+          {hasMore && searchQuery.trim() === '' && (
+            // Mirror the store's gate (``searchQuery.trim() !== ''``)
+            // so a whitespace-only query does not hide the Load More
+            // button and strand the user without a way to advance.
             <div className="flex justify-center">
               <Button
                 variant="outline"
