@@ -69,6 +69,7 @@ describe('useWebSocket', () => {
     useAuthStore.setState({ authStatus: 'authenticated' })
     useWebSocketStore.setState({ connected: true })
 
+    const subscribeSpy = vi.spyOn(useWebSocketStore.getState(), 'subscribe')
     const unsubscribeSpy = vi.spyOn(useWebSocketStore.getState(), 'unsubscribe')
     const offChannelSpy = vi.spyOn(
       useWebSocketStore.getState(),
@@ -82,11 +83,15 @@ describe('useWebSocket', () => {
       }),
     )
 
-    // Let the effect's setup() promise chain settle so the subscribed
-    // flag is flipped before we unmount. Without this the cleanup
-    // races the setup and skips the unsubscribe.
-    await Promise.resolve()
-    await Promise.resolve()
+    // Wait for the effect's setup() to complete the subscribe step
+    // so the local ``subscribed`` flag is true before we unmount;
+    // otherwise the cleanup races setup and the unsubscribe branch
+    // is skipped. Using ``vi.waitFor`` instead of counting microtask
+    // flushes keeps the test robust if the hook's async flow grows
+    // more await steps later.
+    await vi.waitFor(() => {
+      expect(subscribeSpy).toHaveBeenCalledWith(['tasks'], undefined)
+    })
 
     unmount()
 

@@ -50,6 +50,7 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_OBSERVER_LOOP_DIED,
     TASK_ENGINE_QUEUE_FULL,
     TASK_ENGINE_READ_FAILED,
+    TASK_ENGINE_START_REJECTED,
     TASK_ENGINE_STARTED,
     TASK_ENGINE_STOPPED,
 )
@@ -146,11 +147,21 @@ class TaskEngine(TaskEngineLoopsMixin):
                     "TaskEngine is unrestartable after a timed-out stop; "
                     "construct a fresh TaskEngine instead"
                 )
-                logger.warning(TASK_ENGINE_STARTED, error=msg)
+                # Use the dedicated rejection event so a rejected
+                # start does not inflate the successful-start metric.
+                logger.warning(
+                    TASK_ENGINE_START_REJECTED,
+                    error=msg,
+                    reason="unrestartable",
+                )
                 raise RuntimeError(msg)
             if self._running:
                 msg = "TaskEngine is already running"
-                logger.warning(TASK_ENGINE_STARTED, error=msg)
+                logger.warning(
+                    TASK_ENGINE_START_REJECTED,
+                    error=msg,
+                    reason="already_running",
+                )
                 raise RuntimeError(msg)
             self._running = True
             # Transactional two-loop startup: if observer-task creation

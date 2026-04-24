@@ -170,20 +170,38 @@ class MeetingScheduler:
             self._running = True
 
             scheduled = self.get_scheduled_types()
-            self._tasks = []
-            for mt in scheduled:
-                task = asyncio.create_task(
-                    self._run_periodic(mt),
-                    name=f"meeting-{mt.name}",
-                )
-                task.add_done_callback(
-                    log_task_exceptions(
-                        logger,
-                        MEETING_SCHEDULER_TASK_DIED,
-                        meeting_type=mt.name,
-                    ),
-                )
-                self._tasks.append(task)
+            # Transactional task-spawn loop: if any task creation or
+            # callback registration raises partway through the loop,
+            # cancel and drain every task already spawned, reset
+            # ``_tasks`` + ``_running``, and re-raise the original
+            # exception. Without this rollback an exception on meeting
+            # type N would leave periodic tasks for types 0..N-1 alive
+            # while ``start()`` reports failure, so the caller sees a
+            # stopped scheduler that is silently still firing.
+            spawned_tasks: list[asyncio.Task[None]] = []
+            try:
+                for mt in scheduled:
+                    task = asyncio.create_task(
+                        self._run_periodic(mt),
+                        name=f"meeting-{mt.name}",
+                    )
+                    task.add_done_callback(
+                        log_task_exceptions(
+                            logger,
+                            MEETING_SCHEDULER_TASK_DIED,
+                            meeting_type=mt.name,
+                        ),
+                    )
+                    spawned_tasks.append(task)
+            except BaseException:
+                for task in spawned_tasks:
+                    task.cancel()
+                if spawned_tasks:
+                    await asyncio.gather(*spawned_tasks, return_exceptions=True)
+                self._tasks = []
+                self._running = False
+                raise
+            self._tasks = spawned_tasks
 
             logger.info(
                 MEETING_SCHEDULER_STARTED,

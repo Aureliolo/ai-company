@@ -4,6 +4,11 @@ from typing import Final
 
 TASK_ENGINE_CREATED: Final[str] = "task_engine.created"
 TASK_ENGINE_STARTED: Final[str] = "task_engine.started"
+TASK_ENGINE_START_REJECTED: Final[str] = "task_engine.start.rejected"
+"""Emitted when ``TaskEngine.start()`` refuses to start -- already running,
+or unrestartable after a timed-out stop. Kept distinct from
+``TASK_ENGINE_STARTED`` so rejected starts do not inflate successful-start
+metrics / alerts."""
 TASK_ENGINE_STOPPED: Final[str] = "task_engine.stopped"
 TASK_ENGINE_MUTATION_RECEIVED: Final[str] = "task_engine.mutation.received"
 TASK_ENGINE_MUTATION_APPLIED: Final[str] = "task_engine.mutation.applied"

@@ -41,6 +41,16 @@ paused consumer would flood logs every poll; once per minute per
 subscriber matches operator dashboard refresh cadence.
 """
 
+_CONSUMER_INFO_PROBE_TIMEOUT_SECONDS: float = 2.0
+"""Hard deadline for the best-effort ``consumer_info()`` overflow probe.
+
+The probe is an observability side-effect on the receive hot path, so
+it MUST NOT stall receive() or shutdown. If the JetStream control-plane
+RPC hangs, we time out quickly and treat the timeout exactly like a
+generic probe failure: the rate-limit slot is released and the probe
+is retried on the next empty fetch.
+"""
+
 logger = get_logger(__name__)
 
 
@@ -112,10 +122,23 @@ async def _maybe_log_overflow(
     # for up to ``_OVERFLOW_LOG_INTERVAL_SECONDS``.
     state.last_overflow_log[key] = now
     try:
-        info = await sub.consumer_info()
+        # Bound the best-effort probe: a stalled control-plane RPC
+        # must NOT block the receive loop or shutdown. On timeout we
+        # treat the probe exactly like a generic exception (release
+        # the rate-limit slot, return), so the next empty fetch can
+        # retry without suppressing a real overflow warning.
+        info = await asyncio.wait_for(
+            sub.consumer_info(),
+            timeout=_CONSUMER_INFO_PROBE_TIMEOUT_SECONDS,
+        )
     except MemoryError, RecursionError:
         raise
     except Exception:
+        # Catches the ``TimeoutError`` from asyncio.wait_for above
+        # (TimeoutError is a subclass of Exception on Python 3.11+)
+        # along with any other probe RPC failure. Release the
+        # rate-limit slot so the next empty fetch can retry the probe
+        # without suppressing a real overflow warning.
         state.last_overflow_log.pop(key, None)
         return
     num_pending = getattr(info, "num_ack_pending", 0)

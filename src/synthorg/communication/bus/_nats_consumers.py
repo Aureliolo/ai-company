@@ -24,6 +24,7 @@ from synthorg.communication.channel import Channel  # noqa: TC001
 from synthorg.communication.subscription import Subscription
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
+    COMM_DUPLICATE_SUBSCRIPTION_DISCARDED,
     COMM_SUBSCRIPTION_CREATED,
     COMM_SUBSCRIPTION_REMOVED,
 )
@@ -125,11 +126,13 @@ async def subscribe(
         # winning coroutine's subscription on the next fetch. Dropping
         # the local reference is the correct cleanup: the server-side
         # consumer remains bound to the winner in ``state.subscriptions``.
+        # Use the dedicated discard event (not ``COMM_SUBSCRIPTION_REMOVED``)
+        # so unsubscribe metrics / alerts / audit trails are not inflated
+        # by race-loss discards.
         logger.debug(
-            COMM_SUBSCRIPTION_REMOVED,
+            COMM_DUPLICATE_SUBSCRIPTION_DISCARDED,
             channel=channel_name,
             subscriber=subscriber_id,
-            phase="discard_duplicate_subscription_ref",
         )
 
     if updated_channel is not None:
@@ -168,6 +171,14 @@ async def unsubscribe(
         state.channels[channel_name] = updated
         key = (channel_name, subscriber_id)
         sub: Any = state.subscriptions.pop(key, None)
+        # Clear the overflow-log rate-limit entry alongside the
+        # subscription so repeatedly subscribing and unsubscribing the
+        # same ``(channel, subscriber)`` key cannot leak stale entries
+        # into ``state.last_overflow_log``. The dict is otherwise only
+        # pruned on the receive path (probe failure / healthy
+        # consumer), which never runs for an already-unsubscribed
+        # pair.
+        state.last_overflow_log.pop(key, None)
 
     await write_channel_to_kv(state, updated)
 
