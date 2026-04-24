@@ -1,24 +1,25 @@
 """Postgres repository implementation for security audit entries."""
 
-import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
-from pydantic import ValidationError
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
-    PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
-    PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_SAVED,
 )
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
-from synthorg.security.models import AuditEntry
+from synthorg.persistence._shared.audit import (
+    AUDIT_COLUMNS,
+    audit_entry_to_payload,
+    classify_audit_save_error,
+    row_to_audit_entry,
+)
+from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -26,16 +27,16 @@ if TYPE_CHECKING:
 
     from synthorg.core.enums import ApprovalRiskLevel
     from synthorg.core.types import NotBlankStr
-    from synthorg.security.models import AuditVerdictStr
+    from synthorg.security.models import AuditEntry, AuditVerdictStr
 
 logger = get_logger(__name__)
 
-_COLS = (
-    "id, timestamp, agent_id, task_id, tool_name, "
-    "tool_category, action_type, arguments_hash, verdict, "
-    "risk_level, reason, matched_rules, "
-    "evaluation_duration_ms, approval_id"
-)
+_COL_LIST = ", ".join(AUDIT_COLUMNS)
+
+
+def _postgres_is_duplicate(exc: BaseException) -> bool:
+    """Detect Postgres duplicate-key violations by exception type."""
+    return isinstance(exc, psycopg.errors.UniqueViolation)
 
 
 class PostgresAuditRepository:
@@ -64,56 +65,27 @@ class PostgresAuditRepository:
             DuplicateRecordError: If an entry with the same ID exists.
             QueryError: If the operation fails.
         """
+        payload = audit_entry_to_payload(
+            entry,
+            json_serializer=Jsonb,
+            timestamp_serializer=lambda dt: dt,
+        )
+        placeholders = ", ".join(["%s"] * len(AUDIT_COLUMNS))
+        values = tuple(payload[c] for c in AUDIT_COLUMNS)
+        sql = (
+            f"INSERT INTO audit_entries ({_COL_LIST}) "  # noqa: S608
+            f"VALUES ({placeholders})"
+        )
         try:
-            data = entry.model_dump(mode="json")
-            # Normalize timestamp to UTC for consistent ordering.
-            utc_ts = entry.timestamp.astimezone(UTC)
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(
-                    """\
-INSERT INTO audit_entries (
-    id, timestamp, agent_id, task_id, tool_name, tool_category,
-    action_type, arguments_hash, verdict, risk_level, reason,
-    matched_rules, evaluation_duration_ms, approval_id
-) VALUES (
-    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-)""",
-                    (
-                        data["id"],
-                        utc_ts,
-                        data["agent_id"],
-                        data["task_id"],
-                        data["tool_name"],
-                        data["tool_category"],
-                        data["action_type"],
-                        data["arguments_hash"],
-                        data["verdict"],
-                        data["risk_level"],
-                        data["reason"],
-                        Jsonb(list(data["matched_rules"])),
-                        data["evaluation_duration_ms"],
-                        data["approval_id"],
-                    ),
-                )
+                await cur.execute(sql, values)
                 await conn.commit()
-        except psycopg.errors.UniqueViolation as exc:
-            msg = f"Duplicate audit entry {entry.id!r}"
-            logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
-                entry_id=entry.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
-            msg = f"Failed to save audit entry {entry.id!r}"
-            logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
+            raise classify_audit_save_error(
+                exc,
                 entry_id=entry.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+                is_duplicate=_postgres_is_duplicate,
+            ) from exc
         logger.info(
             PERSISTENCE_AUDIT_ENTRY_SAVED,
             entry_id=entry.id,
@@ -163,7 +135,7 @@ INSERT INTO audit_entries (
             until=until,
         )
         sql = (
-            f"SELECT {_COLS} FROM audit_entries{where} "  # noqa: S608
+            f"SELECT {_COL_LIST} FROM audit_entries{where} "  # noqa: S608
             "ORDER BY timestamp DESC LIMIT %s"
         )
         params.append(limit)
@@ -274,30 +246,18 @@ INSERT INTO audit_entries (
     def _row_to_entry(self, row: dict[str, object]) -> AuditEntry:
         """Convert a database row to an ``AuditEntry`` model.
 
+        Delegates to :func:`row_to_audit_entry` from the shared helper
+        so SQLite and Postgres use identical deserialisation logic.
+        Postgres JSONB returns ``matched_rules`` as a Python list; the
+        helper handles both that and string-encoded SQLite rows.
+
         Args:
             row: A dict mapping column names to their values.
 
         Raises:
             QueryError: If the row cannot be deserialized.
         """
-        try:
-            raw_rules = row.get("matched_rules")
-            # In Postgres, JSONB comes back as dict/list, not string
-            if isinstance(raw_rules, str):
-                # Shouldn't happen with JSONB, but be defensive
-                parsed = {**row, "matched_rules": json.loads(raw_rules)}
-            else:
-                parsed = row
-            return AuditEntry.model_validate(parsed)
-        except (ValidationError, KeyError, TypeError, json.JSONDecodeError) as exc:
-            msg = f"Failed to deserialize audit entry {row.get('id')!r}"
-            logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
-                entry_id=row.get("id"),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        return row_to_audit_entry(row)
 
     # ── JsonbQueryCapability implementation ────────────────────
 
@@ -361,7 +321,7 @@ INSERT INTO audit_entries (
         where = f" WHERE {' AND '.join(all_conds)}"
         count_sql = f"SELECT COUNT(*) FROM audit_entries{where}"  # noqa: S608
         data_sql = (
-            f"SELECT {_COLS} FROM audit_entries{where} "  # noqa: S608
+            f"SELECT {_COL_LIST} FROM audit_entries{where} "  # noqa: S608
             "ORDER BY timestamp DESC LIMIT %s OFFSET %s"
         )
 

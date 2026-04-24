@@ -1,0 +1,128 @@
+"""Shared serialisation/deserialisation helpers for ``CustomRuleDefinition`` repos.
+
+Both backends round-trip the same Pydantic model. Differences:
+- SQLite stores altitudes as a TEXT JSON string and timestamps as
+  ISO 8601 strings; row access is positional (``aiosqlite.Row``).
+- Postgres stores altitudes as JSONB (returned as a Python list) and
+  timestamps as TIMESTAMPTZ (returned as ``datetime``); row access is
+  by column name (``psycopg.rows.dict_row``).
+
+The helpers below take a unified ``dict[str, Any]`` row contract,
+tolerate either encoding for ``target_altitudes``, and route both
+backends through a single :func:`_coerce_datetime` so timestamp
+normalisation is the conformance contract.
+
+Conformance tests for ``CustomRuleRepository`` should target these
+helpers directly so they exercise the canonical contract without
+instantiating either backend.
+"""
+
+import json
+from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
+
+from synthorg.meta.models import ProposalAltitude, RuleSeverity
+from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.meta import META_CUSTOM_RULE_FETCH_FAILED
+from synthorg.persistence.errors import QueryError
+
+logger = get_logger(__name__)
+
+
+def normalize_utc(value: datetime) -> datetime:
+    """Coerce a datetime to UTC-aware (naive treated as UTC).
+
+    Args:
+        value: Either tz-aware or naive datetime.
+
+    Returns:
+        UTC-aware datetime.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def serialize_altitudes(rule: CustomRuleDefinition) -> list[str]:
+    """Return the rule's target altitudes as a JSON-ready list.
+
+    Backends wrap this in ``json.dumps`` (SQLite TEXT) or
+    ``psycopg.types.json.Jsonb`` (Postgres JSONB).
+    """
+    return [a.value for a in rule.target_altitudes]
+
+
+def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
+    """Deserialise a row mapping into a :class:`CustomRuleDefinition`.
+
+    Tolerates both string-encoded ``target_altitudes`` (SQLite TEXT)
+    and natively-decoded list (Postgres JSONB), and both ISO-string
+    timestamps (SQLite) and ``datetime`` timestamps (Postgres).
+    Timestamps are normalised to UTC before being stored on the model
+    so backend round-trips compare equal in conformance tests.
+
+    Args:
+        row: Mapping from column name to raw driver value. Required
+            keys: ``id``, ``name``, ``description``, ``metric_path``,
+            ``comparator``, ``threshold``, ``severity``,
+            ``target_altitudes``, ``enabled``, ``created_at``,
+            ``updated_at``.
+
+    Raises:
+        QueryError: If parsing or validation fails. The original
+            exception is logged via ``safe_error_description``.
+    """
+    try:
+        raw_altitudes = row["target_altitudes"]
+        altitudes_list: list[str]
+        if isinstance(raw_altitudes, str):
+            altitudes_list = json.loads(raw_altitudes)
+        else:
+            altitudes_list = list(raw_altitudes)
+
+        return CustomRuleDefinition(
+            id=UUID(str(row["id"])),
+            name=str(row["name"]),
+            description=str(row["description"]),
+            metric_path=str(row["metric_path"]),
+            comparator=Comparator(str(row["comparator"])),
+            threshold=float(row["threshold"]),
+            severity=RuleSeverity(str(row["severity"])),
+            target_altitudes=tuple(ProposalAltitude(a) for a in altitudes_list),
+            enabled=bool(row["enabled"]),
+            created_at=_coerce_datetime(row["created_at"]),
+            updated_at=_coerce_datetime(row["updated_at"]),
+        )
+    except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+        row_id = (
+            str(row.get("id", "<unknown>")) if isinstance(row, dict) else "<unknown>"
+        )
+        msg = f"Failed to parse custom rule row {row_id!r}"
+        logger.warning(
+            META_CUSTOM_RULE_FETCH_FAILED,
+            row_id=row_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise QueryError(msg) from exc
+
+
+def _coerce_datetime(value: object) -> datetime:
+    """Coerce a row datetime field (str OR datetime) to UTC-aware.
+
+    Single normalisation point so conformance tests can assert that
+    both backends produce identical UTC-aware ``datetime`` objects
+    regardless of whether the underlying column was TEXT or
+    TIMESTAMPTZ.
+
+    Raises:
+        TypeError: If ``value`` is neither ``datetime`` nor ``str``.
+    """
+    if isinstance(value, datetime):
+        return normalize_utc(value)
+    if isinstance(value, str):
+        return normalize_utc(datetime.fromisoformat(value))
+    msg = f"Unsupported datetime type {type(value).__name__}"
+    raise TypeError(msg)

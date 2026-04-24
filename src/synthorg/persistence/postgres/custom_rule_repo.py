@@ -9,17 +9,14 @@ Read paths use ``psycopg.rows.dict_row`` so row access is by column
 name -- robust to accidental SELECT re-ordering.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.meta.models import ProposalAltitude, RuleSeverity
-from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_DELETE_FAILED,
@@ -29,53 +26,34 @@ from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_LISTED,
     META_CUSTOM_RULE_SAVE_FAILED,
 )
+from synthorg.persistence._shared.custom_rule import (
+    row_to_custom_rule,
+    serialize_altitudes,
+)
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
+    from synthorg.meta.rules.custom import CustomRuleDefinition
+
 
 logger = get_logger(__name__)
-
-
-def _ensure_tz(value: datetime) -> datetime:
-    """Normalize a ``TIMESTAMPTZ`` round-trip to UTC."""
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
 
 
 def _row_to_definition(row: dict[str, Any]) -> CustomRuleDefinition:
     """Deserialize a dict row into a :class:`CustomRuleDefinition`.
 
+    Delegates to :func:`row_to_custom_rule` from the shared helper so
+    SQLite and Postgres use identical deserialisation logic. Postgres
+    JSONB returns altitudes as a Python list and TIMESTAMPTZ columns
+    as ``datetime`` objects; the helper handles both that and the
+    SQLite TEXT shape.
+
     Raises:
         QueryError: If the row has corrupt or unparseable data.
     """
-    try:
-        altitudes_raw = row["target_altitudes"]
-        return CustomRuleDefinition(
-            id=UUID(str(row["id"])),
-            name=str(row["name"]),
-            description=str(row["description"]),
-            metric_path=str(row["metric_path"]),
-            comparator=Comparator(str(row["comparator"])),
-            threshold=float(row["threshold"]),
-            severity=RuleSeverity(str(row["severity"])),
-            target_altitudes=tuple(ProposalAltitude(a) for a in altitudes_raw),
-            enabled=bool(row["enabled"]),
-            created_at=_ensure_tz(row["created_at"]),
-            updated_at=_ensure_tz(row["updated_at"]),
-        )
-    except (ValueError, TypeError, KeyError) as exc:
-        row_id = str(row.get("id", "<unknown>")) if row else "<unknown>"
-        msg = f"Failed to parse custom rule row {row_id!r}"
-        logger.warning(
-            META_CUSTOM_RULE_FETCH_FAILED,
-            row_id=row_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
+    return row_to_custom_rule(row)
 
 
 class PostgresCustomRuleRepository:
@@ -102,7 +80,7 @@ class PostgresCustomRuleRepository:
                 with a different existing rule.
             QueryError: If the database operation fails.
         """
-        altitudes_json = [a.value for a in rule.target_altitudes]
+        altitudes_json = serialize_altitudes(rule)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

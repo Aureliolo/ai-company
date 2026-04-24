@@ -2,15 +2,11 @@
 
 import json
 import sqlite3
-from datetime import datetime
-from uuid import UUID
+from typing import TYPE_CHECKING
 
 import aiosqlite  # noqa: TC002
-from aiosqlite import Row  # noqa: TC002
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.meta.models import ProposalAltitude, RuleSeverity
-from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_DELETE_FAILED,
@@ -20,41 +16,55 @@ from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_LISTED,
     META_CUSTOM_RULE_SAVE_FAILED,
 )
+from synthorg.persistence._shared.custom_rule import (
+    normalize_utc,
+    row_to_custom_rule,
+    serialize_altitudes,
+)
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
+
+if TYPE_CHECKING:
+    from aiosqlite import Row
+
+    from synthorg.meta.rules.custom import CustomRuleDefinition
 
 logger = get_logger(__name__)
 
+_COLUMNS = (
+    "id",
+    "name",
+    "description",
+    "metric_path",
+    "comparator",
+    "threshold",
+    "severity",
+    "target_altitudes",
+    "enabled",
+    "created_at",
+    "updated_at",
+)
+
+
+def _row_to_dict(row: Row) -> dict[str, object]:
+    """Convert a positional ``aiosqlite.Row`` into a column-keyed dict.
+
+    The shared ``row_to_custom_rule`` helper takes a dict so both
+    backends share one deserialiser. SQLite's positional row factory
+    is mapped here at the boundary so the helper sees a uniform shape.
+    """
+    return dict(zip(_COLUMNS, row, strict=True))
+
 
 def _row_to_definition(row: Row) -> CustomRuleDefinition:
-    """Convert a database row to a CustomRuleDefinition.
+    """Convert a database row to a :class:`CustomRuleDefinition`.
+
+    Delegates to :func:`row_to_custom_rule` from the shared helper so
+    SQLite and Postgres use identical deserialisation logic.
 
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
     """
-    try:
-        altitudes_raw: list[str] = json.loads(str(row[7]))
-        return CustomRuleDefinition(
-            id=UUID(str(row[0])),
-            name=str(row[1]),
-            description=str(row[2]),
-            metric_path=str(row[3]),
-            comparator=Comparator(str(row[4])),
-            threshold=float(str(row[5])),
-            severity=RuleSeverity(str(row[6])),
-            target_altitudes=tuple(ProposalAltitude(a) for a in altitudes_raw),
-            enabled=bool(row[8]),
-            created_at=datetime.fromisoformat(str(row[9])),
-            updated_at=datetime.fromisoformat(str(row[10])),
-        )
-    except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
-        row_id = str(row[0]) if row else "<unknown>"
-        msg = f"Failed to parse custom rule row {row_id!r}: {exc}"
-        logger.exception(
-            META_CUSTOM_RULE_FETCH_FAILED,
-            row_id=row_id,
-            error=msg,
-        )
-        raise QueryError(msg) from exc
+    return row_to_custom_rule(_row_to_dict(row))
 
 
 class SQLiteCustomRuleRepository:
@@ -81,9 +91,7 @@ class SQLiteCustomRuleRepository:
                 with a different existing rule.
             QueryError: If the database operation fails.
         """
-        altitudes_json = json.dumps(
-            [a.value for a in rule.target_altitudes],
-        )
+        altitudes_json = json.dumps(serialize_altitudes(rule))
         try:
             await self._db.execute(
                 """\
@@ -112,8 +120,8 @@ ON CONFLICT(id) DO UPDATE SET
                     rule.severity.value,
                     altitudes_json,
                     int(rule.enabled),
-                    rule.created_at.isoformat(),
-                    rule.updated_at.isoformat(),
+                    normalize_utc(rule.created_at).isoformat(),
+                    normalize_utc(rule.updated_at).isoformat(),
                 ),
             )
             await self._db.commit()

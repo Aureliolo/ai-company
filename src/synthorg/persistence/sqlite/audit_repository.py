@@ -6,34 +6,43 @@ from datetime import UTC
 from typing import TYPE_CHECKING
 
 import aiosqlite
-from pydantic import ValidationError
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
-    PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
-    PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_SAVED,
 )
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
-from synthorg.security.models import AuditEntry
+from synthorg.persistence._shared.audit import (
+    AUDIT_COLUMNS,
+    audit_entry_to_payload,
+    classify_audit_save_error,
+    row_to_audit_entry,
+)
+from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
     from synthorg.core.enums import ApprovalRiskLevel
     from synthorg.core.types import NotBlankStr
-    from synthorg.security.models import AuditVerdictStr
+    from synthorg.security.models import AuditEntry, AuditVerdictStr
+
+_DUPLICATE_FRAGMENTS = (
+    "UNIQUE constraint failed: audit_entries.id",
+    "PRIMARY KEY",
+)
+
+
+def _sqlite_is_duplicate(exc: BaseException) -> bool:
+    """Detect SQLite duplicate-key violations by error message."""
+    text = str(exc)
+    return any(frag in text for frag in _DUPLICATE_FRAGMENTS)
+
 
 logger = get_logger(__name__)
 
-_COLS = (
-    "id, timestamp, agent_id, task_id, tool_name, "
-    "tool_category, action_type, arguments_hash, verdict, "
-    "risk_level, reason, matched_rules, "
-    "evaluation_duration_ms, approval_id"
-)
+_COL_LIST = ", ".join(AUDIT_COLUMNS)
 
 
 class SQLiteAuditRepository:
@@ -62,59 +71,22 @@ class SQLiteAuditRepository:
             DuplicateRecordError: If an entry with the same ID exists.
             QueryError: If the operation fails.
         """
+        payload = audit_entry_to_payload(
+            entry,
+            json_serializer=json.dumps,
+            timestamp_serializer=lambda dt: dt.isoformat(),
+        )
+        placeholders = ", ".join(f":{c}" for c in AUDIT_COLUMNS)
+        sql = f"INSERT INTO audit_entries ({_COL_LIST}) VALUES ({placeholders})"  # noqa: S608
         try:
-            data = entry.model_dump(mode="json")
-            # Normalize timestamp to UTC for consistent ordering.
-            utc_ts = entry.timestamp.astimezone(UTC).isoformat()
-            await self._db.execute(
-                """\
-INSERT INTO audit_entries (
-    id, timestamp, agent_id, task_id, tool_name, tool_category,
-    action_type, arguments_hash, verdict, risk_level, reason,
-    matched_rules, evaluation_duration_ms, approval_id
-) VALUES (
-    :id, :timestamp, :agent_id, :task_id, :tool_name, :tool_category,
-    :action_type, :arguments_hash, :verdict, :risk_level, :reason,
-    :matched_rules, :evaluation_duration_ms, :approval_id
-)""",
-                {
-                    **data,
-                    "timestamp": utc_ts,
-                    "matched_rules": json.dumps(list(data["matched_rules"])),
-                },
-            )
+            await self._db.execute(sql, payload)
             await self._db.commit()
-        except sqlite3.IntegrityError as exc:
-            error_text = str(exc)
-            is_duplicate = (
-                "UNIQUE constraint failed: audit_entries.id" in error_text
-                or "PRIMARY KEY" in error_text
-            )
-            if is_duplicate:
-                msg = f"Duplicate audit entry {entry.id!r}"
-                logger.warning(
-                    PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
-                    entry_id=entry.id,
-                    error=error_text,
-                )
-                raise DuplicateRecordError(msg) from exc
-            msg = f"Failed to save audit entry {entry.id!r}"
-            logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
-                entry_id=entry.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save audit entry {entry.id!r}"
-            logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
+            raise classify_audit_save_error(
+                exc,
                 entry_id=entry.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+                is_duplicate=_sqlite_is_duplicate,
+            ) from exc
         logger.debug(
             PERSISTENCE_AUDIT_ENTRY_SAVED,
             entry_id=entry.id,
@@ -164,7 +136,7 @@ INSERT INTO audit_entries (
             until=until,
         )
         sql = (
-            f"SELECT {_COLS} FROM audit_entries{where} "  # noqa: S608
+            f"SELECT {_COL_LIST} FROM audit_entries{where} "  # noqa: S608
             "ORDER BY timestamp DESC LIMIT ?"
         )
         params.append(limit)
@@ -302,25 +274,13 @@ INSERT INTO audit_entries (
     def _row_to_entry(self, row: dict[str, object]) -> AuditEntry:
         """Convert a database row to an ``AuditEntry`` model.
 
+        Delegates to :func:`row_to_audit_entry` from the shared helper
+        so SQLite and Postgres use identical deserialisation logic.
+
         Args:
             row: A dict mapping column names to their values.
 
         Raises:
             QueryError: If the row cannot be deserialized.
         """
-        try:
-            raw_rules = row.get("matched_rules")
-            if isinstance(raw_rules, str):
-                parsed = {**row, "matched_rules": json.loads(raw_rules)}
-            else:
-                parsed = row
-            return AuditEntry.model_validate(parsed)
-        except (ValidationError, json.JSONDecodeError, KeyError, TypeError) as exc:
-            msg = f"Failed to deserialize audit entry {row.get('id')!r}"
-            logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
-                entry_id=row.get("id"),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        return row_to_audit_entry(row)
