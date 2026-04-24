@@ -1,11 +1,10 @@
 import { useCallback, useState } from 'react'
-import { Search } from 'lucide-react'
 import { useSubworkflowsData } from '@/hooks/useSubworkflowsData'
 import { useSubworkflowsStore } from '@/stores/subworkflows'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { InputField } from '@/components/ui/input-field'
+import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { SubworkflowSummary } from '@/api/types/workflows'
 import { SubworkflowCard } from './subworkflows/SubworkflowCard'
@@ -62,15 +61,13 @@ export default function SubworkflowsPage() {
       )}
 
       <div className="max-w-sm">
-        <InputField
-          label="Search subworkflows"
+        <SearchInput
           value={searchQuery}
-          onValueChange={handleSearch}
+          onChange={handleSearch}
           placeholder="Search by name, description, or ID..."
-          type="text"
-        >
-          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-        </InputField>
+          ariaLabel="Search subworkflows"
+          focusShortcut
+        />
       </div>
 
       {filteredSubworkflows.length === 0 ? (
