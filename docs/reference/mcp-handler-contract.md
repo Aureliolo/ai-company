@@ -14,6 +14,8 @@ SynthOrg exposes 204 tools across 15 domains via its MCP server. Tools are class
 
 Return a JSON string built by helpers in `src/synthorg/meta/mcp/handlers/common.py`:
 
+
+
 - `ok(data, pagination=...)` for success.
 - `err(exc)` for caught errors. Envelope picks up `domain_code="invalid_argument"` automatically on `ArgumentValidationError` / `GuardrailViolationError`. Set custom codes via `err(exc, domain_code="...")`.
 - `capability_gap(tool, reason)` when the handler is wired but the underlying primitive does not expose the required method. Emits `MCP_HANDLER_CAPABILITY_GAP` at INFO.
@@ -23,7 +25,7 @@ Never emit a bare `{"status": "not_implemented"}` payload; `make_placeholder_han
 
 ## Argument validation
 
-Use `require_arg(arguments, key, ty)` for typed required extraction; catch `ArgumentValidationError` and return `err(exc)`. Never let raw `TypeError` / `ValueError` escape from `int(...)` / enum coercion -- wrap them and call `invalid_argument(name, expected)`.
+Use `require_arg(arguments, key, ty)` for typed required extraction; catch `ArgumentValidationError` and return `err(exc)`. Never let raw `TypeError` / `ValueError` escape from `int(...)` / enum coercion; wrap them and call `invalid_argument(name, expected)`.
 
 ## Destructive ops
 

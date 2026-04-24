@@ -7,7 +7,7 @@ On-demand reference. The short rule in `CLAUDE.md` is: services with async `star
 Services with async `start()` / `stop()` methods MUST:
 
 1. Use a dedicated `self._lifecycle_lock: asyncio.Lock` to serialize the `_running` check-and-set and any background-task spawn / drain sequence.
-2. Hold the lock across the full body of both `start()` and `stop()` -- a racing start cannot see `_running=False` mid-drain and spawn a new task that the outgoing stop never waits on.
+2. Hold the lock across the full body of both `start()` and `stop()`, so that a racing start cannot see `_running=False` mid-drain and spawn a new task that the outgoing stop never waits on.
 3. Scope the lifecycle lock *separately* from any hot-path lock (`_metrics_lock`, `_cooldown_lock`, bus `_lock`, TaskEngine's `_admission_lock`) so normal traffic is not serialized against lifecycle transitions.
 
 ## Drain timeout + unrestartable flag
@@ -18,10 +18,10 @@ For services whose `stop()` drains across `await` boundaries, wrap the drain in 
 
 ## Canonical examples
 
-- `TaskEngine` -- `engine/task_engine.py`
-- `MessageBusBridge` -- `api/bus_bridge.py`
-- `SettingsChangeDispatcher` -- `settings/dispatcher.py`
-- `MeetingScheduler` -- `communication/meeting/scheduler.py`
+- `TaskEngine` (`engine/task_engine.py`)
+- `MessageBusBridge` (`api/bus_bridge.py`)
+- `SettingsChangeDispatcher` (`settings/dispatcher.py`)
+- `MeetingScheduler` (`communication/meeting/scheduler.py`)
 - `IntegrationsHealthProber`
 - `EscalationNotifySubscriber`
 - `EscalationSweeper`

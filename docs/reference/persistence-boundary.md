@@ -1,4 +1,4 @@
-# Persistence Boundary -- Exception Categories
+# Persistence Boundary: Exception Categories
 
 On-demand reference. The top rule in `CLAUDE.md` is: `src/synthorg/persistence/` is the **only** place that may import `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`, or emit raw SQL DDL/DML keywords in string literals. Every durable feature must define a repository Protocol under `persistence/<domain>_protocol.py`, concrete impls under `persistence/{sqlite,postgres}/`, and expose them on `PersistenceBackend`.
 
@@ -21,7 +21,7 @@ Sanctioned exceptions cover three categories. The authoritative list lives in `_
 
 ## In-memory fallbacks
 
-In-memory fallbacks in `persistence/integration_stubs.py` are named `InMemoryXRepository` (NOT `StubXRepository`) to signal that they are *working* repositories -- just process-local and non-durable. These still require durable SQLite + Postgres counterparts (tracked in issue #1517); the `InMemory*` naming does not relax that obligation.
+In-memory fallbacks in `persistence/integration_stubs.py` are named `InMemoryXRepository` (NOT `StubXRepository`) to signal that they are *working* repositories, just process-local and non-durable. These still require durable SQLite + Postgres counterparts (tracked in issue #1517); the `InMemory*` naming does not relax that obligation.
 
 ## Service layer
 
@@ -33,15 +33,15 @@ Services:
 - Centralise `PERSISTENCE_*` / `API_USER_*` / `META_CUSTOM_RULE_*` / `WORKFLOW_DEF_*` audit logging in one place.
 - Own cross-repo orchestration (e.g. workflow-definition delete cascading to version snapshots).
 
-Repositories should not log mutations themselves -- the service layer is the canonical logging point so audit trails do not duplicate when multiple callers share a repo.
+Repositories should not log mutations themselves; the service layer is the canonical logging point so audit trails do not duplicate when multiple callers share a repo.
 
 ## Migrations
 
-Adding a migration: read `docs/guides/persistence-migrations.md` first. Do not hand-edit SQL in `persistence/{sqlite,postgres}/revisions/`, and do not edit `atlas.sum`. Rehashing via `atlas migrate hash` post-release is blocked by a PreToolUse hook -- delete the in-progress migration and regenerate with `atlas migrate diff` instead.
+Adding a migration: read `docs/guides/persistence-migrations.md` first. Do not hand-edit SQL in `persistence/{sqlite,postgres}/revisions/`, and do not edit `atlas.sum`. Rehashing via `atlas migrate hash` post-release is blocked by a PreToolUse hook; delete the in-progress migration and regenerate with `atlas migrate diff` instead.
 
 ## Per-line opt-out
 
-`# lint-allow: persistence-boundary -- <required justification>` as a trailing comment. Justification after `--` must be non-empty.
+`# lint-allow: persistence-boundary -- <required justification>` as a trailing comment. The `--` separator is part of the opt-out syntax itself; the justification after it must be non-empty.
 
 ## Enforcement
 

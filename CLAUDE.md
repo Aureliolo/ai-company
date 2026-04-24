@@ -72,13 +72,13 @@ See `cli/CLAUDE.md` for commands, flags, and reference. Key rule: use `go -C cli
 
 ## Reference (load on demand)
 
-- [docs/reference/claude-reference.md](docs/reference/claude-reference.md) -- Documentation layout, Docker commands, Package Structure, Releasing, CI pipelines, Dependencies, Hypothesis deep-dive
-- [docs/reference/mcp-handler-contract.md](docs/reference/mcp-handler-contract.md) -- MCP tool handler protocol + envelope + guardrails
-- [docs/reference/telemetry.md](docs/reference/telemetry.md) -- privacy allowlist, env resolution chain, Docker enrichment
-- [docs/reference/pluggable-subsystems.md](docs/reference/pluggable-subsystems.md) -- canonical protocol/strategy/factory examples
-- [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md) -- SEC-1 untrusted-content fences, HTML XXE, secret-log redaction
-- [docs/reference/lifecycle-sync.md](docs/reference/lifecycle-sync.md) -- async start/stop lifecycle lock pattern
-- [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary.md) -- persistence exception categories + service layer rules
+- [docs/reference/claude-reference.md](docs/reference/claude-reference.md): Documentation layout, Docker commands, Package Structure, Releasing, CI pipelines, Dependencies, Hypothesis deep-dive
+- [docs/reference/mcp-handler-contract.md](docs/reference/mcp-handler-contract.md): MCP tool handler protocol + envelope + guardrails
+- [docs/reference/telemetry.md](docs/reference/telemetry.md): privacy allowlist, env resolution chain, Docker enrichment
+- [docs/reference/pluggable-subsystems.md](docs/reference/pluggable-subsystems.md): canonical protocol/strategy/factory examples
+- [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md): SEC-1 untrusted-content fences, HTML XXE, secret-log redaction
+- [docs/reference/lifecycle-sync.md](docs/reference/lifecycle-sync.md): async start/stop lifecycle lock pattern
+- [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary.md): persistence exception categories + service layer rules
 
 ## Web Dashboard Design System (MANDATORY)
 
@@ -108,7 +108,7 @@ Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web
 
 - `src/synthorg/persistence/` is the **only** place that may import `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`, or emit raw SQL DDL/DML keywords in string literals. Enforced by `scripts/check_persistence_boundary.py` (pre-push + CI).
 - Every durable feature MUST define a repository Protocol in `persistence/<domain>_protocol.py`, concrete impls under `persistence/{sqlite,postgres}/`, and be exposed on `PersistenceBackend`.
-- Controllers and API endpoints access persistence through domain-scoped **service layers** (`ArtifactService`, `WorkflowService`, `MemoryService`, `CustomRulesService`, `UserService`) -- never directly into repositories. Services centralise audit logging and cross-repo orchestration; repositories must not log mutations themselves.
+- Controllers and API endpoints access persistence through domain-scoped **service layers** (`ArtifactService`, `WorkflowService`, `MemoryService`, `CustomRulesService`, `UserService`), never directly into repositories. Services centralise audit logging and cross-repo orchestration; repositories must not log mutations themselves.
 - Adding a migration: read `docs/guides/persistence-migrations.md` first. Do not hand-edit SQL or `atlas.sum`.
 - Per-line opt-out: `# lint-allow: persistence-boundary -- <required justification>`.
 
@@ -132,7 +132,7 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 - **Lifecycle synchronization**: services with async `start()` / `stop()` use a dedicated `self._lifecycle_lock: asyncio.Lock` (separate from any hot-path lock) held across the full body of both methods; timed-out stops must mark the service unrestartable. See [docs/reference/lifecycle-sync.md](docs/reference/lifecycle-sync.md) for the full rule and canonical examples.
 - **Untrusted-content fences at LLM call sites (SEC-1)**: any attacker-controllable string interpolated into an LLM prompt must be wrapped via `wrap_untrusted(tag, content)` from `synthorg.engine.prompt_safety`, and the enclosing system prompt must append `untrusted_content_directive(tags)`. See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md) for the standard tag set, 15-site call inventory, and the tool-result injection detector.
 - **HTML parsing (SEC-1)**: never call `lxml.html.fromstring` directly on attacker-controlled input; use `HTMLParseGuard` in `synthorg.tools.html_parse_guard`. See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md) for the pre-scan / parser configuration details.
-- **Pluggable subsystems**: new cross-cutting subsystems follow a protocol + strategy + factory + config discriminator pattern with safe defaults. See [docs/reference/pluggable-subsystems.md](docs/reference/pluggable-subsystems.md) for the rule and canonical examples (classification, verification, Chief of Staff, telemetry, rollout, rate limits, escalation queue). Note: the **service layer** (see Persistence Boundary) is a distinct pattern -- services wrap repositories to keep controllers thin; the Protocol+Strategy+Factory+Config machinery applies only to subsystems with multiple interchangeable runtime-selectable implementations.
+- **Pluggable subsystems**: new cross-cutting subsystems follow a protocol + strategy + factory + config discriminator pattern with safe defaults. See [docs/reference/pluggable-subsystems.md](docs/reference/pluggable-subsystems.md) for the rule and canonical examples (classification, verification, Chief of Staff, telemetry, rollout, rate limits, escalation queue). Note: the **service layer** (see Persistence Boundary) is a distinct pattern; services wrap repositories to keep controllers thin, while the Protocol+Strategy+Factory+Config machinery applies only to subsystems with multiple interchangeable runtime-selectable implementations.
 - **Line length**: 88 characters (ruff)
 - **Functions**: < 50 lines, files < 800 lines
 - **Errors**: handle explicitly, never silently swallow
@@ -149,7 +149,7 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 - **All state transitions** must log at INFO
 - **DEBUG** for object creation, internal flow, entry/exit of key functions
 - Pure data models, enums, and re-exports do NOT need logging
-- **Secret-log redaction (SEC-1)**: on credential-bearing paths (OAuth, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), never use `logger.exception(EVENT, error=str(exc))` -- use `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` (from `synthorg.observability`). A pre-commit gate (`scripts/check_logger_exception_str_exc.py`) blocks new violations above baseline. See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md) for the full rule, the `scrub_event_fields` belt-and-braces masking, and the gate's detection semantics.
+- **Secret-log redaction (SEC-1)**: on credential-bearing paths (OAuth, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), never use `logger.exception(EVENT, error=str(exc))`; use `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` from `synthorg.observability` instead. A pre-commit gate (`scripts/check_logger_exception_str_exc.py`) blocks new violations above baseline. See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md) for the full rule, the `scrub_event_fields` belt-and-braces masking, and the gate's detection semantics.
 
 ## MCP Handler Layer
 
@@ -193,7 +193,7 @@ When tests fail due to timeout, slowness, or xdist resource contention:
 - **Parallelism**: `pytest-xdist` via `-n 8` -- **ALWAYS** include `-n 8` when running pytest locally, never run tests sequentially. CI uses `-n auto` (fewer cores on runners).
 - **Parametrize**: Prefer `@pytest.mark.parametrize` for testing similar cases
 - **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples. Use generic names: `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, `large`/`medium`/`small` as aliases. Vendor names may only appear in: (1) Operations design page provider list (`docs/design/operations.md`), (2) `.claude/` skill/agent files, (3) third-party import paths/module names (e.g. `litellm.types.llms.openai`), (4) provider presets (`src/synthorg/providers/presets.py`) which are user-facing runtime data. Tests must use `test-provider`, `test-small-001`, etc.
-- **Property-based testing**: Python uses [Hypothesis](https://hypothesis.readthedocs.io/), React uses [fast-check](https://fast-check.dev/), Go uses `testing.F` fuzz functions. CI runs 10 deterministic examples per property test (`derandomize=True`, no flakes). When Hypothesis finds a failure, it is a **real bug** -- read the shrunk example, fix the underlying bug, and add an explicit `@example(...)` decorator so the case is permanently covered. See [docs/reference/claude-reference.md](docs/reference/claude-reference.md) §"Property-based Testing (Hypothesis) -- Deep Dive" for profile catalog, local fuzzing commands, and failure-handling workflow.
+- **Property-based testing**: Python uses [Hypothesis](https://hypothesis.readthedocs.io/), React uses [fast-check](https://fast-check.dev/), Go uses `testing.F` fuzz functions. CI runs 10 deterministic examples per property test (`derandomize=True`, no flakes). When Hypothesis finds a failure, it is a **real bug**: read the shrunk example, fix the underlying bug, and add an explicit `@example(...)` decorator so the case is permanently covered. See [docs/reference/claude-reference.md](docs/reference/claude-reference.md) §"Property-based Testing (Hypothesis): Deep Dive" for profile catalog, local fuzzing commands, and failure-handling workflow.
 - **Flaky tests**: NEVER skip, dismiss, or ignore flaky tests -- always fix them fully and fundamentally. For timing-sensitive tests, mock `time.monotonic()` and `asyncio.sleep()` to make them deterministic instead of widening timing margins. For tasks that must block indefinitely until cancelled (e.g. simulating a slow provider or stubborn coroutine), use `asyncio.Event().wait()` instead of `asyncio.sleep(large_number)` -- it is cancellation-safe and carries no timing assumptions.
 
 ## Git

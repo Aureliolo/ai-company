@@ -1,10 +1,10 @@
-# SEC-1 -- Prompt Safety, HTML Parsing, and Secret-Log Redaction
+# SEC-1: Prompt Safety, HTML Parsing, and Secret-Log Redaction
 
 On-demand reference for the SEC-1 cluster. Short rules in `CLAUDE.md`:
 
 - Wrap untrusted strings at LLM call sites via `wrap_untrusted()` from `synthorg.engine.prompt_safety`.
-- Never call `lxml.html.fromstring` directly -- use `HTMLParseGuard`.
-- Never `logger.exception(EVENT, error=str(exc))` on credential-bearing paths -- use `logger.warning(..., error=safe_error_description(exc))`.
+- Never call `lxml.html.fromstring` directly; use `HTMLParseGuard`.
+- Never `logger.exception(EVENT, error=str(exc))` on credential-bearing paths; use `logger.warning(..., error=safe_error_description(exc))`.
 
 ## Untrusted-content fences at LLM call sites
 
@@ -54,7 +54,7 @@ LLM sites that previously invoked `provider.complete()` without an explicit `Com
 
 Tool-result interpolation additionally runs an advisory injection-pattern detector (`TOOL_INJECTION_PATTERN_DETECTED`) covering closing-tag look-alikes for every standard fence (`</task-data>`, `</task-fact>`, `</tool-result>`, `</tool-arguments>`, `</untrusted-artifact>`, `</code-diff>`, `</config-value>`, `</criteria-json>`) plus common override phrases. The telemetry sample is scrubbed via `scrub_secret_tokens` before logging.
 
-## HTML parsing -- XXE protection
+## HTML parsing: XXE protection
 
 Never call `lxml.html.fromstring` directly on attacker-controlled input. Use `HTMLParseGuard` in `synthorg.tools.html_parse_guard`, which:
 

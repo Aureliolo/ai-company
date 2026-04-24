@@ -22,7 +22,7 @@ String values are capped at `synthorg.telemetry.config.MAX_STRING_LENGTH` (64 ch
 
 First match wins, implemented in `synthorg.telemetry.collector._resolve_environment`:
 
-1. `SYNTHORG_TELEMETRY_ENV` (operator override) -- always wins.
+1. `SYNTHORG_TELEMETRY_ENV` (operator override; always wins).
 2. CI auto-detection: `CI`, `GITLAB_CI`, `BUILDKITE`, `JENKINS_URL`, any `RUNPOD_*` → `"ci"`.
 3. `SYNTHORG_TELEMETRY_ENV_BAKED` (Dockerfile `ARG DEPLOYMENT_ENV` baked at build; CI sets `prod` / `pre-release` / `dev`).
 4. `TelemetryConfig.environment` (default `"dev"`).
