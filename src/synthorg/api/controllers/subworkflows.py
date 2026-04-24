@@ -16,10 +16,10 @@ from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
-from synthorg.api.cursor import decode_cursor
+from synthorg.api.cursor import decode_keyset_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, encode_repo_seek_meta
+from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import WorkflowType
@@ -118,20 +118,19 @@ class SubworkflowController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = 50,
     ) -> PaginatedResponse[SubworkflowSummary]:
-        """List subworkflows with cursor-based pagination.
+        """List subworkflows with keyset-based cursor pagination.
 
-        Sorted by ``(name, latest_version, subworkflow_id)`` for
-        deterministic cursor pages -- ``subworkflow_id`` is the
-        required tie-breaker so two summaries sharing
-        ``(name, latest_version)`` cannot drift between pages.
-
-        Pagination is pushed into :meth:`SubworkflowRegistry.list_page`
-        so the controller no longer materialises and re-sorts the
-        full summary tuple on every request.
+        Sorted by ``(name, latest_version, subworkflow_id)`` -- the
+        ``subworkflow_id`` tail is the required tie-breaker so two
+        summaries sharing ``(name, latest_version)`` cannot drift
+        between pages.  The cursor encodes
+        ``"name|latest_version|subworkflow_id"``; the next page reads
+        ``WHERE sort_key > after_key``.  Keyset contract is stable
+        under concurrent inserts and deletes.
 
         Args:
             state: Application state.
-            cursor: Opaque pagination cursor from a previous page.
+            cursor: Opaque keyset cursor from a previous page.
             limit: Page size (default 50, max defined by ``MAX_LIMIT``).
 
         Returns:
@@ -139,19 +138,29 @@ class SubworkflowController(Controller):
 
         Raises:
             InvalidCursorError: HTTP 400 -- malformed, tampered, or
-                stale cursor.
+                signed by a different secret.
         """
         app_state: AppState = state.app_state
         registry = _registry(state)
-        if cursor is None:
-            offset = 0
+        after_key = (
+            decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+            if cursor is not None
+            else None
+        )
+        page, has_more = await registry.list_page(
+            after_key=after_key,
+            limit=limit,
+        )
+        if has_more and page:
+            tail = page[-1]
+            next_after_key: str | None = (
+                f"{tail.name}|{tail.latest_version}|{tail.subworkflow_id}"
+            )
         else:
-            offset = decode_cursor(cursor, secret=app_state.cursor_secret)
-        page, total = await registry.list_page(limit=limit, offset=offset)
-        meta = encode_repo_seek_meta(
-            offset=offset,
-            page_len=len(page),
-            total=total,
+            next_after_key = None
+        meta = encode_keyset_meta(
+            next_after_key=next_after_key,
+            has_more=has_more,
             limit=limit,
             secret=app_state.cursor_secret,
         )

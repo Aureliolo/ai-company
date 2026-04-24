@@ -209,3 +209,97 @@ def decode_cursor(token: str, *, secret: CursorSecret) -> int:
     """
     payload = _decode_token_payload(token)
     return _validate_cursor_payload(payload, secret=secret)
+
+
+# -- Keyset cursors ---------------------------------------------------
+#
+# Offset cursors above duplicate / skip rows when items are inserted or
+# deleted in the visible window between page fetches. Keyset cursors
+# encode the sort key of the last row on the previous page (an opaque
+# string from the controller's perspective) and the next page is read
+# as ``WHERE sort_key > after_key``. That contract is stable under
+# concurrent inserts and deletes -- new rows beyond the cursor land on
+# a later page; deletions can only shorten future pages, never reorder
+# them.
+#
+# The wire shape stays opaque (clients see one base64-encoded blob) so
+# repos can swap encodings without breaking the frontend.
+
+
+_MAX_KEYSET_KEY_LEN = 256
+"""Cap on the raw key length before encoding (defense in depth)."""
+
+
+def encode_keyset_cursor(after_key: str, *, secret: CursorSecret) -> str:
+    """Encode an opaque keyset cursor pointing past ``after_key``.
+
+    Args:
+        after_key: The sort-key string of the last row on the
+            previous page. The caller is free to choose the
+            representation (raw id, ``"namespace:key"``, etc.) -- the
+            cursor is opaque to clients.
+        secret: HMAC signing secret.
+
+    Returns:
+        URL-safe base64 token without padding.
+
+    Raises:
+        ValueError: If ``after_key`` is empty or exceeds
+            :data:`_MAX_KEYSET_KEY_LEN` characters.
+    """
+    if not after_key:
+        msg = "keyset cursor 'after_key' must not be empty"
+        raise ValueError(msg)
+    if len(after_key) > _MAX_KEYSET_KEY_LEN:
+        msg = (
+            f"keyset cursor 'after_key' must be at most "
+            f"{_MAX_KEYSET_KEY_LEN} characters, got {len(after_key)}"
+        )
+        raise ValueError(msg)
+    signature = secret.sign(after_key.encode("utf-8"))
+    payload = json.dumps({"k": after_key, "s": signature}, separators=(",", ":"))
+    return (
+        base64.urlsafe_b64encode(payload.encode("utf-8")).rstrip(b"=").decode("ascii")
+    )
+
+
+def _validate_keyset_payload(
+    payload: dict[str, object],
+    *,
+    secret: CursorSecret,
+) -> str:
+    """Extract + verify the keyset key from a decoded cursor payload."""
+    after_key = payload.get("k")
+    signature = payload.get("s")
+    if not isinstance(after_key, str) or not after_key:
+        msg = "keyset cursor token is missing a valid 'k' string field"
+        raise InvalidCursorError(msg)
+    if len(after_key) > _MAX_KEYSET_KEY_LEN:
+        msg = f"keyset cursor 'k' field exceeds {_MAX_KEYSET_KEY_LEN} characters"
+        raise InvalidCursorError(msg)
+    if not isinstance(signature, str):
+        msg = "keyset cursor token is missing a valid 's' signature field"
+        raise InvalidCursorError(msg)
+    if not secret.verify(after_key.encode("utf-8"), signature):
+        msg = "keyset cursor signature is invalid"
+        raise InvalidCursorError(msg)
+    return after_key
+
+
+def decode_keyset_cursor(token: str, *, secret: CursorSecret) -> str:
+    """Decode an opaque keyset cursor and return the after-key.
+
+    Args:
+        token: The cursor string previously produced by
+            :func:`encode_keyset_cursor`.
+        secret: HMAC secret matching the one used to sign.
+
+    Returns:
+        The opaque sort-key string the next page should start after.
+
+    Raises:
+        InvalidCursorError: If the token is malformed, tampered, or
+            signed by a different secret.
+    """
+    payload = _decode_token_payload(token)
+    return _validate_keyset_payload(payload, secret=secret)

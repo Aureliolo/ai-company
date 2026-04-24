@@ -84,7 +84,8 @@ class TestSettingsController:
         self, test_client: TestClient[Any], auth_headers: dict[str, str]
     ) -> None:
         resp = test_client.get(
-            "/api/v1/settings?cursor=not-a-real-cursor",
+            "/api/v1/settings",
+            params={"cursor": "not-a-real-cursor"},
             headers=auth_headers,
         )
         assert resp.status_code == 400

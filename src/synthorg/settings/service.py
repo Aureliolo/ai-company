@@ -373,34 +373,44 @@ class SettingsService:
     async def get_page(
         self,
         *,
+        after_key: str | None,
         limit: int,
-        offset: int,
-    ) -> tuple[tuple[SettingEntry, ...], int]:
-        """Resolve a single page of settings sorted by ``(namespace, key)``.
+    ) -> tuple[tuple[SettingEntry, ...], bool]:
+        """Resolve a single keyset page of settings sorted by ``namespace:key``.
 
         Slices the in-memory definition registry before resolving DB
-        overrides, so the controller only pays the resolve cost for the
-        rows it actually returns.  ``(namespace, key)`` is the
-        deterministic sort key that the cursor pagination contract
-        requires (every definition is unique on that pair).
+        overrides, so the controller only pays the resolve cost for
+        the rows it actually returns.  Cursor pages are keyset-stable
+        on ``f"{namespace}:{key}"``: a new override or definition
+        added between requests does not duplicate or skip rows the
+        client has already seen.
 
         Args:
-            limit: Page size (rows to return).
-            offset: Number of rows to skip (decoded from the cursor).
+            after_key: ``None`` for the first page; the previous
+                page's last ``f"{namespace}:{key}"`` for follow-up
+                pages.
+            limit: Page size requested.
 
         Returns:
-            ``(page, total)`` where ``page`` is the requested slice in
-            ``(namespace, key)`` order and ``total`` is the full
-            definition count.
+            ``(page, has_more)`` where ``page`` is at most ``limit``
+            entries in ``(namespace, key)`` order and ``has_more`` is
+            ``True`` when an additional definition was observed past
+            the requested page.
         """
         sorted_defs = sorted(
             self._registry.list_all(),
             key=lambda d: (d.namespace, d.key),
         )
-        total = len(sorted_defs)
-        page_defs = sorted_defs[offset : offset + limit]
+        if after_key is not None:
+            sorted_defs = [
+                d for d in sorted_defs if f"{d.namespace}:{d.key}" > after_key
+            ]
+        # Over-fetch by one to detect has_more without a separate count.
+        page_defs = sorted_defs[: limit + 1]
+        has_more = len(page_defs) > limit
+        page_defs = page_defs[:limit]
         if not page_defs:
-            return (), total
+            return (), has_more
 
         # Single DB round-trip for the override values; bounded by the
         # number of overridden settings (typically << total definition
@@ -416,7 +426,7 @@ class SettingsService:
             )
             for defn in page_defs
         )
-        return entries, total
+        return entries, has_more
 
     def _resolve_fallback(
         self,

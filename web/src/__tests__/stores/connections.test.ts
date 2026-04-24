@@ -1,5 +1,10 @@
 import { http, HttpResponse } from 'msw'
-import type { listIntegrationHealth } from '@/api/endpoints/integration-health'
+// Value import (not `import type`): the test files in this suite
+// consistently value-import endpoint symbols when they appear inside
+// `paginatedFor<typeof X>(...)` calls. Both forms compile with TS6
+// in this project, but the value import keeps the convention
+// consistent with users.test.ts / agents.test.ts / etc.
+import { listIntegrationHealth } from '@/api/endpoints/integration-health'
 import type { Connection, HealthReport } from '@/api/types/integrations'
 import { useConnectionsStore } from '@/stores/connections'
 import {

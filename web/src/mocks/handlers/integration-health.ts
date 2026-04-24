@@ -22,7 +22,10 @@ function paginatedPage(reports: readonly HealthReport[]): {
     has_more: boolean
   }
 } {
-  const limit = 200
+  // Mirror the endpoint default page size (50) so frontend tests
+  // that rely on pagination defaults stay aligned with the wire
+  // contract.
+  const limit = 50
   return {
     data: [...reports],
     total: reports.length,

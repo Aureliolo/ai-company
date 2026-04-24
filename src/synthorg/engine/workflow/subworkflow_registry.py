@@ -154,39 +154,54 @@ class SubworkflowRegistry:
     async def list_page(
         self,
         *,
+        after_key: str | None,
         limit: int,
-        offset: int,
-    ) -> tuple[tuple[SubworkflowSummary, ...], int]:
-        """Return a single page of summaries plus the authoritative total.
+    ) -> tuple[tuple[SubworkflowSummary, ...], bool]:
+        """Return a single keyset page of summaries plus an ``has_more`` flag.
 
         Sorted by ``(name, latest_version, subworkflow_id)`` -- the
-        ``subworkflow_id`` tail is required as a stable tie-breaker so
-        cursor pages stay total when two subworkflows share a name +
-        latest_version.
+        ``subworkflow_id`` tail is the unique tie-breaker so cursor
+        pages stay total when two subworkflows share a name +
+        latest_version.  Cursor encodes
+        ``"name|latest_version|subworkflow_id"``; the next page is
+        sliced where the composite sort key is strictly greater than
+        ``after_key``.
 
-        The current implementation slices in the registry rather than
-        the SQL layer because ``SubworkflowSummary.version_count``
-        requires aggregating every version row per subworkflow. A true
-        SQL push-down would need a window-function query plus a
-        secondary fetch of the page's versions, which is a substantial
-        per-backend rewrite for a list whose typical row count is
-        small. Revisit if subworkflow rosters grow large enough that
-        the full-fetch dominates request latency.
+        Slices in the registry rather than the SQL layer because
+        ``SubworkflowSummary.version_count`` requires aggregating
+        every version row per subworkflow.  A true SQL push-down
+        would need a window-function query plus a secondary fetch of
+        the page's versions, which is a substantial per-backend
+        rewrite for a list whose typical row count is small.  Revisit
+        if subworkflow rosters grow large enough that the full-fetch
+        dominates request latency.
 
         Args:
-            limit: Page size (rows to return).
-            offset: Number of rows to skip (decoded from the cursor).
+            after_key: ``None`` for the first page; the previous
+                page's last composite sort key for follow-up pages.
+            limit: Page size requested.
 
         Returns:
-            ``(page, total)`` where ``page`` is the requested slice and
-            ``total`` is the unique-subworkflow count.
+            ``(page, has_more)`` where ``page`` is at most ``limit``
+            summaries in canonical sort order and ``has_more`` is
+            ``True`` when an additional summary was observed past the
+            requested page.
         """
         all_summaries = await self._repo.list_summaries()
         sorted_summaries = sorted(
             all_summaries,
             key=lambda s: (s.name, s.latest_version, s.subworkflow_id),
         )
-        return tuple(sorted_summaries[offset : offset + limit]), len(sorted_summaries)
+        if after_key is not None:
+            sorted_summaries = [
+                s
+                for s in sorted_summaries
+                if f"{s.name}|{s.latest_version}|{s.subworkflow_id}" > after_key
+            ]
+        # Over-fetch by one to detect has_more without a separate count.
+        page = sorted_summaries[: limit + 1]
+        has_more = len(page) > limit
+        return tuple(page[:limit]), has_more
 
     async def search(
         self,

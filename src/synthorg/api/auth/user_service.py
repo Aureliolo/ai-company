@@ -70,29 +70,46 @@ class UserService:
     async def list_users_page(
         self,
         *,
+        after_id: str | None,
         limit: int,
-        offset: int,
-    ) -> tuple[tuple[User, ...], int]:
-        """Return a single page of users plus the authoritative total.
+    ) -> tuple[tuple[User, ...], bool]:
+        """Return a single keyset page of users plus an ``has_more`` flag.
 
-        The repository pushes ``LIMIT`` / ``OFFSET`` into the SQL so
-        large operator rosters do not pay an O(n) scan per request.
-        ``count()`` issues the dedicated ``COUNT(*)`` round-trip the
-        controller needs to populate ``PaginationMeta.total``.
+        The repository keyset-paginates by ``id`` so cursor pages stay
+        stable under concurrent inserts and deletes.  We over-fetch by
+        one row so the caller can detect ``has_more`` without paying a
+        separate ``COUNT(*)`` round-trip per request -- the wire
+        contract surfaces the unknown total as ``pagination.total =
+        null`` and the dashboard derives display counts from
+        ``data.length`` (see ``web/CLAUDE.md`` cursor-pagination
+        section).
 
         Args:
-            limit: Page size.
-            offset: Number of rows to skip (decoded from the cursor).
+            after_id: ``None`` for the first page; the previous
+                page's last ``id`` for follow-up pages (decoded from
+                the cursor).
+            limit: Page size requested by the caller.
 
         Returns:
-            ``(page, total)`` where ``page`` is the requested slice in
-            ``id`` order and ``total`` is the full row count for the
-            human-user table.
+            ``(page, has_more)`` where ``page`` is at most ``limit``
+            users in ascending ``id`` order and ``has_more`` is
+            ``True`` when an additional row was observed past the
+            requested page.
         """
-        page = await self._repo.list_users_paginated(limit=limit, offset=offset)
-        total = await self._repo.count()
-        logger.debug(API_USER_LISTED, count=len(page), offset=offset, total=total)
-        return page, total
+        # Over-fetch by one row to detect has_more without a COUNT.
+        rows = await self._repo.list_users_paginated(
+            after_id=after_id,
+            limit=limit + 1,
+        )
+        has_more = len(rows) > limit
+        page = rows[:limit]
+        logger.debug(
+            API_USER_LISTED,
+            count=len(page),
+            after_id=after_id,
+            has_more=has_more,
+        )
+        return page, has_more
 
     async def create(self, user: User) -> User:
         """Persist a freshly-constructed user."""

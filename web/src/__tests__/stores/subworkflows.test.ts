@@ -60,15 +60,22 @@ function pageOf(
   }
 } {
   const limit = 50
+  // Partial pages report ``total: null`` (matches the keyset wire
+  // contract -- the backend skips COUNT on every request and the
+  // dashboard derives display counts from ``data.length``). Setting
+  // ``total = summaries.length`` on a multi-page payload would
+  // misrepresent the collection size and hide regressions if a store
+  // started trusting ``total`` for ``hasMore``-style decisions.
+  const total = cursor === null ? summaries.length : null
   return {
     data: [...summaries],
-    total: summaries.length,
+    total,
     offset: 0,
     limit,
     nextCursor: cursor,
     hasMore: cursor !== null,
     pagination: {
-      total: summaries.length,
+      total,
       offset: 0,
       limit,
       next_cursor: cursor,

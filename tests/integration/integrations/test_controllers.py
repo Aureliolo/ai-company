@@ -354,7 +354,18 @@ class TestIntegrationHealthController:
         )
         from synthorg.integrations.health import service as health_service
 
-        conns = tuple(_make_conn(f"c{i}") for i in range(6))
+        # Unsorted catalog input so a sort regression cannot slip
+        # through behind a pre-ordered fixture. The deterministic
+        # name-sort means page 1 must be c0/c1/c2 in that exact
+        # order, regardless of catalog insertion order.
+        conns = (
+            _make_conn("c4"),
+            _make_conn("c1"),
+            _make_conn("c3"),
+            _make_conn("c0"),
+            _make_conn("c5"),
+            _make_conn("c2"),
+        )
         catalog = MagicMock()
         catalog.list_all = AsyncMock(return_value=conns)
 
@@ -398,7 +409,11 @@ class TestIntegrationHealthController:
         assert response.pagination.has_more is True
         assert response.pagination.next_cursor is not None
         assert response.pagination.total == 6
-        assert len(probe_calls) == 3  # only probed page connections
+        # Exact name-sorted page contents (and probe order) -- a sort
+        # regression that returned the wrong three connections, or
+        # probed them out of order, fails here.
+        assert probe_calls == ["c0", "c1", "c2"]
+        assert [r.connection_name for r in response.data] == ["c0", "c1", "c2"]
 
 
 @pytest.mark.integration

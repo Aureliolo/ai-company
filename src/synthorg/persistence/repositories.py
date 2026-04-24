@@ -454,23 +454,31 @@ class UserRepository(Protocol):
     async def list_users_paginated(
         self,
         *,
+        after_id: str | None,
         limit: int,
-        offset: int,
     ) -> tuple[User, ...]:
-        """List a page of human users ordered by ``id`` (excludes system).
+        """List a page of human users using keyset pagination on ``id``.
 
-        Pushes pagination into the data layer so the ``GET /users``
-        controller no longer materialises the full user table on every
-        request.  ``id`` is the sort key so cursor pages stay stable
-        across calls (timestamps can collide on bulk imports).
+        Returns up to ``limit`` rows whose ``id > after_id`` (or all
+        rows when ``after_id`` is ``None``).  The keyset contract is
+        stable under concurrent inserts and deletes -- new users
+        beyond the cursor land on a later page; deletions can only
+        shorten future pages, never duplicate or skip rows already
+        seen.  Offset-based pagination cannot make that guarantee.
+
+        ``id`` is the sort key (not ``created_at``) so the keyset is
+        unique on every row, even on bulk imports that collide on the
+        same timestamp.
 
         Args:
-            limit: Maximum rows to return (clamped at the
-                pagination layer; repository trusts the value).
-            offset: Number of rows to skip (always >= 0).
+            after_id: Sort-key cursor.  ``None`` for the first page;
+                the previous page's last ``id`` for follow-up pages.
+            limit: Maximum rows to return.  Callers wanting an
+                ``has_more`` signal should pass ``limit + 1`` and
+                inspect the overflow.
 
         Returns:
-            Page of users in ``id`` order.
+            Page of users in ascending ``id`` order.
 
         Raises:
             PersistenceError: If the operation fails.

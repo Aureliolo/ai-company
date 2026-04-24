@@ -158,6 +158,20 @@ class PostgresCustomRuleRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+        except Exception as exc:
+            # Catch-all for non-psycopg helper failures (serialize_altitudes,
+            # JSON encoding, datetime coercion). Without this, those raw
+            # exceptions would skip the structured save-failed log + the
+            # canonical QueryError translation, leaking driver internals
+            # to the API layer.
+            msg = f"Failed to save custom rule {rule.name!r} (helper error)"
+            logger.warning(
+                META_CUSTOM_RULE_SAVE_FAILED,
+                rule_name=rule.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def get(
         self,

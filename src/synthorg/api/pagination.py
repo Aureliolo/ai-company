@@ -20,6 +20,7 @@ from synthorg.api.cursor import (
     InvalidCursorError,
     decode_cursor,
     encode_cursor,
+    encode_keyset_cursor,
 )
 from synthorg.api.dto import DEFAULT_LIMIT, MAX_LIMIT, PaginationMeta
 from synthorg.observability import get_logger
@@ -290,11 +291,74 @@ def encode_countless_seek_meta(
     )
 
 
+def encode_keyset_meta(  # noqa: PLR0913 -- every kwarg tracks a distinct pagination input
+    *,
+    next_after_key: str | None,
+    has_more: bool,
+    limit: int,
+    secret: CursorSecret,
+    total: int | None = None,
+    offset: int = 0,
+) -> PaginationMeta:
+    """Build ``PaginationMeta`` for a keyset-paginated read.
+
+    Keyset pagination is stable under concurrent inserts and deletes:
+    the cursor encodes the sort key of the last row returned, and the
+    next page reads ``WHERE sort_key > after_key``. Out-of-bounds
+    cursors degrade gracefully -- a cursor pointing past the current
+    end of the collection just returns an empty page (rather than the
+    offset-pagination ``InvalidCursorError`` for ``offset > total``)
+    because keyset reads cannot tell whether a cursor is "stale" or
+    just pointing at a row that has been deleted.
+
+    Args:
+        next_after_key: Sort key of the last row on the page that was
+            just returned, or ``None`` when there is no next page.
+            ``has_more=True`` requires a non-``None`` key.
+        has_more: Whether the caller observed an overflow row when
+            fetching ``limit + 1`` rows. Drives ``next_cursor``
+            emission.
+        limit: Page size requested.
+        secret: HMAC secret used to sign the ``next_cursor``.
+        total: Optional authoritative row count. Pass ``None`` when
+            the caller skipped the COUNT round-trip (most keyset
+            endpoints do; the wire field is then ``null`` and clients
+            derive display counts from ``data.length``).
+        offset: Wire-only display field for ``PaginationMeta.offset``.
+            Defaults to ``0`` because keyset pagination has no
+            stable absolute offset; pass a running total only if the
+            caller is tracking page-relative positioning.
+
+    Returns:
+        ``PaginationMeta`` ready to wrap in ``PaginatedResponse``.
+
+    Raises:
+        ValueError: If ``has_more=True`` but ``next_after_key`` is
+            ``None``.
+    """
+    if has_more and not next_after_key:
+        msg = "keyset pagination: has_more=True requires next_after_key"
+        raise ValueError(msg)
+    next_cursor = (
+        encode_keyset_cursor(next_after_key, secret=secret)
+        if has_more and next_after_key is not None
+        else None
+    )
+    return PaginationMeta(
+        limit=limit,
+        next_cursor=next_cursor,
+        has_more=has_more,
+        total=total,
+        offset=offset,
+    )
+
+
 __all__ = (
     "CursorLimit",
     "CursorParam",
     "InvalidCursorError",
     "encode_countless_seek_meta",
+    "encode_keyset_meta",
     "encode_repo_seek_meta",
     "paginate_cursor",
 )

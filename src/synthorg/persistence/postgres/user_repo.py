@@ -251,20 +251,26 @@ class PostgresUserRepository:
     async def list_users_paginated(
         self,
         *,
+        after_id: str | None,
         limit: int,
-        offset: int,
     ) -> tuple[User, ...]:
-        """Return a single page of human users sorted by ``id``."""
+        """Return a single keyset page of human users sorted by ``id``."""
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(
-                    "SELECT * FROM users WHERE role != %s "
-                    "ORDER BY id LIMIT %s OFFSET %s",
-                    (HumanRole.SYSTEM.value, limit, offset),
-                )
+                if after_id is None:
+                    await cur.execute(
+                        "SELECT * FROM users WHERE role != %s ORDER BY id LIMIT %s",
+                        (HumanRole.SYSTEM.value, limit),
+                    )
+                else:
+                    await cur.execute(
+                        "SELECT * FROM users WHERE role != %s AND id > %s "
+                        "ORDER BY id LIMIT %s",
+                        (HumanRole.SYSTEM.value, after_id, limit),
+                    )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list users (paginated)"

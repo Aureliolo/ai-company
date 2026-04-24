@@ -169,7 +169,11 @@ class TestListUsers:
         body = resp.json()
         assert "pagination" in body
         assert body["pagination"]["limit"] == 50
-        assert body["pagination"]["total"] == 5
+        # ``total`` is ``null`` under keyset pagination because the
+        # endpoint skips the COUNT(*) round-trip on every request --
+        # clients derive display counts from ``data.length`` per the
+        # frontend contract in ``web/CLAUDE.md``.
+        assert body["pagination"]["total"] is None
         assert body["pagination"]["has_more"] is False
         assert body["pagination"]["next_cursor"] is None
 
@@ -177,8 +181,12 @@ class TestListUsers:
         self,
         test_client: TestClient[Any],
     ) -> None:
+        # 5 seeded users, limit=2: walk all three pages so a backend
+        # that drops the fifth user or clears ``has_more`` one page
+        # early cannot pass on just the first two pages.
         first = test_client.get(
-            f"{_BASE}?limit=2",
+            _BASE,
+            params={"limit": 2},
             headers=_CEO_HEADERS,
         ).json()
         assert len(first["data"]) == 2
@@ -187,13 +195,29 @@ class TestListUsers:
         assert cursor is not None
 
         second = test_client.get(
-            f"{_BASE}?limit=2&cursor={cursor}",
+            _BASE,
+            params={"limit": 2, "cursor": cursor},
             headers=_CEO_HEADERS,
         ).json()
         assert len(second["data"]) == 2
+        assert second["pagination"]["has_more"] is True
+        third_cursor = second["pagination"]["next_cursor"]
+        assert third_cursor is not None
         first_ids = {u["id"] for u in first["data"]}
         second_ids = {u["id"] for u in second["data"]}
         assert first_ids.isdisjoint(second_ids)
+
+        third = test_client.get(
+            _BASE,
+            params={"limit": 2, "cursor": third_cursor},
+            headers=_CEO_HEADERS,
+        ).json()
+        assert len(third["data"]) == 1
+        assert third["pagination"]["has_more"] is False
+        assert third["pagination"]["next_cursor"] is None
+        third_ids = {u["id"] for u in third["data"]}
+        assert first_ids.isdisjoint(third_ids)
+        assert second_ids.isdisjoint(third_ids)
 
     def test_list_invalid_cursor_returns_400(
         self,

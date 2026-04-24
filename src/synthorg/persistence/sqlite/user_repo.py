@@ -311,26 +311,36 @@ ON CONFLICT(id) DO UPDATE SET
     async def list_users_paginated(
         self,
         *,
+        after_id: str | None,
         limit: int,
-        offset: int,
     ) -> tuple[User, ...]:
-        """Return a single page of human users sorted by ``id``.
+        """Return a single keyset page of human users sorted by ``id``.
 
-        Sort key is ``id`` (not ``created_at``) so cursor pages stay
-        stable when bulk imports collide on the same timestamp.
+        ``WHERE id > after_id ORDER BY id LIMIT N`` so cursor pages
+        stay stable under concurrent writes -- offset-based pagination
+        would duplicate or skip rows when items shift in the visible
+        window between page fetches.
 
         Args:
+            after_id: ``None`` for the first page; the previous
+                page's last ``id`` for follow-up pages.
             limit: Page size (rows to return).
-            offset: Number of rows to skip.
 
         Raises:
             QueryError: If the database query or deserialization fails.
         """
         try:
-            cursor = await self._db.execute(
-                "SELECT * FROM users WHERE role != ? ORDER BY id LIMIT ? OFFSET ?",
-                (HumanRole.SYSTEM.value, limit, offset),
-            )
+            if after_id is None:
+                cursor = await self._db.execute(
+                    "SELECT * FROM users WHERE role != ? ORDER BY id LIMIT ?",
+                    (HumanRole.SYSTEM.value, limit),
+                )
+            else:
+                cursor = await self._db.execute(
+                    "SELECT * FROM users WHERE role != ? AND id > ? "
+                    "ORDER BY id LIMIT ?",
+                    (HumanRole.SYSTEM.value, after_id, limit),
+                )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list users (paginated)"
