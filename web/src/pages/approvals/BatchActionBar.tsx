@@ -2,6 +2,7 @@ import { motion } from 'motion/react'
 import { Check, X as XIcon, Minus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { springDefault, tweenExitFast } from '@/lib/motion'
+import { formatNumber } from '@/utils/format'
 
 export interface BatchActionBarProps {
   selectedCount: number
@@ -34,7 +35,7 @@ export function BatchActionBar({
     >
       <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-2.5 shadow-[var(--so-shadow-card-hover)]" role="toolbar" aria-label="Batch actions">
         <span className="text-sm font-medium text-foreground" aria-live="polite">
-          {selectedCount} selected
+          {formatNumber(selectedCount)} selected
         </span>
 
         <div className="h-4 w-px bg-border" aria-hidden="true" />
@@ -47,7 +48,7 @@ export function BatchActionBar({
           disabled={loading}
         >
           <Check className="size-3.5" />
-          Approve All
+          Approve {formatNumber(selectedCount)}
         </Button>
 
         <Button
@@ -58,7 +59,7 @@ export function BatchActionBar({
           disabled={loading}
         >
           <XIcon className="size-3.5" />
-          Reject All
+          Reject {formatNumber(selectedCount)}
         </Button>
 
         <div className="h-4 w-px bg-border" aria-hidden="true" />

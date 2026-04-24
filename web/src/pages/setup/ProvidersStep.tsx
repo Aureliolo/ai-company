@@ -37,6 +37,8 @@ export function ProvidersStep() {
   const providers = useSetupWizardStore((s) => s.providers)
   const presets = useSetupWizardStore((s) => s.presets)
   const probeResults = useSetupWizardStore((s) => s.probeResults)
+  const probeErrors = useSetupWizardStore((s) => s.probeErrors)
+  const probeGlobalError = useSetupWizardStore((s) => s.probeGlobalError)
   const probing = useSetupWizardStore((s) => s.probing)
   const providersLoading = useSetupWizardStore((s) => s.providersLoading)
   const providersError = useSetupWizardStore((s) => s.providersError)
@@ -152,6 +154,23 @@ export function ProvidersStep() {
           title="Failed to load providers"
           description={providersError}
           onRetry={() => void fetchProviders()}
+        />
+      )}
+
+      {probeGlobalError && (
+        <ErrorBanner
+          title="Provider probe did not complete"
+          description={`${probeGlobalError}. Retry to try again, or skip to configure providers manually below.`}
+          onRetry={handleReprobe}
+        />
+      )}
+
+      {Object.keys(probeErrors).length > 0 && (
+        <ErrorBanner
+          severity="warning"
+          title={`Probe failed for ${Object.keys(probeErrors).length} preset${Object.keys(probeErrors).length === 1 ? '' : 's'}`}
+          description={`Ensure the provider is running, then retry. You can also skip the probe and configure it manually using the Add Provider button below. Failed: ${Object.entries(probeErrors).map(([name, msg]) => `${name} (${msg})`).join('; ')}`}
+          onRetry={handleReprobe}
         />
       )}
 

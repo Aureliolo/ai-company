@@ -354,9 +354,9 @@ export default function ApprovalsPage() {
       <ConfirmDialog
         open={batchApproveOpen}
         onOpenChange={(o) => { setBatchApproveOpen(o); if (!o) setBatchComment('') }}
-        title={`Approve ${selectedIds.size} items`}
-        description="This will approve all selected pending approvals."
-        confirmLabel="Approve All"
+        title={`Approve ${formatNumber(selectedIds.size)} approval${selectedIds.size === 1 ? '' : 's'}?`}
+        description="This will approve every selected pending item. Agents will resume work using the approved parameters."
+        confirmLabel={`Approve ${formatNumber(selectedIds.size)}`}
         onConfirm={handleBatchApprove}
         loading={batchLoading}
       >
@@ -374,9 +374,9 @@ export default function ApprovalsPage() {
       <ConfirmDialog
         open={batchRejectOpen}
         onOpenChange={(o) => { setBatchRejectOpen(o); if (!o) setBatchReason('') }}
-        title={`Reject ${selectedIds.size} items`}
-        description="Please provide a reason for rejecting all selected items."
-        confirmLabel="Reject All"
+        title={`Reject ${formatNumber(selectedIds.size)} approval${selectedIds.size === 1 ? '' : 's'}?`}
+        description="This will reject every selected pending item. The requester will see the reason below. This action cannot be undone."
+        confirmLabel={`Reject ${formatNumber(selectedIds.size)}`}
         variant="destructive"
         onConfirm={handleBatchReject}
         loading={batchLoading}

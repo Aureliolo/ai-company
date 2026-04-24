@@ -11,29 +11,40 @@ import {
 import { createLogger } from '@/lib/logger'
 import type { ProbePresetResponse, ProviderPreset } from '@/api/types/providers'
 import { getErrorMessage } from '@/utils/errors'
+import { useToastStore } from '@/stores/toast'
 import type { ProvidersSlice, SliceCreator } from './types'
 
 const log = createLogger('setup-wizard:providers')
 
+interface ProbeOutcome {
+  results: Record<string, ProbePresetResponse>
+  errors: Record<string, string>
+}
+
 async function runProbeAll(
   presets: readonly ProviderPreset[],
   label: string,
-): Promise<Record<string, ProbePresetResponse>> {
+): Promise<ProbeOutcome> {
   const entries = await Promise.allSettled(
     presets.map(async (preset) => {
       const result = await probePreset(preset.name)
-      return [preset.name, result] as const
+      return { name: preset.name, result }
     }),
   )
   const results: Record<string, ProbePresetResponse> = {}
-  for (const entry of entries) {
+  const errors: Record<string, string> = {}
+  entries.forEach((entry, i) => {
+    const preset = presets[i]
+    if (!preset) return
     if (entry.status === 'fulfilled') {
-      results[entry.value[0]] = entry.value[1]
+      results[entry.value.name] = entry.value.result
     } else {
-      log.error(`${label} failed:`, getErrorMessage(entry.reason))
+      const message = getErrorMessage(entry.reason)
+      log.error(`${label} failed for ${preset.name}:`, message)
+      errors[preset.name] = message
     }
-  }
-  return results
+  })
+  return { results, errors }
 }
 
 export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => ({
@@ -42,6 +53,8 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
   presetsLoading: false,
   presetsError: null,
   probeResults: {},
+  probeErrors: {},
+  probeGlobalError: null,
   probing: false,
   providersLoading: false,
   providersError: null,
@@ -171,25 +184,55 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
 
   async probeAllPresets() {
     const { presets } = get()
-    set({ probing: true })
+    set({ probing: true, probeErrors: {}, probeGlobalError: null })
     try {
-      const results = await runProbeAll(presets, 'probe')
-      set({ probeResults: results })
+      const { results, errors } = await runProbeAll(presets, 'probe')
+      set({ probeResults: results, probeErrors: errors })
+      if (Object.keys(errors).length > 0) {
+        const failedCount = Object.keys(errors).length
+        useToastStore.getState().add({
+          variant: 'warning',
+          title: `Provider probe failed for ${failedCount} preset${failedCount === 1 ? '' : 's'}`,
+          description: 'See the Providers step for retry options or skip to configure manually.',
+        })
+      }
     } catch (err) {
-      log.error('probeAllPresets failed:', getErrorMessage(err))
+      const message = getErrorMessage(err)
+      log.error('probeAllPresets failed:', message)
+      set({ probeGlobalError: message })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Provider probe failed',
+        description: message,
+      })
     } finally {
       set({ probing: false })
     }
   },
 
   async reprobePresets() {
-    set({ probeResults: {}, probing: true })
+    set({ probeResults: {}, probeErrors: {}, probeGlobalError: null, probing: true })
     try {
       const { presets } = get()
-      const results = await runProbeAll(presets, 'reprobe')
-      set({ probeResults: results })
+      const { results, errors } = await runProbeAll(presets, 'reprobe')
+      set({ probeResults: results, probeErrors: errors })
+      if (Object.keys(errors).length > 0) {
+        const failedCount = Object.keys(errors).length
+        useToastStore.getState().add({
+          variant: 'warning',
+          title: `Re-probe failed for ${failedCount} preset${failedCount === 1 ? '' : 's'}`,
+          description: 'See the Providers step for retry options or skip to configure manually.',
+        })
+      }
     } catch (err) {
-      log.error('reprobePresets failed:', getErrorMessage(err))
+      const message = getErrorMessage(err)
+      log.error('reprobePresets failed:', message)
+      set({ probeGlobalError: message })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Provider re-probe failed',
+        description: message,
+      })
     } finally {
       set({ probing: false })
     }
