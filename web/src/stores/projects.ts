@@ -303,7 +303,13 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
           }
         })
       }
+      // Deletion is fully handled incrementally above; a follow-up
+      // fetchProjects() would just be a redundant round trip.
+      return
     }
+    // Every other event type (creation, update, status change, ...) falls
+    // through to a full refetch. Incremental updates for those are not
+    // worth the complexity given the 30s poll backing store.
     useProjectsStore.getState().fetchProjects()
   },
 }))

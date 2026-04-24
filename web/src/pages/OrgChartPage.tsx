@@ -16,6 +16,27 @@ import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { formatDateOnly } from '@/utils/format'
 import { sanitizeForLog } from '@/utils/logging'
+
+/**
+ * True when a computed background-color string has a visible fill. Both
+ * `transparent` and `rgba(...,0)` resolve to zero-alpha rgba strings in
+ * `getComputedStyle`; treat any missing / zero-alpha value as
+ * transparent so the PNG exporter falls through to the next source.
+ */
+function isOpaque(color: string | undefined | null): color is string {
+  if (!color) return false
+  const trimmed = color.trim()
+  if (!trimmed || trimmed === 'transparent') return false
+  // Extract the alpha channel from `rgba(r, g, b, a)` without a full
+  // regex parse to keep the check simple and avoid ReDoS territory.
+  const openParen = trimmed.indexOf('(')
+  const closeParen = trimmed.lastIndexOf(')')
+  if (openParen === -1 || closeParen === -1) return true
+  const parts = trimmed.slice(openParen + 1, closeParen).split(',').map((p) => p.trim())
+  if (parts.length !== 4) return true
+  const alpha = Number.parseFloat(parts[3] ?? '1')
+  return Number.isFinite(alpha) && alpha > 0
+}
 import { useOrgChartData } from '@/hooks/useOrgChartData'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -221,6 +242,7 @@ function OrgChartInner() {
     // whatever pan/zoom the user happens to have.
     fitView({ padding: 0.2, duration: 0 })
     setExporting(true)
+    let dataUrl: string | null
     try {
       // Wait for the browser to commit the fitView transform before the
       // snapshot. A single requestAnimationFrame is enough because
@@ -241,13 +263,9 @@ function OrgChartInner() {
       const targetBackground = getComputedStyle(target).backgroundColor
       const backgroundColor =
         tokenBackground ||
-        (bodyBackground && bodyBackground !== 'rgba(0, 0, 0, 0)'
-          ? bodyBackground
-          : undefined) ||
-        (targetBackground && targetBackground !== 'rgba(0, 0, 0, 0)'
-          ? targetBackground
-          : undefined)
-      const dataUrl = await toPng(target, {
+        (isOpaque(bodyBackground) ? bodyBackground : undefined) ||
+        (isOpaque(targetBackground) ? targetBackground : undefined)
+      dataUrl = await toPng(target, {
         backgroundColor,
         pixelRatio: 2,
         cacheBust: true,
@@ -256,10 +274,6 @@ function OrgChartInner() {
       link.href = dataUrl
       link.download = `org-chart-${formatDateOnly(new Date())}.png`
       link.click()
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Org chart exported',
-      })
     } catch (err) {
       log.error('Org chart PNG export failed:', sanitizeForLog(err))
       useToastStore.getState().add({
@@ -268,8 +282,19 @@ function OrgChartInner() {
         description:
           'Could not render the chart to PNG. Try again, or use Print for a fallback.',
       })
+      setExporting(false)
+      return
     } finally {
       setExporting(false)
+    }
+    // Success toast is outside the try so a downstream toast-store error
+    // does not get misreported as a PNG export failure. `dataUrl` is
+    // guaranteed non-null here because the catch branch returns early.
+    if (dataUrl) {
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Org chart exported',
+      })
     }
   }, [fitView])
 
@@ -378,7 +403,8 @@ function OrgChartInner() {
           onFitView={() => fitView({ padding: 0.2 })}
           onZoomIn={() => zoomIn()}
           onZoomOut={() => zoomOut()}
-          onExportPng={exporting ? undefined : handleExportPng}
+          onExportPng={handleExportPng}
+          exporting={exporting}
           onPrint={handlePrint}
         />
         {(commLoading || view.transitioning) && viewMode === 'force' && (

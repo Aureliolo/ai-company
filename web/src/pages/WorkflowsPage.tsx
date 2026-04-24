@@ -12,7 +12,6 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { SegmentedControl } from '@/components/ui/segmented-control'
-import { useToastStore } from '@/stores/toast'
 import { formatNumber } from '@/utils/format'
 import { WorkflowsSkeleton } from './workflows/WorkflowsSkeleton'
 import { WorkflowFilters } from './workflows/WorkflowFilters'
@@ -84,28 +83,13 @@ export default function WorkflowsPage() {
   const handleBulkDelete = useCallback(async () => {
     setBulkDeleting(true)
     const ids = [...visibleSelected]
-    const { succeeded, failed, failedReasons } = await useWorkflowsStore
-      .getState()
-      .batchDeleteWorkflows(ids)
+    // Store owns the success/warning/error toast UX (see
+    // stores/workflows.ts batchDeleteWorkflows). Caller only drives the
+    // dialog and selection state.
+    await useWorkflowsStore.getState().batchDeleteWorkflows(ids)
     setBulkDeleting(false)
     setBulkDeleteOpen(false)
     clearSelection()
-    if (failed === 0) {
-      useToastStore.getState().add({
-        variant: 'success',
-        title: `Deleted ${formatNumber(succeeded)} workflow${succeeded === 1 ? '' : 's'}`,
-      })
-    } else {
-      useToastStore.getState().add({
-        variant: 'warning',
-        title: `Deleted ${formatNumber(succeeded)} of ${formatNumber(ids.length)} workflows`,
-        description:
-          failedReasons.length > 0
-            ? failedReasons.slice(0, 3).join('; ') +
-              (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : '')
-            : `${formatNumber(failed)} failed. Please retry.`,
-      })
-    }
   }, [visibleSelected, clearSelection])
 
   const handleDuplicate = useCallback(

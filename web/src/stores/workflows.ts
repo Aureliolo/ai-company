@@ -224,15 +224,54 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
       const deletedSet = new Set(succeededIds)
       set((state) => {
         const filtered = state.workflows.filter((w) => !deletedSet.has(w.id))
+        // Decrement by the actual removed count rather than trusting the
+        // request-side succeededIds length -- a preceding WS prune or
+        // refetch may already have removed some IDs locally.
+        const removedCount = state.workflows.length - filtered.length
         return {
           workflows: filtered,
-          totalWorkflows: Math.max(0, state.totalWorkflows - succeededIds.length),
+          totalWorkflows: Math.max(0, state.totalWorkflows - removedCount),
         }
+      })
+    }
+    if (failedReasons.length > 0) {
+      log.error(
+        'Batch delete workflows partial failure',
+        sanitizeForLog({ failedCount: failedReasons.length, failedReasons }),
+      )
+    }
+    // Store owns the mutation UX: emit aggregated toasts for the batch so
+    // callers do not need to assemble their own outcome messaging.
+    const failed = ids.length - succeededIds.length
+    if (succeededIds.length > 0 && failed === 0) {
+      useToastStore.getState().add({
+        variant: 'success',
+        title:
+          succeededIds.length === 1
+            ? 'Workflow deleted'
+            : `${succeededIds.length} workflows deleted`,
+      })
+    } else if (succeededIds.length > 0 && failed > 0) {
+      useToastStore.getState().add({
+        variant: 'warning',
+        title: `Deleted ${succeededIds.length} of ${ids.length} workflows`,
+        description: failedReasons.slice(0, 3).join('; ') +
+          (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
+      })
+    } else if (failed > 0) {
+      useToastStore.getState().add({
+        variant: 'error',
+        title:
+          failed === 1
+            ? 'Failed to delete workflow'
+            : `Failed to delete ${failed} workflows`,
+        description: failedReasons.slice(0, 3).join('; ') +
+          (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
       })
     }
     return {
       succeeded: succeededIds.length,
-      failed: ids.length - succeededIds.length,
+      failed,
       failedReasons,
     }
   },

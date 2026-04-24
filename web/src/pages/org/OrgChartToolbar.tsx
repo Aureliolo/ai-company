@@ -32,6 +32,7 @@ interface OrgChartToolbarProps {
   onZoomOut: () => void
   /** Export the current chart as a PNG file. */
   onExportPng?: () => void
+  exporting?: boolean
   /** Trigger the browser's print flow with the chart in focus. */
   onPrint?: () => void
   className?: string
@@ -88,6 +89,7 @@ export function OrgChartToolbar({
   onZoomIn,
   onZoomOut,
   onExportPng,
+  exporting = false,
   onPrint,
   className,
 }: OrgChartToolbarProps) {
@@ -240,9 +242,10 @@ export function OrgChartToolbar({
               variant="ghost"
               size="sm"
               onClick={onExportPng}
-              aria-label="Export as PNG"
-              title="Export as PNG"
+              aria-label={exporting ? 'Exporting PNG' : 'Export as PNG'}
+              title={exporting ? 'Exporting PNG' : 'Export as PNG'}
               className="size-7 p-0"
+              disabled={exporting}
             >
               <Download className="size-3.5" aria-hidden="true" />
             </Button>

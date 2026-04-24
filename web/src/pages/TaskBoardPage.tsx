@@ -19,6 +19,7 @@ import { useRegisterShortcuts } from '@/hooks/use-shortcut-registry'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
 import { useOptimisticUpdate } from '@/hooks/useOptimisticUpdate'
 import { useToastStore } from '@/stores/toast'
+import { formatNumber } from '@/utils/format'
 import {
   type TaskBoardFilters,
   KANBAN_COLUMNS,
@@ -278,7 +279,7 @@ export default function TaskBoardPage() {
         countLabel={
           filteredTasks.length === tasks.length
             ? undefined
-            : `${filteredTasks.length} of ${tasks.length}`
+            : `${formatNumber(filteredTasks.length)} of ${formatNumber(tasks.length)}`
         }
         secondaryActions={
           <>
