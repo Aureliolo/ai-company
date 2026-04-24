@@ -14,6 +14,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # For the Highlights section below: GitHub Models (Copilot Pro)
+      # inference is accessed via actions/ai-inference under the
+      # `models: read` workflow-level permission. No new secret.
+      models: read
     steps:
       # Minimal checkout of main required so `./.github/actions/...`
       # paths resolve on the runner disk. `fetch-depth: 1` is enough;
@@ -88,3 +92,78 @@ jobs:
             --arg branch "$BRANCH" \
             '{message: $msg, content: $content, sha: $sha, branch: $branch}' \
           | gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/LICENSE" --input -
+
+      # ── Release-notes Highlights section ──
+      # Generate a 3-5 bullet Highlights summary from the auto-generated
+      # changelog and prepend it to the release PR body. Opt-out: include a
+      # `No-Highlights:` trailer (case-insensitive) anywhere in the PR body
+      # to skip. Uses GitHub Models (Copilot Pro quota) via the ambient
+      # GITHUB_TOKEN with `models: read` -- no ANTHROPIC_API_KEY secret.
+      - name: Fetch release PR body + changelog diff
+        if: steps.release.outputs.pr != ''
+        id: pr-body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
+        run: |
+          set -euo pipefail
+          BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
+
+          # Skip if the PR body opts out.
+          if printf '%s' "$BODY" | grep -qiE '^[[:space:]]*no-highlights:'; then
+            echo "No-Highlights: trailer detected; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Extract the changelog section for this release. Release-Please
+          # bodies start with the version header and changelog bullets,
+          # followed by a separator. We feed the first ~200 non-empty
+          # lines to the model -- enough for a summary without bloating
+          # the prompt.
+          DIGEST=$(printf '%s\n' "$BODY" | sed -n '/^###/,/^---/p' | head -200)
+          if [ -z "$DIGEST" ]; then
+            echo "::warning::Could not locate changelog digest in PR body; skipping Highlights"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Write to a file because GITHUB_OUTPUT does not handle
+          # multi-line content well via simple echo.
+          printf '%s' "$DIGEST" > changelog-digest.txt
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Highlights via GitHub Models
+        if: steps.release.outputs.pr != '' && steps.pr-body.outputs.skip != 'true'
+        id: highlights
+        uses: actions/ai-inference@af6ad2c4ac4edf01884054fc3a6caa6d2567c13a # v2.0.8
+        with:
+          model: claude-3-5-haiku
+          prompt-file: changelog-digest.txt
+          system-prompt: |
+            You are summarising a SynthOrg release changelog into a Highlights section.
+            Write 3-5 short markdown bullets. Lead with user-visible value. No emoji. No
+            marketing language. No version numbers. No commit hashes. No code blocks.
+            Each bullet is one line, maximum 20 words.
+          max-tokens: 400
+
+      - name: Prepend Highlights to release PR body
+        if: steps.release.outputs.pr != '' && steps.pr-body.outputs.skip != 'true' && steps.highlights.outputs.response != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
+          HIGHLIGHTS: ${{ steps.highlights.outputs.response }}
+        run: |
+          set -euo pipefail
+          CUR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
+
+          # Sticky re-apply: strip any prior Highlights block (delimited by
+          # the hidden marker) before prepending a freshly-generated one.
+          CLEANED=$(printf '%s' "$CUR_BODY" \
+            | sed '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/d')
+
+          NEW_BODY=$(printf '<!-- HIGHLIGHTS_START -->\n## Highlights\n\n%s\n\n<!-- HIGHLIGHTS_END -->\n\n%s' \
+            "$HIGHLIGHTS" "$CLEANED")
+
+          gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$NEW_BODY"
+          echo "Highlights prepended to PR #$PR_NUMBER"
