@@ -111,7 +111,7 @@ class TestStartDuringStop:
             await start_may_proceed.wait()
             await original_drain(effective_timeout)
 
-        eng._drain_all = gated_drain  # type: ignore[method-assign,assignment]
+        eng._drain_all = gated_drain  # type: ignore[method-assign]
 
         stop_task = asyncio.create_task(eng.stop(timeout=2.0))
         await stop_holding_lock.wait()
@@ -121,11 +121,9 @@ class TestStartDuringStop:
         start_task = asyncio.create_task(eng.start())
         # Release the drain so stop() can complete.
         start_may_proceed.set()
-        stop_result = await stop_task
-        start_result = await start_task
+        await stop_task
+        await start_task
         try:
-            assert stop_result is None
-            assert start_result is None
             # Invariant: there is exactly one processing loop + one
             # observer dispatcher task, not a leaked pair from a race.
             loop_tasks = [
