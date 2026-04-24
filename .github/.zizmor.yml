@@ -22,3 +22,6 @@ rules:
       # persist-credentials required to push the Change Date commit back
       # to the release PR branch.
       - release.yml
+      # persist-credentials required to push the auto-rollover commit
+      # (empty commit with Release-As trailer) back to main.
+      - auto-rollover.yml

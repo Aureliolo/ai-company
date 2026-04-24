@@ -6,10 +6,11 @@
       "package-name": "synthorg",
       "include-component-in-tag": false,
       "changelog-path": ".github/CHANGELOG.md",
-      "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
+      "versioning": "always-bump-patch",
       "draft": true,
       "force-tag-creation": true,
+      "include-v-in-release-name": true,
+      "include-commit-authors": true,
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
         { "type": "fix", "section": "Bug Fixes" },
