@@ -184,21 +184,25 @@ class TestListUsers:
         # 5 seeded users, limit=2: walk all three pages so a backend
         # that drops the fifth user or clears ``has_more`` one page
         # early cannot pass on just the first two pages.
-        first = test_client.get(
+        first_resp = test_client.get(
             _BASE,
             params={"limit": 2},
             headers=_CEO_HEADERS,
-        ).json()
+        )
+        assert first_resp.status_code == 200, first_resp.text
+        first = first_resp.json()
         assert len(first["data"]) == 2
         assert first["pagination"]["has_more"] is True
         cursor = first["pagination"]["next_cursor"]
         assert cursor is not None
 
-        second = test_client.get(
+        second_resp = test_client.get(
             _BASE,
             params={"limit": 2, "cursor": cursor},
             headers=_CEO_HEADERS,
-        ).json()
+        )
+        assert second_resp.status_code == 200, second_resp.text
+        second = second_resp.json()
         assert len(second["data"]) == 2
         assert second["pagination"]["has_more"] is True
         third_cursor = second["pagination"]["next_cursor"]
@@ -207,11 +211,13 @@ class TestListUsers:
         second_ids = {u["id"] for u in second["data"]}
         assert first_ids.isdisjoint(second_ids)
 
-        third = test_client.get(
+        third_resp = test_client.get(
             _BASE,
             params={"limit": 2, "cursor": third_cursor},
             headers=_CEO_HEADERS,
-        ).json()
+        )
+        assert third_resp.status_code == 200, third_resp.text
+        third = third_resp.json()
         assert len(third["data"]) == 1
         assert third["pagination"]["has_more"] is False
         assert third["pagination"]["next_cursor"] is None

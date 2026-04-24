@@ -205,6 +205,21 @@ describe('fetchSubworkflows', () => {
     expect(state.nextCursor).toBe('cursor-2')
     expect(state.hasMore).toBe(true)
   })
+
+  it('sets listError on failure without toasting (list-read pattern)', async () => {
+    server.use(
+      http.get('/api/v1/subworkflows', () =>
+        HttpResponse.json(apiError('network down')),
+      ),
+    )
+
+    await useSubworkflowsStore.getState().fetchSubworkflows()
+
+    const state = useSubworkflowsStore.getState()
+    expect(state.listLoading).toBe(false)
+    expect(state.listError).toBe('network down')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
 })
 
 describe('fetchMoreSubworkflows', () => {
@@ -268,20 +283,5 @@ describe('fetchMoreSubworkflows', () => {
     useSubworkflowsStore.setState({ nextCursor: null, hasMore: false })
     await useSubworkflowsStore.getState().fetchMoreSubworkflows()
     expect(listCalls).toBe(0)
-  })
-
-  it('sets listError on failure without toasting (list-read pattern)', async () => {
-    server.use(
-      http.get('/api/v1/subworkflows', () =>
-        HttpResponse.json(apiError('network down')),
-      ),
-    )
-
-    await useSubworkflowsStore.getState().fetchSubworkflows()
-
-    const state = useSubworkflowsStore.getState()
-    expect(state.listLoading).toBe(false)
-    expect(state.listError).toBe('network down')
-    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 })

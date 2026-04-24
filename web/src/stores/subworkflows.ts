@@ -51,6 +51,10 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
     const token = ++_listRequestToken
     set(() => ({
       listLoading: true,
+      // Cancel any in-flight Load More so its continuation cannot
+      // append to the replacement dataset (the token check below
+      // catches the in-flight request before it merges page data).
+      loadingMore: false,
       listError: null,
       // Reset cursor state on every fresh fetch so the page never
       // shows a stale "Load More" stub against the wrong dataset.
@@ -95,6 +99,13 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
   },
 
   async fetchMoreSubworkflows() {
+    // Snapshot the current request token: if a fresh
+    // ``fetchSubworkflows`` runs while this Load More is in flight,
+    // the token bumps and the post-await checks below see a stale
+    // request -- otherwise the continuation would append the older
+    // page's rows onto the replacement dataset and resurrect rows
+    // the refresh just cleared.
+    const token = _listRequestToken
     const { hasMore, nextCursor, loadingMore, listLoading, searchQuery } = get()
     // Search results are unpaginated, so Load More is not applicable
     // when a query is active.
@@ -107,6 +118,7 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
         cursor: nextCursor,
         limit: PAGE_SIZE,
       })
+      if (isStaleRequest(token)) return
       set((state) => ({
         subworkflows: [...state.subworkflows, ...page.data],
         nextCursor: page.nextCursor,
@@ -114,6 +126,7 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
         loadingMore: false,
       }))
     } catch (err) {
+      if (isStaleRequest(token)) return
       log.warn('Failed to fetch more subworkflows', sanitizeForLog(err))
       // Surface the failure through the same banner the initial fetch
       // uses; preserve the already-loaded items so the user is not

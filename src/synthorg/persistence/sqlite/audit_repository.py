@@ -11,7 +11,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
-    PERSISTENCE_AUDIT_ENTRY_SAVED,
 )
 from synthorg.persistence._shared.audit import (
     AUDIT_COLUMNS,
@@ -87,14 +86,13 @@ class SQLiteAuditRepository:
                 entry_id=entry.id,
                 is_duplicate=_sqlite_is_duplicate,
             ) from exc
-        # State transition: audit entry persisted (append-only). Logged at
-        # INFO to align with CLAUDE.md "all state transitions log at INFO"
-        # and to match the Postgres backend.
-        logger.info(
-            PERSISTENCE_AUDIT_ENTRY_SAVED,
-            entry_id=entry.id,
-            agent_id=entry.agent_id,
-        )
+        # No mutation log emitted from the persistence layer: per
+        # CLAUDE.md "Repositories should not log mutations themselves
+        # -- the service layer is the canonical logging point so audit
+        # trails do not duplicate when multiple callers share a repo."
+        # The audit entry IS the audit record; the persistence event
+        # would be redundant. Callers that need a save signal should
+        # log it once at the boundary that owns the write.
 
     async def query(  # noqa: PLR0913
         self,

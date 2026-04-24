@@ -16,7 +16,7 @@ from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
-from synthorg.api.cursor import decode_keyset_cursor
+from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
@@ -150,10 +150,21 @@ class SubworkflowController(Controller):
             if cursor is not None
             else None
         )
-        page, has_more = await registry.list_page(
-            after_key=after_key,
-            limit=limit,
-        )
+        try:
+            page, has_more = await registry.list_page(
+                after_key=after_key,
+                limit=limit,
+            )
+        except ValueError as exc:
+            # The decoded ``after_key`` is HMAC-signed by the server,
+            # but the structural-validity check inside the registry
+            # (decode the JSON triple) still raises ``ValueError`` on
+            # any tampered / hand-crafted payload that survived the
+            # signature step. Surface as HTTP 400 instead of letting
+            # it bubble up as a 500 -- the cursor is attacker-
+            # controllable input.
+            msg = "subworkflow keyset cursor payload is malformed"
+            raise InvalidCursorError(msg) from exc
         # JSON-encode the composite sort key so names containing
         # ``|``/``:``/etc. cannot collide with the cursor delimiter
         # (NotBlankStr does not forbid separator characters).

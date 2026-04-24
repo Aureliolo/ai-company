@@ -70,7 +70,7 @@ class UserService:
     async def list_users_page(
         self,
         *,
-        after_id: str | None,
+        after_id: NotBlankStr | None,
         limit: int,
     ) -> tuple[tuple[User, ...], bool]:
         """Return a single keyset page of users plus an ``has_more`` flag.
@@ -97,10 +97,26 @@ class UserService:
             requested page.
         """
         # Over-fetch by one row to detect has_more without a COUNT.
-        rows = await self._repo.list_users_paginated(
-            after_id=after_id,
-            limit=limit + 1,
-        )
+        try:
+            rows = await self._repo.list_users_paginated(
+                after_id=after_id,
+                limit=limit + 1,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # All persistence error paths must log at WARNING with
+            # context before re-raising; the repository already logs
+            # the SQL error, but the service-level event lets us slice
+            # logs by API_USER_* events without joining tables.
+            logger.warning(
+                API_USER_LISTED,
+                after_id=after_id,
+                limit=limit,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         has_more = len(rows) > limit
         page = rows[:limit]
         logger.debug(

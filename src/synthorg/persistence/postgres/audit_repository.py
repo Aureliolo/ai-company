@@ -11,7 +11,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
-    PERSISTENCE_AUDIT_ENTRY_SAVED,
 )
 from synthorg.persistence._shared.audit import (
     AUDIT_COLUMNS,
@@ -86,11 +85,10 @@ class PostgresAuditRepository:
                 entry_id=entry.id,
                 is_duplicate=_postgres_is_duplicate,
             ) from exc
-        logger.info(
-            PERSISTENCE_AUDIT_ENTRY_SAVED,
-            entry_id=entry.id,
-            agent_id=entry.agent_id,
-        )
+        # No mutation log emitted from the persistence layer: per
+        # CLAUDE.md "Repositories should not log mutations themselves
+        # -- the service layer is the canonical logging point so audit
+        # trails do not duplicate when multiple callers share a repo."
 
     async def query(  # noqa: PLR0913
         self,

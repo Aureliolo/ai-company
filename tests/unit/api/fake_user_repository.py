@@ -9,6 +9,7 @@ import copy
 from synthorg.api.auth.models import OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
@@ -101,7 +102,7 @@ class FakeUserRepository:
     async def list_users_paginated(
         self,
         *,
-        after_id: str | None,
+        after_id: NotBlankStr | None,
         limit: int,
     ) -> tuple[User, ...]:
         all_humans = sorted(

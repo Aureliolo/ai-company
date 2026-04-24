@@ -251,7 +251,7 @@ class PostgresUserRepository:
     async def list_users_paginated(
         self,
         *,
-        after_id: str | None,
+        after_id: NotBlankStr | None,
         limit: int,
     ) -> tuple[User, ...]:
         """Return a single keyset page of human users sorted by ``id``."""

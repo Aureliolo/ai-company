@@ -454,7 +454,7 @@ class UserRepository(Protocol):
     async def list_users_paginated(
         self,
         *,
-        after_id: str | None,
+        after_id: NotBlankStr | None,
         limit: int,
     ) -> tuple[User, ...]:
         """List a page of human users using keyset pagination on ``id``.

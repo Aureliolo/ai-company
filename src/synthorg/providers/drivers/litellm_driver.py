@@ -315,7 +315,10 @@ class LiteLLMDriver(BaseCompletionProvider):
                     error=safe_error_description(exc),
                 )
                 results[model] = None
-        return results
+        # Return a read-only view so callers cannot mutate the batch
+        # snapshot in place (matches the immutability pattern used by
+        # ``_model_lookup`` itself).
+        return MappingProxyType(results)
 
     def _build_capabilities(
         self,

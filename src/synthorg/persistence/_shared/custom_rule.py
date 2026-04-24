@@ -73,11 +73,24 @@ def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
     """
     try:
         raw_altitudes = row["target_altitudes"]
-        altitudes_list: list[str]
+        decoded_altitudes: object
         if isinstance(raw_altitudes, str):
-            altitudes_list = json.loads(raw_altitudes)
+            decoded_altitudes = json.loads(raw_altitudes)
         else:
-            altitudes_list = list(raw_altitudes)
+            decoded_altitudes = raw_altitudes
+        # Reject anything that is not a list/tuple BEFORE coercing --
+        # ``list(dict_value)`` would silently iterate dict keys,
+        # ``list(str_value)`` would yield characters, etc.  An
+        # explicit type check fails loudly via MalformedRowError
+        # rather than producing nonsense ``ProposalAltitude`` lookups
+        # downstream.
+        if not isinstance(decoded_altitudes, (list, tuple)):
+            msg = (
+                "target_altitudes must be a list or tuple, got "
+                f"{type(decoded_altitudes).__name__}"
+            )
+            raise TypeError(msg)  # noqa: TRY301 -- caught + remapped one frame up
+        altitudes_list = [str(a) for a in decoded_altitudes]
 
         return CustomRuleDefinition(
             id=UUID(str(row["id"])),
