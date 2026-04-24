@@ -152,15 +152,45 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
 _BASELINE_PATH = _REPO_ROOT / "tests" / "baselines" / "unit_timing.json"
 
 
-def _check_timing_regression(elapsed: float, *, run_all: bool) -> bool:
+_PASSED_COUNT_RE = re.compile(r"(\d+)\s+passed")
+
+
+def _parse_test_count(pytest_output: str) -> int | None:
+    """Extract the number of passed tests from pytest's final summary.
+
+    Returns ``None`` when the summary line cannot be parsed (degraded
+    output, unexpected failure mode, etc.) -- the caller falls back
+    to the absolute-seconds rail in that case.
+    """
+    # pytest prints the summary on the final non-empty line, e.g.
+    # ``23373 passed, 16 skipped in 91.86s (0:01:31)``.
+    for line in reversed(pytest_output.splitlines()):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = _PASSED_COUNT_RE.search(stripped)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _check_timing_regression(  # noqa: PLR0911 -- branching by data shape
+    elapsed: float,
+    *,
+    run_all: bool,
+    test_count: int | None,
+) -> bool:
     """Return True if the run shows a timing regression.
 
     Only checks full-suite runs (``run_all=True``) since affected-only
     runs vary widely and are not comparable to the baseline.
 
-    Uses an absolute-seconds tolerance (``regression_threshold_secs``):
-    only a few seconds of variance is allowed; larger regressions are
-    real bugs that must block the push.
+    Uses per-test cost as the primary signal (so adding legitimate new
+    tests does not trip the alarm): if
+    ``elapsed / test_count > baseline_per_test * regression_threshold_ratio``
+    the suite is genuinely slower per test. Falls back to the
+    absolute-seconds rail when ``test_count`` is unavailable or the
+    baseline lacks the ratio field.
     """
     if not run_all or not _BASELINE_PATH.exists():
         return False
@@ -168,20 +198,78 @@ def _check_timing_regression(elapsed: float, *, run_all: bool) -> bool:
         baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
         baseline_secs = float(baseline["unit_suite_seconds"])
         threshold_secs = float(baseline.get("regression_threshold_secs", 10))
+        threshold_ratio_raw = baseline.get("regression_threshold_ratio")
+        threshold_ratio = (
+            float(threshold_ratio_raw) if threshold_ratio_raw is not None else None
+        )
+        baseline_test_count_raw = baseline.get("test_count")
+        baseline_test_count = (
+            int(baseline_test_count_raw)
+            if baseline_test_count_raw is not None
+            else None
+        )
     except json.JSONDecodeError, KeyError, ValueError, OSError:
         return False
-    max_allowed = baseline_secs + threshold_secs
+
     # Honor the same override used by the conftest guard.
     import contextlib
     import os
 
     env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
+    env_max_allowed: float | None = None
     if env_override is not None:
         with contextlib.suppress(ValueError):
-            max_allowed = float(env_override)
+            env_max_allowed = float(env_override)
+
+    border = "!" * 60
+    # Prefer per-test cost when we have the data (ratio + both
+    # counts). This is the signal the user actually cares about --
+    # adding a few hundred tests should not trip the alarm.
+    have_per_test = (
+        threshold_ratio is not None
+        and baseline_test_count is not None
+        and baseline_test_count > 0
+        and test_count is not None
+        and test_count > 0
+    )
+    if (
+        have_per_test
+        and threshold_ratio is not None
+        and baseline_test_count is not None
+        and test_count is not None
+    ):
+        baseline_per_test = baseline_secs / baseline_test_count
+        current_per_test = elapsed / test_count
+        max_per_test = baseline_per_test * threshold_ratio
+        if env_max_allowed is not None and elapsed <= env_max_allowed:
+            return False
+        if current_per_test > max_per_test:
+            print(
+                f"\n{border}\n"
+                f"REGRESSION DETECTED: per-test cost {current_per_test * 1000:.2f}ms "
+                f"exceeds {max_per_test * 1000:.2f}ms "
+                f"(baseline {baseline_per_test * 1000:.2f}ms, "
+                f"ratio {threshold_ratio:.2f}).\n"
+                f"Suite: {elapsed:.0f}s across {test_count} tests "
+                f"(baseline {baseline_secs:.0f}s across {baseline_test_count}).\n"
+                f"Run A/B against origin/main before fixing anything.\n"
+                f"Do NOT delete tests or use --no-verify.\n"
+                f"If the new baseline is intentional, update "
+                f"tests/baselines/unit_timing.json.\n"
+                f"{border}",
+                file=sys.stderr,
+            )
+            return True
+        return False
+
+    # Fallback: absolute-seconds tolerance when we could not compute
+    # per-test cost (no ratio in the baseline, or pytest output was
+    # missing a summary line).
+    max_allowed = baseline_secs + threshold_secs
+    if env_max_allowed is not None:
+        max_allowed = env_max_allowed
     if elapsed > max_allowed:
         delta = elapsed - baseline_secs
-        border = "!" * 60
         print(
             f"\n{border}\n"
             f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
@@ -226,9 +314,23 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         "-q",
     ]
     start = time.monotonic()
-    result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False)
+    # Capture stdout so we can parse the "N passed" summary for the
+    # per-test-cost regression guard; tee to our stdout so the user
+    # still sees live pytest output.
+    result = subprocess.run(
+        cmd,
+        cwd=_REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
     elapsed = time.monotonic() - start
-    if _check_timing_regression(elapsed, run_all=run_all):
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+    test_count = _parse_test_count(result.stdout or "")
+    if _check_timing_regression(elapsed, run_all=run_all, test_count=test_count):
         # Regression detected -- block the push even if tests passed.
         return max(result.returncode, 1)
     return result.returncode
