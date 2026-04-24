@@ -12,6 +12,7 @@ controller.
 """
 
 import json
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -631,7 +632,7 @@ class MemoryService:
 
 
 def _check_source_dir_exists(source_dir: str) -> PreflightCheck:
-    """Verify that *source_dir* exists on disk and is a directory."""
+    """Verify that *source_dir* exists, is a directory, and is readable."""
     path = Path(source_dir)
     if not path.exists():
         return PreflightCheck(
@@ -645,6 +646,16 @@ def _check_source_dir_exists(source_dir: str) -> PreflightCheck:
             status="fail",
             message=NotBlankStr(f"Source path is not a directory: {source_dir}"),
         )
+    # Verify the runner can actually read it -- the pass message below
+    # claims "readable", so enforce that here rather than implying it.
+    if not os.access(path, os.R_OK):
+        return PreflightCheck(
+            name=NotBlankStr("source_dir_exists"),
+            status="fail",
+            message=NotBlankStr(
+                f"Source directory is not readable: {source_dir}",
+            ),
+        )
     return PreflightCheck(
         name=NotBlankStr("source_dir_exists"),
         status="pass",
@@ -653,7 +664,7 @@ def _check_source_dir_exists(source_dir: str) -> PreflightCheck:
 
 
 def _check_output_dir_writable(output_dir: str) -> PreflightCheck:
-    """Verify that *output_dir* is writable (or its parent is)."""
+    """Verify that *output_dir* (or its parent, if absent) is writable."""
     path = Path(output_dir)
     probe = path if path.exists() else path.parent
     if not probe.exists():
@@ -664,6 +675,16 @@ def _check_output_dir_writable(output_dir: str) -> PreflightCheck:
                 f"Output directory parent does not exist: {probe}",
             ),
             detail="The runner will attempt to create it at pipeline start.",
+        )
+    # Real permission check -- existence alone does not imply the runner
+    # can save checkpoints to ``probe``.
+    if not os.access(probe, os.W_OK):
+        return PreflightCheck(
+            name=NotBlankStr("output_dir_writable"),
+            status="fail",
+            message=NotBlankStr(
+                f"Output directory is not writable: {probe}",
+            ),
         )
     return PreflightCheck(
         name=NotBlankStr("output_dir_writable"),

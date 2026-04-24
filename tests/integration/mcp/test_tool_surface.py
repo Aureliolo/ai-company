@@ -1,19 +1,26 @@
-"""META-MCP-2 acceptance sweep for the full 204-tool MCP surface.
+"""META-MCP acceptance sweep for the full 204-tool MCP surface.
 
 The unit sweep in ``tests/unit/meta/mcp/test_all_handlers_wired.py``
 already asserts parity between the registry and the handler map, and
 guardrail rejection shape for the destructive subset.  This integration
-sweep layers the META-MCP-2 acceptance criterion on top:
+sweep layers the acceptance criteria on top:
 
 1. **Zero ``MCP_HANDLER_SERVICE_FALLBACK`` emissions** for any read or
    invoke path. The legacy ``service_fallback()`` helper stays in
    ``common.py`` for future surgical use, but it must have zero call
    sites in the handler tree after META-MCP-2.
-2. **Capability-gap envelopes are the *only* ``not_supported`` source**.
-   Tools whose underlying primitive does not yet expose the required
-   method emit ``MCP_HANDLER_CAPABILITY_GAP`` (INFO) instead, which
-   carries the same ``domain_code="not_supported"`` wire envelope
-   without polluting the legacy event channel.
+2. **Typed capability events are the only ``not_supported`` sources**.
+   Every ``not_supported`` wire envelope must be paired with either
+   - ``MCP_HANDLER_CAPABILITY_GAP`` (INFO): handler is wired but the
+     underlying primitive does not yet expose the required method, or
+   - ``MCP_HANDLER_NOT_IMPLEMENTED`` (WARNING): the active backend
+     cannot support the operation at all. META-MCP-4 introduced
+     :class:`BackendUnsupportedError` + :func:`not_supported` so the
+     memory fine-tune handlers emit this variant when the wired
+     :class:`MemoryService` refuses a lifecycle call.
+
+   Both events carry the same ``domain_code="not_supported"`` wire
+   envelope and must ship a matching ``tool_name`` for telemetry.
 3. **Every tool returns a well-formed envelope** -- ``status`` is
    always ``"ok"`` or ``"error"``, never ``"not_implemented"``.
 """

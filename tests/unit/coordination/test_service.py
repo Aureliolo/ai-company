@@ -1,6 +1,6 @@
 """Unit tests for :class:`CoordinationService`."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -33,7 +33,7 @@ def _record(
     return CoordinationMetricsRecord(
         task_id=NotBlankStr(task_id),
         agent_id=NotBlankStr("agent-lead"),
-        computed_at=_NOW,
+        computed_at=_NOW + timedelta(seconds=offset_seconds),
         team_size=team_size,
         metrics=metrics,
     )
@@ -44,8 +44,10 @@ class TestCoordinateTask:
 
     async def test_returns_newest_record(self) -> None:
         store = CoordinationMetricsStore()
-        store.record(_record("task-1"))
-        store.record(_record("task-1", team_size=5))
+        # Distinct ``computed_at`` timestamps so the "newest" record is
+        # unambiguous regardless of store-level tie-breaking.
+        store.record(_record("task-1", offset_seconds=0))
+        store.record(_record("task-1", offset_seconds=1, team_size=5))
         service = CoordinationService(metrics_store=store)
 
         result = await service.coordinate_task(NotBlankStr("task-1"))

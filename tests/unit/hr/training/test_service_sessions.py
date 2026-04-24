@@ -46,7 +46,19 @@ def _result(plan_id: str = "plan-1", new_agent_id: str = "agent-new") -> Trainin
 
 
 class _StubTrainingService(TrainingService):
-    """Subclass that skips the full pipeline for session tests."""
+    """Subclass that skips the full pipeline for session tests.
+
+    Intentionally bypasses ``TrainingService.__init__``: the real
+    constructor wires the full training pipeline (selector / curator /
+    trainer / validator / graduation gate), none of which these tests
+    exercise. We only call ``start_session`` / ``list_sessions`` /
+    ``get_session``, which rely exclusively on the three fields
+    manually initialised below (``_idempotency_lock``, ``_sessions``,
+    ``_session_lock``). If ``TrainingService.__init__`` gains new
+    initialisation logic that ``start_session`` depends on, these
+    tests will start failing -- that is the intended signal to update
+    this stub.
+    """
 
     def __init__(
         self,

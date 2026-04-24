@@ -333,6 +333,10 @@ class TestRunPreflight:
     ) -> None:
         monkeypatch.setattr(Path, "exists", lambda self: True)
         monkeypatch.setattr(Path, "is_dir", lambda self: True)
+        monkeypatch.setattr(
+            "synthorg.memory.service.os.access",
+            lambda _p, _m: True,
+        )
         service = _service(orchestrator=_FakeOrchestrator())
         plan = FineTunePlan(source_dir=NotBlankStr("/data/org-docs"))
 
@@ -347,6 +351,10 @@ class TestRunPreflight:
     ) -> None:
         monkeypatch.setattr(Path, "exists", lambda self: True)
         monkeypatch.setattr(Path, "is_dir", lambda self: True)
+        monkeypatch.setattr(
+            "synthorg.memory.service.os.access",
+            lambda _p, _m: True,
+        )
         service = _service(orchestrator=_FakeOrchestrator())
         plan = FineTunePlan(
             source_dir=NotBlankStr("/data/org-docs"),
@@ -359,6 +367,34 @@ class TestRunPreflight:
         override_checks = [c for c in result.checks if c.name == "override_bounds"]
         assert len(override_checks) == 1
         assert override_checks[0].status == "pass"
+
+    async def test_unreadable_source_dir_fails(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``os.access(R_OK)`` returning ``False`` fails the check.
+
+        Covers the "claims readable, isn't" gap Gemini flagged on
+        PR #1550 -- the pass message promises readability, so a
+        directory the runner cannot actually read must fail
+        preflight rather than proceed to pipeline start.
+        """
+        monkeypatch.setattr(Path, "exists", lambda self: True)
+        monkeypatch.setattr(Path, "is_dir", lambda self: True)
+        monkeypatch.setattr(
+            "synthorg.memory.service.os.access",
+            lambda _p, _m: False,
+        )
+        service = _service(orchestrator=_FakeOrchestrator())
+        plan = FineTunePlan(source_dir=NotBlankStr("/data/org-docs"))
+
+        result = await service.run_preflight(plan)
+
+        assert not result.can_proceed
+        source_checks = [c for c in result.checks if c.name == "source_dir_exists"]
+        assert source_checks
+        assert source_checks[0].status == "fail"
+        assert "not readable" in source_checks[0].message
 
 
 class TestListRunsPagination:

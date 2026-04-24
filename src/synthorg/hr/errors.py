@@ -96,3 +96,25 @@ class PromotionApprovalRequiredError(PromotionError):
 
 class PruningError(HRError):
     """Error during the pruning process."""
+
+
+# ── Personalities ───────────────────────────────────────────────
+
+
+class PersonalityError(HRError):
+    """Error in the personality preset catalogue."""
+
+
+class PersonalityNotFoundError(PersonalityError):
+    """Personality preset not found in the catalogue."""
+
+
+# ── Training ────────────────────────────────────────────────────
+
+
+class TrainingError(HRError):
+    """Error in the training pipeline."""
+
+
+class TrainingSessionNotFoundError(TrainingError):
+    """Training session not found in the session store."""

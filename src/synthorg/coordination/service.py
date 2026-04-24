@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination_metrics import (
-    COORD_METRICS_COLLECTION_COMPLETED,
+    COORD_METRICS_RECORD_FETCHED,
 )
 
 if TYPE_CHECKING:
@@ -74,7 +74,7 @@ class CoordinationService:
             return None
         record = records[0]
         logger.debug(
-            COORD_METRICS_COLLECTION_COMPLETED,
+            COORD_METRICS_RECORD_FETCHED,
             task_id=record.task_id,
             agent_id=record.agent_id,
             team_size=record.team_size,
@@ -102,7 +102,17 @@ class CoordinationService:
 
         Returns:
             Tuple of ``(page, total)``.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` is not
+                strictly positive.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         # Query enough rows to cover offset + limit; the store returns
         # newest-first already.
         page_rows, total = self._metrics_store.query(limit=offset + limit)

@@ -30,6 +30,11 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
 )
 
+# Minimum length of a path with a Windows drive letter prefix ("C:").
+# Declared before the class that uses it so the path-traversal check
+# reads in source order.
+_MIN_DRIVE_LETTER_LEN: Literal[2] = 2
+
 
 class BackendUnsupportedError(Exception):
     """Raised when the active persistence backend lacks fine-tune support.
@@ -223,10 +228,6 @@ class FineTunePlan(BaseModel):
             batch_size=self.batch_size,
             validation_split=self.validation_split,
         )
-
-
-# Minimum length of a path with a Windows drive letter prefix ("C:").
-_MIN_DRIVE_LETTER_LEN: Literal[2] = 2
 
 
 __all__ = [
