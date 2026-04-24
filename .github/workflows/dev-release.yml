@@ -31,20 +31,24 @@ jobs:
     permissions:
       contents: write
     steps:
-      # Belt-and-braces with the `on: push: branches: [main]` trigger.
-      # Fails fast if the workflow is ever invoked from another ref before
-      # the RELEASE_PLEASE_TOKEN is exposed via `env:` in later steps.
-      - name: Validate trigger branch
-        run: |
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "::error::dev-release.yml must only run on refs/heads/main, got: $GITHUB_REF"
-            exit 1
-          fi
-
+      # Full-history checkout: Compute dev version step below uses
+      # `git tag --sort` + `git rev-list` to compute the dev build number.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      # Shared setup: validate ref is refs/heads/main and mint the
+      # synthorg-release-bot App installation token. The minted token
+      # is needed so the tag-push step fires downstream Docker + CLI
+      # workflows -- GITHUB_TOKEN-authored pushes are suppressed by
+      # GitHub's anti-recursion rule, App tokens are not.
+      - name: Release runner setup
+        id: setup
+        uses: ./.github/actions/release-runner-setup
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
 
       - name: Check if commit already has a stable tag
         id: check-tag
@@ -120,19 +124,23 @@ jobs:
           && steps.version.outputs.skip != 'true'
           && steps.tag-exists.outputs.skip != 'true'
         env:
-          # Use PAT instead of github.token so the tag push triggers
-          # downstream workflows (Docker, CLI). Tags created with the
-          # default GITHUB_TOKEN do not fire push events for other
-          # workflows -- a GitHub Actions anti-recursion safeguard.
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # Use the App installation token minted above so the tag push
+          # triggers downstream workflows (Docker, CLI). Tags created with
+          # the default GITHUB_TOKEN do not fire push events for other
+          # workflows -- a GitHub Actions anti-recursion safeguard that
+          # does not apply to App tokens.
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
           DEV_TAG: ${{ steps.version.outputs.dev_tag }}
           DEV_NUM: ${{ steps.version.outputs.dev_num }}
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
 
-          # 1. Create the tag via API (PAT ensures the tag push triggers
-          #    downstream Docker + CLI workflows).
+          # 1. Create the tag via API. The App installation token minted
+          #    above carries the ``contents: write`` scope needed for
+          #    /git/refs POST AND -- unlike the ambient GITHUB_TOKEN --
+          #    its ref-create fires downstream ``push`` workflow events,
+          #    so the tag push triggers Docker + CLI.
           gh api "repos/$GITHUB_REPOSITORY/git/refs" \
             -f ref="refs/tags/$DEV_TAG" \
             -f sha="$GITHUB_SHA"

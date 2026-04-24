@@ -13,7 +13,7 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | Environment | Branch policy | Triggered by |
 |---|---|---|
 | `github-pages` | `main` | `pages.yml` push to main |
-| `release` | `main` | `release.yml` + `dev-release.yml` + `auto-rollover.yml` (main pushes), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main). Holds `RELEASE_PLEASE_TOKEN`. |
+| `release` | `main` | `release.yml` + `dev-release.yml` + `auto-rollover.yml` + `graduate.yml` + `test-signing.yml` (main-scoped), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main). Holds `RELEASE_BOT_APP_ID` + `RELEASE_BOT_APP_PRIVATE_KEY`. |
 | `release-tags` | `v*` | `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes). Structural ref gate only; no privileged secrets. |
 | `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
 | `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch |
@@ -24,10 +24,10 @@ The release path is intentionally split into two environments. GitHub's
 deployment branch policies only match ref *names* -- they do NOT verify
 that a tag's commit is reachable from an allowed branch. Admitting `v*`
 on the secret-bearing environment would let any `v`-prefixed tag
-(including one forged on an unmerged feature branch) unlock
-`RELEASE_PLEASE_TOKEN`. Keeping `release` main-only and routing tag-only
-jobs through `release-tags` preserves the structural ref gate without
-exposing the PAT.
+(including one forged on an unmerged feature branch) unlock the App
+credentials. Keeping `release` main-only and routing tag-only jobs
+through `release-tags` preserves the structural ref gate without
+exposing the App.
 
 ## Why `cloudflare-preview` and `atlas` have no branch policy
 
@@ -103,70 +103,125 @@ Secrets gated by deployment environments are only available to jobs whose
 `secrets.<NAME>` in its `env:` or step inputs must run under the
 environment that scopes the secret.
 
-### `RELEASE_PLEASE_TOKEN`
+### `RELEASE_BOT_APP_*`
 
-A GitHub Personal Access Token consumed by the release pipeline. Scoped
-under the `release` deployment environment.
+The release pipeline is authenticated by a dedicated GitHub App,
+`synthorg-release-bot`. Its credentials live in the `release`
+deployment environment as two secrets:
 
-**Purpose**:
+- `RELEASE_BOT_APP_ID` -- the numeric App ID shown on the App's
+  settings page.
+- `RELEASE_BOT_APP_PRIVATE_KEY` -- the full `.pem` contents verbatim,
+  including the opening and closing marker lines. Both markers must
+  be present and spelled exactly as emitted by the GitHub App page:
+  - Opening line: `-----BEGIN RSA PRIVATE KEY-----`
+  - Closing line: `-----END RSA PRIVATE KEY-----`
+  Paste the file contents exactly as downloaded -- GitHub's secret
+  store accepts multi-line values but silently strips trailing
+  whitespace, so do not hand-edit the `.pem`.
 
-- `release.yml` uses it only for the `googleapis/release-please-action`
-  step. Release Please needs a PAT so that its tag push on release-PR
-  merge triggers the downstream Docker + CLI build pipelines (tag
-  pushes from the default `GITHUB_TOKEN` are suppressed by GitHub's
-  anti-recursion rule). The BSL Change Date Contents API update uses
-  the default `GITHUB_TOKEN` instead, since it commits to the release
-  PR branch and does not need to trigger any workflow.
-- `dev-release.yml` uses it to create dev pre-release tags (e.g.
-  `v0.7.2-dev.3`). Unlike the default `GITHUB_TOKEN`, a PAT-authored tag
-  push triggers downstream workflows (docker.yml, cli.yml, etc.), which is
-  the intended behavior -- dev tags must run through the same build-sign-
-  attest pipeline as stable releases.
-- `auto-rollover.yml` uses it to create an empty `Release-As:` commit
-  on `main` via the Git Data API (`POST /git/commits` + `PATCH
-  /git/refs/heads/main`) when the last stable tag's patch is >= 9.
-  The PAT is required so the resulting commit triggers the downstream
-  `release.yml` + `dev-release.yml` workflows, and the API path gives
-  the commit a verified signature.
+**Why an App and not a PAT.** The prior implementation used a
+fine-grained PAT (`RELEASE_PLEASE_TOKEN`). PATs produce **unsigned**
+API commits -- the `required_signatures` rule on `main` rejects
+them. The only identities that yield GitHub-signed API commits are
+`GITHUB_TOKEN` and App installation tokens. `GITHUB_TOKEN` cannot
+be used here because its pushes are suppressed from firing
+downstream workflow events (GitHub's anti-recursion rule). The App
+token satisfies both constraints: commits verify as
+`{verified: true, reason: "valid"}` AND fire downstream
+workflows. See issue #1555 for the incident history.
 
-**Required PAT scopes** (fine-grained is strongly preferred):
+**Purpose**. Every release workflow mints a fresh short-lived App
+installation token (valid ≤1 hour) via the
+`release-runner-setup` composite action, which wraps
+`actions/create-github-app-token@v3.1.1`. Consumers:
 
-- **Fine-grained PAT (preferred)**: scope to the `Aureliolo/synthorg`
-  repository only, with these repository permissions:
+- `release.yml` -- `release-please-action` token input, so the RP
+  tag push on release-PR merge triggers Docker + CLI builds. The
+  BSL Change Date Contents API commit keeps `GITHUB_TOKEN` (lands
+  on the RP PR branch, not `main`; no recursion concern).
+- `dev-release.yml` -- tag creation for dev pre-releases via
+  `gh api`.
+- `auto-rollover.yml` -- empty `Release-As:` commit via the Git
+  Data API (`POST /git/commits` + `PATCH /git/refs/heads/main`).
+- `graduate.yml` -- user-triggered signed empty commit with a
+  `Release-As:` trailer for target versions that skip the normal
+  patch cadence.
+- `test-signing.yml` -- nightly verification that each of the
+  above paths produces a commit with
+  `{verified: true, reason: "valid"}`.
+
+**App configuration**. Ship the App with the minimum privilege set:
+
+- Owner: `Aureliolo` (personal account).
+- Install scope: `Aureliolo/synthorg` only. Single-repo install
+  bounds the blast radius to the intended target.
+- Repository permissions:
   - `Contents: Read and write`
   - `Pull requests: Read and write`
   - `Metadata: Read`
-- **Classic PAT (discouraged)**: requires the `repo` scope, which grants
-  full control of **all** private repositories the owner can access --
-  there is no way to narrow it to a single repo. Only use a classic PAT
-  if your org restricts fine-grained PATs. No org scopes (`admin:org`,
-  `admin:public_key`, `write:packages`, etc.) -- keep the blast radius at
-  repository-level authority.
+- Subscribe to **no** events -- this App has no webhook
+  endpoint and does not need to receive events.
 
-The token must NOT carry organization-level permissions. If this repo ever
-moves under an organization, revoke and re-issue a fine-grained token
-scoped to the new repo path rather than granting org admin.
+**Provisioning checklist** (follow once at setup):
 
-**Rotation**:
+1. Settings -> Developer settings -> GitHub Apps -> New GitHub App.
+2. Configure permissions + install scope as above.
+3. Generate a private key; download the `.pem`.
+4. Install the App on `Aureliolo/synthorg`.
+5. Copy the numeric App ID.
+6. Repo Settings -> Environments -> `release` -> Environment
+   secrets. Add `RELEASE_BOT_APP_ID` (numeric) and
+   `RELEASE_BOT_APP_PRIVATE_KEY` (full PEM contents).
+7. Confirm the action allowlist includes
+   `actions/create-github-app-token@*` (SHA-pinned in-workflow)
+   and `actions/ai-inference@*` (used by the release-notes
+   Highlights step in `release.yml`).
 
-- Expiry is owner-tracked; set a calendar reminder 30 days before the PAT
-  expiration.
-- `RELEASE_PLEASE_TOKEN` is scoped to the `release` **deployment
-  environment**, not the repo-level Actions secret store. Rotate via repo
-  Settings > Environments > `release` > Environment secrets > click
-  `RELEASE_PLEASE_TOKEN` > update secret. Updating the repo-level Actions
-  secret of the same name has no effect on the gated release jobs.
-- The old token remains valid until its expiry date even after updating
-  the environment secret; revoke the old PAT from the PAT owner's GitHub
-  settings to close the window.
+**Release Please is not being removed.** Only the *credential* it
+uses is changing. Release Please still creates release PRs,
+generates changelogs, and drafts releases on every push to `main`;
+this PR just swaps the long-lived `RELEASE_PLEASE_TOKEN` PAT for
+an ephemeral App installation token passed via
+`steps.setup.outputs.token` (see `release.yml`). Release Please
+itself needs a token -- that requirement does not go away -- it
+now receives the App token at job start instead of reading a PAT
+from a repo secret.
 
-**Access control**: the `release` environment's branch policy (`main`
-only) is the structural gate. A workflow triggered from any other ref
-cannot read the secret even if it declares `secrets.RELEASE_PLEASE_TOKEN`
-in its YAML. Tag-only release jobs (`cli.yml:cli-release`,
-`docker.yml:update-release`) deliberately run under the separate
-`release-tags` environment, which carries no privileged secrets, so a
-forged `v*` tag on unmerged code cannot unlock the PAT.
+**Sunset of the prior PAT** (`RELEASE_PLEASE_TOKEN`):
+
+After the first green release cycle under the App, complete the
+cutover in two steps:
+
+1. Delete the `RELEASE_PLEASE_TOKEN` secret from repo-level
+   Actions secrets (`Settings -> Secrets and variables ->
+   Actions`). The `no-release-please-token` pre-commit hook
+   prevents reintroduction at commit time, but removing the
+   secret value forces an immediate, visible failure if any
+   workflow ever tries to reference it again.
+2. Revoke the underlying fine-grained PAT on GitHub
+   (`Settings -> Developer settings -> Personal access tokens ->
+   Fine-grained tokens`). Revocation is irreversible; do this
+   step only after step 1 has survived at least one full release
+   cycle (stable + dev tag + at least one `auto-rollover` or
+   `graduate` invocation).
+
+**No rotation schedule**. Installation tokens are ephemeral --
+minted per workflow run and valid for at most one hour, then
+discarded. The only long-lived secret is the App private key,
+rotated only if the key file is compromised. Private-key rotation
+is a two-step: generate a new key in the App settings, replace
+`RELEASE_BOT_APP_PRIVATE_KEY` in the `release` environment,
+delete the old key.
+
+**Access control**. The `release` environment's branch policy
+(`main` only) is the structural gate. A workflow triggered from
+any other ref cannot read `RELEASE_BOT_APP_*` even if it
+declares them in its YAML. Tag-only release jobs
+(`cli.yml:cli-release`, `docker.yml:update-release`) run under
+the separate `release-tags` environment, which carries no
+privileged secrets, so a forged `v*` tag on unmerged code
+cannot reach the App credentials.
 
 ## Testing the `apko-lock` gate
 

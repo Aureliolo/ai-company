@@ -1,0 +1,64 @@
+name: Release runner setup
+description: >-
+  Shared setup for release-pipeline workflows (release.yml, dev-release.yml,
+  auto-rollover.yml). Asserts the triggering ref is refs/heads/main and mints
+  a short-lived installation token for the `synthorg-release-bot` GitHub App.
+  The minted token is exposed on the `token` output so downstream steps can
+  use it for API calls that produce signed commits AND fire downstream
+  workflows -- the two constraints PAT + GITHUB_TOKEN could not satisfy
+  together. See docs/reference/github-environments.md#release_bot_app_ for
+  provisioning.
+
+  Callers MUST have checked out the repository before invoking this composite
+  -- the action.yml file needs to exist on the runner's disk. Every current
+  caller already performs its own checkout (with per-workflow `fetch-depth`
+  semantics), so this composite deliberately does not include one.
+
+inputs:
+  app-id:
+    description: "GitHub App ID (pass `${{ secrets.RELEASE_BOT_APP_ID }}`)."
+    required: true
+  app-private-key:
+    description: "GitHub App private key (pass `${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}`)."
+    required: true
+  validate-branch:
+    description: "When 'true', assert $GITHUB_REF == 'refs/heads/main' before minting the token. Every current caller sets this implicitly to true; the input exists so a future workflow_dispatch-based caller can opt out."
+    required: false
+    default: "true"
+
+outputs:
+  token:
+    description: "Minted App installation token. Reference via steps.<id>.outputs.token in downstream steps."
+    value: ${{ steps.app-token.outputs.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate trigger branch
+      if: inputs.validate-branch == 'true'
+      shell: bash
+      run: |
+        if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+          echo "::error::Release workflow must only run on refs/heads/main, got: $GITHUB_REF"
+          exit 1
+        fi
+
+    # A missing RELEASE_BOT_APP_ID / RELEASE_BOT_APP_PRIVATE_KEY secret
+    # fails this step fast with an informative error, so callers do not
+    # need a separate preflight. App-token-authored API commits are
+    # GitHub-signed (verify via `gh api .../commits/<sha> --jq
+    # '.commit.verification'` -> expect `verified: true, reason: "valid"`)
+    # AND trigger downstream workflows.
+    - name: Mint release-bot App token
+      id: app-token
+      uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-private-key }}
+        # Single-repo install -- the App must be installed on exactly
+        # this repo. `owner` + `repositories` together pin the
+        # installation lookup; without them the action walks every
+        # installation the App is authorised for, which opens the door
+        # to token minting for a forked install if one is ever created.
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}

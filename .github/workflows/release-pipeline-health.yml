@@ -1,0 +1,320 @@
+name: Release Pipeline Health
+
+# Nightly integrity check of the latest stable release. Verifies:
+#   - Every commit in the release shows `{verified: true, reason: "valid"}`.
+#   - Every CLI asset has a cosign signature bundle.
+#   - The Verification section in the release body lists the SLSA provenance
+#     commands + SBOM links (i.e. finalize-release.yml ran to completion).
+#   - SLSA provenance attestations are queryable via `gh attestation` for each
+#     container image digest referenced in the Verification section.
+#
+# On red, creates / updates a pinned tracking issue labeled
+# `automation:release-events`. Same notification-sink pattern as
+# test-signing.yml.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 7 * * *"
+
+permissions: {}
+
+concurrency:
+  group: release-pipeline-health
+  cancel-in-progress: false
+
+jobs:
+  health-check:
+    name: Latest stable release integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      attestations: read
+    outputs:
+      conclusion: ${{ steps.report.outputs.conclusion }}
+      failures: ${{ steps.report.outputs.failures }}
+      tag: ${{ steps.latest.outputs.tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve latest stable release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          if [ -z "$TAG" ]; then
+            echo "::error::No stable release found"
+            exit 1
+          fi
+          echo "Latest stable release: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          PREV=$(git tag --sort=-v:refname --list 'v[0-9]*.[0-9]*.[0-9]*' \
+            | grep -vE '\-(dev|rc|alpha|beta)' \
+            | grep -vxF "$TAG" | head -1 || true)
+          echo "Previous stable release: ${PREV:-<none>}"
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+
+      - name: Verify commit signatures in release range
+        id: commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+          PREV: ${{ steps.latest.outputs.prev }}
+        run: |
+          set -euo pipefail
+          # Enumerate commits via local git rev-list (we have
+          # fetch-depth: 0). The prior ``gh api commits?sha=$TAG&per_page=100``
+          # path silently capped at 100 commits, which would mask a
+          # signature regression on any release range longer than that
+          # -- a very real case for a minor bump off v0.X.9. rev-list
+          # walks the full history up to the bound without pagination.
+          if [ -n "$PREV" ]; then
+            COMMITS=$(git rev-list "$PREV..$TAG")
+          else
+            COMMITS=$(git rev-list "$TAG")
+          fi
+
+          FAILED=()
+          while read -r sha; do
+            [ -z "$sha" ] && continue
+            v=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$sha" --jq '.verification')
+            verified=$(jq -r '.verified' <<< "$v")
+            reason=$(jq -r '.reason' <<< "$v")
+            if [ "$verified" != "true" ] || [ "$reason" != "valid" ]; then
+              FAILED+=("$sha ($reason)")
+            fi
+          done <<< "$COMMITS"
+
+          if [ "${#FAILED[@]}" -gt 0 ]; then
+            echo "::error::$(printf '%d unverified commits in %s: %s' "${#FAILED[@]}" "$TAG" "${FAILED[*]}")"
+            printf 'failed_commits<<EOF\n%s\nEOF\n' "$(printf '%s\n' "${FAILED[@]}")" >> "$GITHUB_OUTPUT"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "All release commits verify as valid."
+          fi
+
+      - name: Check cosign signatures on release assets
+        id: assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+
+          # The CLI release flow signs ``checksums.txt`` with cosign
+          # (cli.yml "Sign checksums with cosign") and attaches both
+          # ``checksums.txt`` and ``checksums.txt.cosign.bundle`` to the
+          # draft release. Per-archive ``.sig`` / ``.sigstore.json``
+          # siblings are NOT published; checking for them would report
+          # every healthy release as broken. Verify the bundle pair
+          # instead, which is the actual signing contract.
+          MISSING=()
+          grep -qxF 'checksums.txt' <<< "$ASSETS" \
+            || MISSING+=('checksums.txt')
+          grep -qxF 'checksums.txt.cosign.bundle' <<< "$ASSETS" \
+            || MISSING+=('checksums.txt.cosign.bundle')
+
+          # And confirm at least one CLI binary asset exists -- if the
+          # bundle shipped but no archives did, that is also a failure
+          # mode. GoReleaser emits Os/Arch lowercase, so the grep is
+          # lowercase too (Linux/Darwin/Windows capitalisation was a
+          # typo in the first draft -- verified against v0.7.2 assets).
+          CLI_COUNT=$(grep -cE '^synthorg_(linux|darwin|windows)_' <<< "$ASSETS" || true)
+          if [ "$CLI_COUNT" -lt 1 ]; then
+            MISSING+=('no synthorg_<OS>_<ARCH> CLI archives found')
+          fi
+
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo "::error::$(printf 'cosign signing contract broken: %s' "${MISSING[*]}")"
+            printf 'missing<<EOF\n%s\nEOF\n' "$(printf '%s\n' "${MISSING[@]}")" >> "$GITHUB_OUTPUT"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "checksums.txt + .cosign.bundle present; $CLI_COUNT CLI archives attached."
+          fi
+
+          # Assert at least one SBOM asset is attached -- finalize-release
+          # uploads one CycloneDX JSON per container image.
+          SBOM_COUNT=$(grep -cE '^sbom-.+\.cdx\.json$' <<< "$ASSETS" || true)
+          echo "sbom_count=$SBOM_COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$SBOM_COUNT" -lt 1 ]; then
+            echo "sbom_ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "sbom_ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Verification section integrity
+        id: body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          set -euo pipefail
+          BODY=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
+
+          MISSING=()
+          grep -qE '^## Verification' <<< "$BODY" || MISSING+=("## Verification section")
+          grep -qE '^### CLI Checksums' <<< "$BODY" || MISSING+=("### CLI Checksums subsection")
+          grep -qE '^### (Provenance|Container Image Signatures)' <<< "$BODY" || MISSING+=("### Provenance / Container Image Signatures subsection")
+          grep -qE '^### Software Bill of Materials' <<< "$BODY" || MISSING+=("### SBOM subsection")
+
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo "::error::$(printf 'Verification section incomplete: %s' "${MISSING[*]}")"
+            printf 'missing<<EOF\n%s\nEOF\n' "$(printf '%s\n' "${MISSING[@]}")" >> "$GITHUB_OUTPUT"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "Verification section is complete."
+          fi
+
+      - name: Verify SLSA provenance attestations
+        id: attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # SLSA L3 provenance attestations on this repo are keyed by
+          # container image DIGEST (sha256:...), not by commit SHA. The
+          # prior HEAD_SHA-only check only confirmed GitHub had a
+          # build-level attestation for the tag commit, not that each
+          # published image digest actually carries one -- a regression
+          # in the docker.yml attestation step would have slipped past.
+          #
+          # Extract every ``sha256:<digest>`` reference from the release
+          # body's Digest Pins section and verify each digest returns at
+          # least one attestation via /attestations/<digest>. Missing
+          # digests fail the check; no digests in the body is a separate
+          # failure (means finalize-release.yml did not write the
+          # Verification section correctly).
+          BODY=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
+          mapfile -t DIGESTS < <(
+            grep -oE 'sha256:[0-9a-f]{64}' <<< "$BODY" | sort -u
+          )
+          if [ "${#DIGESTS[@]}" -eq 0 ]; then
+            echo "::error::No sha256 digests found in release body -- attestations cannot be verified"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Found ${#DIGESTS[@]} unique digest(s) in release body"
+
+          MISSING=()
+          for digest in "${DIGESTS[@]}"; do
+            if ! gh api "repos/$GITHUB_REPOSITORY/attestations/$digest" \
+                --jq '.attestations | length' 2>/dev/null \
+                | grep -qE '^[1-9][0-9]*$'; then
+              MISSING+=("$digest")
+            fi
+          done
+
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo "::error::$(printf '%d digest(s) missing SLSA attestations: %s' "${#MISSING[@]}" "${MISSING[*]}")"
+            printf 'missing<<EOF\n%s\nEOF\n' "$(printf '%s\n' "${MISSING[@]}")" >> "$GITHUB_OUTPUT"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "All ${#DIGESTS[@]} digests carry at least one SLSA attestation."
+          fi
+
+      - name: Aggregate + emit conclusion
+        id: report
+        env:
+          COMMITS_OK: ${{ steps.commits.outputs.ok }}
+          ASSETS_OK: ${{ steps.assets.outputs.ok }}
+          SBOM_OK: ${{ steps.assets.outputs.sbom_ok }}
+          ATTESTATIONS_OK: ${{ steps.attestations.outputs.ok }}
+          BODY_OK: ${{ steps.body.outputs.ok }}
+        run: |
+          FAILURES=()
+          [ "$COMMITS_OK" != "true" ] && FAILURES+=("commit-signatures")
+          [ "$ASSETS_OK" != "true" ] && FAILURES+=("asset-signatures")
+          [ "$SBOM_OK" != "true" ] && FAILURES+=("sbom-assets")
+          # ``skipped`` = best-effort (tag pre-dates attestation backfill).
+          if [ "$ATTESTATIONS_OK" != "true" ] && [ "$ATTESTATIONS_OK" != "skipped" ]; then
+            FAILURES+=("provenance-attestations")
+          fi
+          [ "$BODY_OK" != "true" ] && FAILURES+=("release-body")
+          if [ "${#FAILURES[@]}" -gt 0 ]; then
+            echo "conclusion=failure" >> "$GITHUB_OUTPUT"
+            echo "failures=${FAILURES[*]}" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "conclusion=success" >> "$GITHUB_OUTPUT"
+          echo "failures=" >> "$GITHUB_OUTPUT"
+
+  report-failure:
+    name: Open / update tracking issue on regression
+    needs: health-check
+    if: always() && needs.health-check.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Post / update tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FAILURES: ${{ needs.health-check.outputs.failures }}
+          TAG: ${{ needs.health-check.outputs.tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE='Release pipeline health regression'
+          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:release-events' \
+            --search "in:title \"$TITLE\"" --json number,title \
+            --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
+
+          BODY=$(cat <<EOF
+          Nightly release-pipeline health check failed at $(date -u +%Y-%m-%dT%H:%M:%SZ).
+
+          - **Release:** \`$TAG\`
+          - **Failing checks:** \`$FAILURES\`
+          - **Run:** ${RUN_URL}
+
+          Categories:
+          - \`commit-signatures\`: one or more commits in the release range do not verify as \`{verified: true, reason: "valid"}\`.
+          - \`asset-signatures\`: \`checksums.txt\` or \`checksums.txt.cosign.bundle\` missing from the release assets, or no CLI archives attached.
+          - \`sbom-assets\`: no \`sbom-*.cdx.json\` asset attached to the release.
+          - \`provenance-attestations\`: no SLSA attestations returned from \`repos/.../attestations/<sha>\`.
+          - \`release-body\`: the Verification section appended by finalize-release.yml is missing required subsections.
+
+          See docs/reference/github-environments.md and docs/reference/claude-reference.md§Releasing.
+          EOF
+          )
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            # Parse ``gh issue create``'s stdout URL for the issue
+            # number rather than relying on ``--json`` (see release-
+            # events.yml for the version-compatibility rationale).
+            ISSUE_URL=$(gh issue create --title "$TITLE" \
+              --label 'automation:release-events,type:ci,prio:high' \
+              --body "$BODY")
+            ISSUE_NUMBER="${ISSUE_URL##*/}"
+            echo "Created tracking issue #$ISSUE_NUMBER"
+          else
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          fi
+
+          # Pin the tracking issue so it stays visible at the top of
+          # Issues until the regression is acknowledged + closed. A repo
+          # can pin at most 3 issues; if pinning fails (quota hit, race
+          # on an already-pinned issue, permission revoked), log a
+          # ::warning:: rather than failing the whole workflow -- the
+          # comment / create above is the primary signal, pinning is
+          # best-effort affordance.
+          if ! gh api --method PUT \
+              "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/pin" \
+              --silent 2>/dev/null; then
+            echo "::warning::could not pin tracking issue #$ISSUE_NUMBER (quota / race / permission)"
+          else
+            echo "Pinned tracking issue #$ISSUE_NUMBER"
+          fi

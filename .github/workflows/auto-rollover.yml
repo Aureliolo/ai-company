@@ -31,30 +31,26 @@ jobs:
       contents: write
       pull-requests: read
     steps:
-      # Belt-and-braces with the `on: push: branches: [main]` trigger.
-      - name: Validate trigger branch
-        run: |
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "::error::auto-rollover.yml must only run on refs/heads/main, got: $GITHUB_REF"
-            exit 1
-          fi
-
-      # Surface missing/empty token up front instead of as a cryptic auth
-      # error at `git push` time. The `release` environment guards access but
-      # the secret itself can still be misconfigured at the org/repo level.
-      - name: Validate token
-        env:
-          TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-        run: |
-          if [ -z "$TOKEN" ]; then
-            echo "::error::RELEASE_PLEASE_TOKEN secret is missing or empty"
-            exit 1
-          fi
-
+      # Full-history checkout: the "Check if rollover is needed" step
+      # walks git tags via `git tag --sort=-v:refname` and compares the
+      # last stable tag's commit against HEAD, which requires complete
+      # history.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      # Shared setup: validate ref is refs/heads/main and mint the
+      # synthorg-release-bot App installation token. The minted token
+      # is needed so the rollover commit on main is GitHub-signed (main
+      # enforces signed commits via branch protection) AND triggers the
+      # downstream Release + Dev Release workflows.
+      - name: Release runner setup
+        id: setup
+        uses: ./.github/actions/release-runner-setup
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
 
       - name: Check if rollover is needed
         id: check
@@ -62,6 +58,30 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          # Threshold lives in release-please-config.json under the
+          # custom key `__synthorg_rollover_at_patch` so release pipeline
+          # configuration stays in one place. Default 9 preserves the
+          # pre-#1555 behaviour; RP itself ignores the field.
+          RAW_ROLLOVER_AT=$(jq -r '.packages["."].__synthorg_rollover_at_patch // null' \
+            .github/release-please-config.json)
+          if [ "$RAW_ROLLOVER_AT" = "null" ]; then
+            # Fallback is documented, but log it so a silent schema rename
+            # (packages["."] -> packages["synthorg"] etc.) surfaces as a
+            # notice in the run log instead of a silent rollover at 9.
+            echo "::notice::__synthorg_rollover_at_patch missing from release-please-config.json; defaulting to 9"
+            ROLLOVER_AT=9
+          else
+            ROLLOVER_AT="$RAW_ROLLOVER_AT"
+          fi
+          if ! [[ "$ROLLOVER_AT" =~ ^[0-9]+$ ]]; then
+            echo "::error::__synthorg_rollover_at_patch is not a non-negative integer (got: $ROLLOVER_AT)"
+            exit 1
+          fi
+          if [ "$ROLLOVER_AT" != "9" ]; then
+            echo "::warning::Non-default rollover threshold: __synthorg_rollover_at_patch=$ROLLOVER_AT"
+          fi
+          echo "Resolved rollover threshold: patch=$ROLLOVER_AT"
 
           LAST_STABLE=$(git tag --sort=-v:refname --list 'v[0-9]*.[0-9]*.[0-9]*' \
             | grep -vE '\-(dev|rc|alpha|beta)' | head -1 || true)
@@ -75,11 +95,12 @@ jobs:
           VERSION="${LAST_STABLE#v}"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
 
-          # Roll over whenever patch >= 9 (next bump would reach or exceed .10).
-          # Defensive: the typical trigger is patch == 9, but this also recovers
-          # if a 0.X.10+ tag somehow slipped through.
-          if [ "$PATCH" -lt 9 ]; then
-            echo "Last stable patch is $PATCH; no rollover needed."
+          # Roll over whenever patch >= ROLLOVER_AT (next bump would reach
+          # or exceed ROLLOVER_AT+1). Defensive: the typical trigger is
+          # patch == ROLLOVER_AT, but this also recovers if a higher-patch
+          # tag somehow slipped through.
+          if [ "$PATCH" -lt "$ROLLOVER_AT" ]; then
+            echo "Last stable patch is $PATCH; rollover threshold is $ROLLOVER_AT; no rollover needed."
             echo "needed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -113,13 +134,14 @@ jobs:
       - name: Create rollover commit
         if: steps.check.outputs.needed == 'true'
         env:
-          # PAT (not GITHUB_TOKEN) is required so the resulting commit
-          # triggers downstream release.yml + dev-release.yml workflows
-          # (GITHUB_TOKEN-authored commits are suppressed by GitHub's
-          # anti-recursion rule). Git Data API commits are signed by
-          # GitHub when the PAT owner has vigilant mode enabled -- this
-          # matches release-please's own signature pattern on this repo.
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # App installation token (not GITHUB_TOKEN) so the resulting
+          # commit triggers downstream release.yml + dev-release.yml
+          # workflows (GITHUB_TOKEN-authored commits are suppressed by
+          # GitHub's anti-recursion rule, which does not apply to App
+          # tokens). Git Data API commits from an App token are signed
+          # with GitHub's internal key, attributed to the App's bot
+          # identity, and verify as `{verified: true, reason: "valid"}`.
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
           NEXT_VERSION: ${{ steps.check.outputs.next_version }}
         run: |
           set -euo pipefail

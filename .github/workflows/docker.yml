@@ -1111,9 +1111,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Uses `release-tags` (v*-only, no privileged secrets), not `release`
-    # (main-only, holds RELEASE_PLEASE_TOKEN). This job writes release
-    # notes via the ambient `GITHUB_TOKEN`, so it does not need the
-    # release-please PAT.
+    # (main-only, holds the `synthorg-release-bot` App credentials). This
+    # job writes release notes via the ambient `GITHUB_TOKEN`, so it
+    # does not need the App token.
     environment: release-tags
     permissions:
       contents: write

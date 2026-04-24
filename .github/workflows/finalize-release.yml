@@ -42,15 +42,16 @@ jobs:
     # of which tag triggered the upstream workflow, so the `release` env's
     # `main`-only branch policy matches cleanly. The workflow-level `if:` guard
     # still enforces that the triggering workflow ran on a tag starting with `v`.
-    # This job does not consume `RELEASE_PLEASE_TOKEN`, but sharing the env
-    # with the release-please jobs keeps the main-scoped gate consistent.
+    # This job does not consume the `synthorg-release-bot` App token, but
+    # sharing the env with the release-please jobs keeps the main-scoped
+    # gate consistent.
     environment: release
     permissions:
       actions: read
       contents: write
     steps:
-      - name: Check both workflows and publish draft
-        id: publish
+      - name: Preflight (both workflows succeeded + draft exists)
+        id: preflight
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.workflow_run.head_branch }}
@@ -67,28 +68,26 @@ jobs:
           # If the triggering workflow failed, no point checking the other
           if [ "$WORKFLOW_CONCLUSION" != "success" ]; then
             echo "Triggering workflow failed -- skipping."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # Check status of both workflows for this tag.
-          # gh run list --branch works for both branches and tags.
-          # --status completed filters out in-progress re-triggered runs.
           CLI_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
             --workflow cli.yml --branch "$TAG" --event push --commit "$HEAD_SHA" \
             --limit 1 --status completed \
             --json conclusion --jq '.[0].conclusion // "pending"')
-
           DOCKER_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
             --workflow docker.yml --branch "$TAG" --event push --commit "$HEAD_SHA" \
             --limit 1 --status completed \
             --json conclusion --jq '.[0].conclusion // "pending"')
-
           echo "CLI: $CLI_CONCLUSION"
           echo "Docker: $DOCKER_CONCLUSION"
 
           if [ "$CLI_CONCLUSION" != "success" ] || [ "$DOCKER_CONCLUSION" != "success" ]; then
             echo "Not all workflows succeeded yet (CLI=$CLI_CONCLUSION, Docker=$DOCKER_CONCLUSION)."
             echo "The other workflow's completion will trigger another attempt."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -96,15 +95,131 @@ jobs:
           if ! IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
               --json isDraft --jq '.isDraft' 2>/dev/null); then
             echo "Release $TAG not found -- nothing to publish."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           if [ "$IS_DRAFT" != "true" ]; then
             echo "Release $TAG is not a draft (isDraft=$IS_DRAFT). Already published."
             # Still signal published so the cleanup step can run on reruns
-            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+      # ── Smoke-test the artifacts before publishing ──
+      # Blocks draft -> published transition if the backend image cannot
+      # serve /healthz or the CLI binary cannot report its version. Runs
+      # in ~5 min, scoped tightly so unrelated image regressions do not
+      # permanently block publishes (the upstream docker.yml / cli.yml
+      # already gate on this; this step catches the subset of failures
+      # that only manifest at actual run-time).
+      - name: Smoke-test backend image /healthz
+        if: steps.preflight.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/aureliolo/synthorg-backend:${TAG#v}"
+          echo "Pulling $IMAGE"
+          docker pull "$IMAGE"
+          echo "Starting container"
+          # The image's setup wizard falls back to ephemeral SQLite when
+          # no DATABASE_URL is provided -- sufficient for a /healthz
+          # smoke-test without provisioning external state.
+          CID=$(docker run -d --rm -p 3001:3001 "$IMAGE")
+          trap 'docker logs "$CID" 2>&1 | tail -50; docker stop "$CID" >/dev/null 2>&1 || true' EXIT
+
+          # Poll /healthz for 120s. 200 means readiness; non-200 / connection
+          # refused means keep trying. Exit 1 if still failing at deadline.
+          # Each attempt captures the HTTP status so debug logs show WHY
+          # the probe was still failing (boot time, 5xx, conn-refused) --
+          # ``curl -sf`` on its own silently returns exit 22 on any non-2xx
+          # and leaves nothing to investigate in a flake postmortem.
+          deadline=$((SECONDS + 120))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempt_code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/healthz 2>/dev/null || echo "conn-refused")
+            if [ "$attempt_code" = "200" ]; then
+              echo "/healthz returned 200 after ${SECONDS}s"
+              exit 0
+            fi
+            echo "/healthz attempt at ${SECONDS}s: ${attempt_code}"
+            sleep 3
+          done
+          echo "::error::/healthz did not return 200 within 120s; blocking publish"
+          exit 1
+
+      - name: Smoke-test CLI binary --version
+        if: steps.preflight.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          TMP=$(mktemp -d)
+          trap 'rm -rf "$TMP"' EXIT
+
+          # GoReleaser name_template in cli/.goreleaser.yml is
+          # ``synthorg_{{ .Os }}_{{ .Arch }}`` -- GoReleaser substitutes
+          # GOOS / GOARCH lowercase, so the Linux amd64 archive is
+          # published as ``synthorg_linux_amd64.tar.gz``. Verified against
+          # the v0.7.2 release assets list; the prior ``Linux_x86_64``
+          # spelling never existed on any published release. The
+          # companion ``checksums.txt`` is cosign-signed + SLSA-attested
+          # (cli.yml "Sign checksums with cosign" step) so trusting its
+          # contents is reasonable for a smoke-test gate. We pull that
+          # file alongside the archive and verify SHA-256 before exec.
+          VER="${TAG#v}"
+          ASSET="synthorg_linux_amd64.tar.gz"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$ASSET" --dir "$TMP"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'checksums.txt' --dir "$TMP"
+
+          EXPECTED=$(grep -E "  ${ASSET}$" "$TMP/checksums.txt" | awk '{print $1}')
+          if [ -z "$EXPECTED" ] || ! [[ "$EXPECTED" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Could not extract SHA-256 for $ASSET from checksums.txt; blocking publish"
+            exit 1
+          fi
+          ACTUAL=$(sha256sum "$TMP/$ASSET" | awk '{print $1}')
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Checksum mismatch for $ASSET (expected $EXPECTED, got $ACTUAL); blocking publish"
+            exit 1
+          fi
+          echo "Checksum verified for $ASSET"
+
+          tar -xzf "$TMP/$ASSET" -C "$TMP"
+
+          # Capture BOTH the binary's stdout/stderr AND its exit code.
+          # The prior ``|| true`` let a crashing binary that happened to
+          # print the version before dying silently pass the grep below;
+          # ``set +e`` + explicit rc check blocks that path.
+          set +e
+          VERSION_OUT=$("$TMP/synthorg" --version 2>&1)
+          version_rc=$?
+          set -e
+          echo "CLI --version output: $VERSION_OUT"
+          if [ "$version_rc" -ne 0 ]; then
+            echo "::error::synthorg --version exited non-zero (rc=$version_rc); blocking publish"
+            exit 1
+          fi
+          if ! printf '%s\n' "$VERSION_OUT" | grep -qF "$VER"; then
+            echo "::error::CLI --version output does not contain '$VER'; blocking publish"
+            exit 1
+          fi
+
+      - name: Assemble + publish draft
+        if: steps.preflight.outputs.proceed == 'true'
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
 
           # ── Assemble combined Verification section ──
           # CLI and Docker workflows embed verification data in HTML comments.
@@ -278,12 +393,14 @@ jobs:
           echo "published=true" >> "$GITHUB_OUTPUT"
 
       # ── Clean up ALL dev pre-releases and tags after a stable release ──
-      # Deletes every release and tag matching vX.Y.Z-dev.N, regardless of
-      # draft/published/pre-release status. Only runs when a stable release
-      # was just published (not for dev releases themselves).
+      # Deletes every release and tag matching the dev-tag regex, regardless
+      # of draft/published/pre-release status. Only runs when a stable release
+      # was just published (not for dev releases themselves). The already_published
+      # branch handles replays after a concurrent run won the publish race.
       - name: Clean up dev pre-releases and tags
         if: >-
-          steps.publish.outputs.published == 'true'
+          (steps.publish.outputs.published == 'true'
+             || steps.preflight.outputs.already_published == 'true')
           && !contains(github.event.workflow_run.head_branch, '-dev.')
         env:
           GH_TOKEN: ${{ github.token }}
