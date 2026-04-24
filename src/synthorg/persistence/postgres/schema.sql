@@ -12,8 +12,28 @@
 --   * BOOLEAN for fields that SQLite stores as INTEGER 0/1
 --   * BIGINT / DOUBLE PRECISION for SQLite INTEGER / REAL
 --   * BIGINT GENERATED ALWAYS AS IDENTITY for AUTOINCREMENT rowids
+--
+-- Postgres-native features the SQLite schema cannot mirror:
+--   * GIN indexes over JSONB columns
+--     (audit_entries.matched_rules, messages.metadata,
+--      lifecycle_events.metadata, conflict_escalations.conflict_json).
+--     The Postgres-only ``query_jsonb_contains`` /
+--     ``query_jsonb_key_exists`` capability protocol exposes these.
+--   * ``CONSTRAINT TRIGGER`` enforcement of HR invariants
+--     (enforce_ceo_minimum, enforce_owner_minimum) that SQLite
+--     enforces with simpler ``BEFORE UPDATE/DELETE`` triggers.
+--   * Partial unique indexes such as
+--     ``idx_ftc_single_active WHERE is_active = TRUE``; SQLite mirrors
+--     the same shape via ``WHERE is_active = 1``, but the boolean type
+--     prefix differs.
+--
+-- See the SQLite schema header for the column-level inventory of
+-- TEXT-vs-JSONB, INTEGER-vs-BOOLEAN, and TEXT-vs-TIMESTAMPTZ pairings.
+--
 -- Repositories at the Python level return identical Pydantic models from
--- both backends; only the wire serialization differs.
+-- both backends; only the wire serialization differs, and the conformance
+-- suite at tests/conformance/persistence/ exercises every repository
+-- against both backends to keep drift honest.
 
 -- ── Tasks ─────────────────────────────────────────────────────
 CREATE TABLE tasks (
