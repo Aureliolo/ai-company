@@ -109,3 +109,21 @@ COMM_TOOL_TEMPLATE_RENDER_INVALID: Final[str] = (
 COMM_DISSENT_PUBLISHED: Final[str] = "communication.dissent.published"
 COMM_DISSENT_PUBLISH_FAILED: Final[str] = "communication.dissent.publish_failed"
 COMM_DISSENT_EMITTED: Final[str] = "communication.dissent.emitted"
+
+# MCP facade events (META-MCP-2)
+COMMUNICATION_MESSAGE_SENT_VIA_MCP: Final[str] = "communication.message.sent_via_mcp"
+COMMUNICATION_MESSAGE_DELETED: Final[str] = "communication.message.deleted"
+COMMUNICATION_MEETING_CREATED: Final[str] = "communication.meeting.created"
+COMMUNICATION_MEETING_UPDATED: Final[str] = "communication.meeting.updated"
+COMMUNICATION_MEETING_DELETED: Final[str] = "communication.meeting.deleted"
+COMMUNICATION_CONNECTION_CREATED: Final[str] = "communication.connection.created"
+COMMUNICATION_CONNECTION_DELETED: Final[str] = "communication.connection.deleted"
+COMMUNICATION_CONNECTION_HEALTH_CHECKED: Final[str] = (
+    "communication.connection.health_checked"
+)
+COMMUNICATION_WEBHOOK_CREATED: Final[str] = "communication.webhook.created"
+COMMUNICATION_WEBHOOK_UPDATED: Final[str] = "communication.webhook.updated"
+COMMUNICATION_WEBHOOK_DELETED: Final[str] = "communication.webhook.deleted"
+COMMUNICATION_TUNNEL_CONNECTED: Final[str] = "communication.tunnel.connected"
+COMMUNICATION_TUNNEL_STATUS_CHECKED: Final[str] = "communication.tunnel.status_checked"
+COMMUNICATION_TUNNEL_PROVIDER_ERROR: Final[str] = "communication.tunnel.provider_error"

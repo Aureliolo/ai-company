@@ -1,9 +1,11 @@
 """Meta (self-improvement) domain MCP handlers.
 
-5 tools.  Two are live -- ``list_mcp_tools`` reflects the registry and
-``get_mcp_server_config`` returns the server metadata.  The others
-need a ``SelfImprovementService`` facade on ``app_state`` that is not
-yet exposed, so they return ``service_fallback``.
+5 tools.  Three are live -- ``list_mcp_tools`` reflects the registry,
+``get_mcp_server_config`` returns the server metadata, and
+``list_rules`` shims through :class:`CustomRulesService`.  The
+remaining two (``get_config`` and ``trigger_cycle``) require facades on
+``SelfImprovementService`` that have not been exposed on ``app_state``
+yet, so they return a ``capability_gap`` envelope.
 """
 
 import copy
@@ -13,15 +15,25 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
+    from synthorg.meta.rules.service import CustomRulesService
 
+from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
-from synthorg.meta.mcp.handlers.common import err, ok, service_fallback
+from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
+    capability_gap,
+    coerce_pagination,
+    err,
+    ok,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
+    MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
+    MCP_HANDLER_LAZY_SERVICE_INIT,
 )
 
 logger = get_logger(__name__)
@@ -31,14 +43,19 @@ _WHY_CONFIG = (
     "self-improvement config read requires SelfImprovementService; "
     "no facade on app_state yet"
 )
-_WHY_RULES = (
-    "custom-rule listing runs through the custom_rules controller; "
-    "no service facade on app_state"
-)
 _WHY_TRIGGER = (
-    "improvement-cycle triggering is invoked through the scheduler "
-    "on app_state.ceremony_scheduler, not through an MCP entry point"
+    "improvement-cycle triggering requires SelfImprovementService; "
+    "no facade on app_state yet"
 )
+
+
+def _log_invalid(tool: str, exc: Exception) -> None:
+    logger.warning(
+        MCP_HANDLER_ARGUMENT_INVALID,
+        tool_name=tool,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
 
 
 def _log_failed(tool: str, exc: Exception) -> None:
@@ -50,22 +67,81 @@ def _log_failed(tool: str, exc: Exception) -> None:
     )
 
 
+def _custom_rules_service(app_state: Any) -> CustomRulesService:
+    """Return the custom-rules service facade.
+
+    Prefers ``app_state.custom_rules_service`` when bootstrap has wired
+    one; otherwise builds it per-call from
+    ``app_state.persistence.custom_rules`` and emits
+    ``MCP_HANDLER_LAZY_SERVICE_INIT`` so ops telemetry sees legacy
+    wiring.  The per-call fallback mirrors the controller layer in
+    ``api.controllers.custom_rules`` and is retained so handlers keep
+    working on ``AppState`` instances constructed before the
+    ``custom_rules_service`` slot was added; new bootstraps should
+    wire the service up front to skip the fallback log entirely.
+    """
+    cached = getattr(app_state, "custom_rules_service", None)
+    if cached is not None:
+        return cached  # type: ignore[no-any-return]
+    logger.debug(
+        MCP_HANDLER_LAZY_SERVICE_INIT,
+        tool_name="meta._custom_rules_service",
+        service="custom_rules_service",
+        reason="app_state.custom_rules_service not wired -- building per-call",
+    )
+    from synthorg.meta.rules.service import CustomRulesService  # noqa: PLC0415
+
+    return CustomRulesService(repo=app_state.persistence.custom_rules)
+
+
+def _rule_to_dict(rule: Any) -> dict[str, Any]:
+    return {
+        "id": str(rule.id),
+        "name": rule.name,
+        "description": rule.description,
+        "metric_path": rule.metric_path,
+        "comparator": rule.comparator.value,
+        "threshold": rule.threshold,
+        "severity": rule.severity.value,
+        "target_altitudes": [a.value for a in rule.target_altitudes],
+        "enabled": rule.enabled,
+        "created_at": rule.created_at.isoformat(),
+        "updated_at": rule.updated_at.isoformat(),
+    }
+
+
 async def _meta_get_config(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_meta_get_config", _WHY_CONFIG)
+    return capability_gap("synthorg_meta_get_config", _WHY_CONFIG)
 
 
 async def _meta_list_rules(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_meta_list_rules", _WHY_RULES)
+    tool = "synthorg_meta_list_rules"
+    try:
+        offset, limit = coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    try:
+        page, total = await _custom_rules_service(app_state).list_rules(
+            offset=offset,
+            limit=limit,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=[_rule_to_dict(r) for r in page], pagination=pagination)
 
 
 async def _meta_list_mcp_tools(
@@ -116,7 +192,7 @@ async def _meta_trigger_cycle(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_meta_trigger_cycle", _WHY_TRIGGER)
+    return capability_gap("synthorg_meta_trigger_cycle", _WHY_TRIGGER)
 
 
 META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

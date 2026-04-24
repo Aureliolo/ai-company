@@ -67,3 +67,9 @@ EVOLUTION_SHADOW_MISCONFIGURED: Final[str] = "evolution.shadow.misconfigured"
 # ── Factory/config errors ──────────────────────────────────────
 
 EVOLUTION_INVALID_STORE_TYPE: Final[str] = "evolution.store.invalid_type"
+
+# ── Outcome store events (META-MCP-2: feeds SignalsService evolution aggregator)
+
+EVOLUTION_OUTCOME_RECORDED: Final[str] = "evolution.outcome.recorded"
+EVOLUTION_OUTCOME_RECORD_FAILED: Final[str] = "evolution.outcome.record_failed"
+EVOLUTION_OUTCOME_STORE_EVICTED: Final[str] = "evolution.outcome.store_evicted"

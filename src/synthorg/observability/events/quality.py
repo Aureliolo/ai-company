@@ -10,3 +10,8 @@ QUALITY_ACCURACY_EFFORT_COMPUTED: Final[str] = (
     "execution.quality.accuracy_effort_computed"
 )
 QUALITY_WEAK_MODEL_WARNING: Final[str] = "execution.quality.weak_model_warning"
+
+# -- MCP audit events ----------------------------------------------------
+
+REVIEW_CREATED_VIA_MCP: Final[str] = "quality.review.created_via_mcp"
+REVIEW_UPDATED_VIA_MCP: Final[str] = "quality.review.updated_via_mcp"

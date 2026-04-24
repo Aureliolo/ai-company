@@ -225,3 +225,21 @@ integrations:
 `ProviderConfig` now supports a `connection_name` field that references a
 connection in the catalog.  When set, credentials are resolved from the
 catalog at runtime instead of using embedded `api_key` / OAuth fields.
+
+## MCP Service Facades
+
+The integrations domain exposes five service facades on `AppState` for
+MCP handler shims:
+
+| Facade | Module | Tools shimmed |
+|---|---|---|
+| `ClientFacadeService` | `synthorg.integrations.mcp_services` | `synthorg_clients_list`/`_get`/`_create`/`_deactivate`/`_get_satisfaction` |
+| `ArtifactFacadeService` | `synthorg.integrations.mcp_services` | `synthorg_artifacts_list`/`_get`/`_create`/`_delete` |
+| `OntologyFacadeService` | `synthorg.integrations.mcp_services` | `synthorg_ontology_list_entities`/`_get_entity`/`_get_relationships`/`_search` |
+| `MCPCatalogFacadeService` | `synthorg.integrations.mcp_services` | `synthorg_mcp_catalog_list`/`_search`/`_get`/`_install`/`_uninstall` |
+| `OAuthFacadeService` | `synthorg.integrations.mcp_services` | `synthorg_oauth_list_providers`/`_configure_provider`/`_remove_provider` |
+
+All destructive operations (`_delete`, `_deactivate`, `_uninstall`,
+`_remove_provider`) route through `require_destructive_guardrails()` and
+emit `MCP_DESTRUCTIVE_OP_EXECUTED` on success. Artifact delete performs
+storage deletion before index removal so the two cannot diverge silently.

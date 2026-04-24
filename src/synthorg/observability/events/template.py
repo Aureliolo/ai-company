@@ -69,3 +69,7 @@ TEMPLATE_PACK_BUDGET_REBALANCED: Final[str] = "template.pack.budget_rebalanced"
 TEMPLATE_PACK_BUDGET_REJECTED: Final[str] = "template.pack.budget_rejected"
 TEMPLATE_PACK_CIRCULAR: Final[str] = "template.pack.circular"
 TEMPLATE_PACK_SETTING_NOT_FOUND: Final[str] = "template.pack.setting_not_found"
+
+# MCP audit events
+TEMPLATE_PACK_INSTALLED_VIA_MCP: Final[str] = "template.pack.installed_via_mcp"
+TEMPLATE_PACK_UNINSTALLED_VIA_MCP: Final[str] = "template.pack.uninstalled_via_mcp"

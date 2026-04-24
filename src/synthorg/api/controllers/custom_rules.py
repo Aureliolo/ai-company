@@ -205,7 +205,7 @@ class CustomRuleController(Controller):
         Returns:
             Paginated custom rule definitions.
         """
-        rules = await _service(state).list_rules()
+        rules, _total = await _service(state).list_rules()
         entries = tuple(rule_to_dict(r) for r in rules)
         page, meta = paginate_cursor(
             entries,

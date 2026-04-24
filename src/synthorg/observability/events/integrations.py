@@ -127,3 +127,20 @@ PROVIDER_CONNECTION_RESOLVED: Final[str] = "integrations.provider.connection_res
 PROVIDER_CONNECTION_RESOLUTION_FAILED: Final[str] = (
     "integrations.provider.connection_resolution_failed"
 )
+
+# -- MCP audit events ----------------------------------------------------
+
+MCP_CATALOG_INSTALLED_VIA_MCP: Final[str] = "integrations.mcp_catalog.installed_via_mcp"
+MCP_CATALOG_UNINSTALLED_VIA_MCP: Final[str] = (
+    "integrations.mcp_catalog.uninstalled_via_mcp"
+)
+OAUTH_PROVIDER_CONFIGURED_VIA_MCP: Final[str] = (
+    "integrations.oauth.provider_configured_via_mcp"
+)
+OAUTH_PROVIDER_REMOVED_VIA_MCP: Final[str] = (
+    "integrations.oauth.provider_removed_via_mcp"
+)
+CLIENT_CREATED_VIA_MCP: Final[str] = "integrations.client.created_via_mcp"
+CLIENT_DEACTIVATED_VIA_MCP: Final[str] = "integrations.client.deactivated_via_mcp"
+ARTIFACT_CREATED_VIA_MCP: Final[str] = "integrations.artifact.created_via_mcp"
+ARTIFACT_DELETED_VIA_MCP: Final[str] = "integrations.artifact.deleted_via_mcp"

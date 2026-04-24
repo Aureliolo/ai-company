@@ -5,7 +5,7 @@ Shims the 8 task tools onto ``app_state.task_engine``
 ``cancel`` are destructive and enforce the standard
 ``confirm=True`` + non-blank ``reason`` + non-``None`` ``actor`` triple.
 ``activities_list`` has no dedicated service method; it returns a
-``service_fallback`` envelope.
+``capability_gap`` envelope.
 """
 
 import copy
@@ -27,6 +27,7 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    capability_gap,
     coerce_pagination,
     dump_many,
     err,
@@ -34,7 +35,6 @@ from synthorg.meta.mcp.handlers.common import (
     paginate_sequence,
     require_arg,
     require_destructive_guardrails,
-    service_fallback,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -204,7 +204,7 @@ async def _tasks_create(
     # CreateTaskData requires type/priority/complexity/budget_limit/created_by
     # that the current MCP schema does not expose; promoting task creation
     # to a first-class MCP tool is a separate design task.
-    return service_fallback(
+    return capability_gap(
         "synthorg_tasks_create",
         "task creation requires the full CreateTaskData schema "
         "(type, priority, complexity, budget_limit); use the "
@@ -384,7 +384,7 @@ async def _activities_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback(
+    return capability_gap(
         "synthorg_activities_list",
         "activity feed is assembled in hr.activity module; no streaming "
         "endpoint is exposed on app_state",
