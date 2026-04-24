@@ -789,8 +789,12 @@ jobs:
               "${REPO}:${SHA_TAG}-amd64" \
               "${REPO}:${SHA_TAG}-arm64"
             PUSH_OUT=$(docker manifest push "${REPO}:${t}")
+            # Extract the sha256 digest explicitly; `docker manifest
+            # push` can emit extra status lines on some Docker versions,
+            # and a multiline DIGEST would silently corrupt cosign /
+            # attest-build-provenance subject refs below.
             if [ "$t" = "${SHA_TAG}" ]; then
-              DIGEST="$PUSH_OUT"
+              DIGEST="$(printf '%s\n' "$PUSH_OUT" | grep -Eo 'sha256:[0-9a-f]{64}' | tail -n1)"
             fi
           done
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"

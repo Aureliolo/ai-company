@@ -131,8 +131,13 @@ runs:
 
           # Capture the manifest digest of the sha-<short> tag as the
           # canonical output -- that is what cosign + attest will sign.
+          # `docker manifest push` may emit additional status lines
+          # alongside the digest on some Docker versions, so extract the
+          # last sha256 token explicitly -- a multiline DIGEST would
+          # silently corrupt cosign / attest-build-provenance subject
+          # refs downstream.
           if [ "$t" = "sha-${SHORT_SHA}" ]; then
-            DIGEST="$PUSH_OUT"
+            DIGEST="$(printf '%s\n' "$PUSH_OUT" | grep -Eo 'sha256:[0-9a-f]{64}' | tail -n1)"
           fi
         done <<< "$META_TAGS"
 
