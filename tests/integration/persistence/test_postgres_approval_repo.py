@@ -1,16 +1,16 @@
-"""Integration tests for :class:`PostgresApprovalRepository` (ARC-1).
+"""Postgres-specific integration tests for ``PostgresApprovalRepository``.
 
-Requires a real Postgres via ``testcontainers``; runs under the
-``integration`` marker.  Uses the shared ``postgres_backend`` fixture
-from :mod:`tests.integration.persistence.conftest` so migrations are
-applied once per session.
+The protocol-surface coverage (save/get/list/delete/upsert) lives in
+``tests/conformance/persistence/test_approval_repository.py``, exercised
+against both backends through the parametrized ``backend`` fixture.
 
-Mirrors the SQLite-side coverage in
-``tests/unit/api/test_approval_store.py`` and the
-``PostgresEscalationRepository`` integration suite so the dual-backend
-parity that ARC-1 establishes is actually exercised on real Postgres
-wire protocol (JSONB round-trips, TIMESTAMPTZ handling, commit
-semantics, constraint violations).
+This file holds the cases that are inherently Postgres-only because
+they bypass the protocol to drive raw psycopg primitives:
+
+* JSONB rows accepted at the wire layer but rejected by Pydantic
+* Primary-key duplication via raw ``INSERT`` (skipping ``ON CONFLICT``)
+* DB-side ``CHECK`` constraints surfacing as ``ConstraintViolationError``
+* Backend capability methods (``build_ontology_versioning``)
 """
 
 from datetime import UTC, datetime, timedelta
@@ -30,6 +30,9 @@ from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 
+_FIXED_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+
 def _make_item(  # noqa: PLR0913 -- test factory with explicit knobs
     *,
     approval_id: str = "approval-pg-0001",
@@ -40,7 +43,7 @@ def _make_item(  # noqa: PLR0913 -- test factory with explicit knobs
     metadata: dict[str, str] | None = None,
 ) -> ApprovalItem:
     """Build an ApprovalItem with sensible defaults."""
-    now = datetime.now(UTC)
+    now = _FIXED_NOW
     decided_at: datetime | None = None
     decided_by: str | None = None
     decision_reason: str | None = None
@@ -76,134 +79,6 @@ def repo(
     return PostgresApprovalRepository(postgres_backend._pool)
 
 
-async def test_save_and_get_round_trip(
-    repo: PostgresApprovalRepository,
-) -> None:
-    """A pending item round-trips across the wire without drift."""
-    item = _make_item(
-        approval_id="approval-rt-001",
-        metadata={"source_rule": "rule-A", "confidence": "0.93"},
-    )
-    await repo.save(item)
-    fetched = await repo.get(item.id)
-    assert fetched is not None
-    assert fetched.id == item.id
-    assert fetched.status == ApprovalStatus.PENDING
-    assert fetched.action_type == item.action_type
-    assert fetched.metadata == item.metadata
-    # TIMESTAMPTZ round-trips preserve aware datetimes.
-    assert fetched.created_at.tzinfo is not None
-    assert fetched.expires_at is not None
-    assert fetched.expires_at.tzinfo is not None
-
-
-async def test_get_returns_none_when_absent(
-    repo: PostgresApprovalRepository,
-) -> None:
-    assert await repo.get("approval-missing-999") is None
-
-
-async def test_save_commits_survives_reconnect(
-    repo: PostgresApprovalRepository,
-    postgres_backend: PostgresPersistenceBackend,
-) -> None:
-    """Writes persist through a fresh connection -- guards against the
-    silent-rollback bug where missing ``await conn.commit()`` would
-    make writes vanish on pool return.
-    """
-    item = _make_item(approval_id="approval-commit-001")
-    await repo.save(item)
-
-    # Build a second repository around the same pool; if the first
-    # save didn't commit, this reader would see nothing.
-    assert postgres_backend._pool is not None
-    second_repo = PostgresApprovalRepository(postgres_backend._pool)
-    fetched = await second_repo.get(item.id)
-    assert fetched is not None
-    assert fetched.id == item.id
-
-
-async def test_list_items_filters(
-    repo: PostgresApprovalRepository,
-) -> None:
-    """Filter combinations drive WHERE clause construction correctly."""
-    pending = _make_item(
-        approval_id="approval-list-pending",
-        status=ApprovalStatus.PENDING,
-        risk_level=ApprovalRiskLevel.MEDIUM,
-        action_type="scaling:hire",
-    )
-    approved = _make_item(
-        approval_id="approval-list-approved",
-        status=ApprovalStatus.APPROVED,
-        risk_level=ApprovalRiskLevel.HIGH,
-        action_type="scaling:hire",
-    )
-    rejected = _make_item(
-        approval_id="approval-list-rejected",
-        status=ApprovalStatus.REJECTED,
-        risk_level=ApprovalRiskLevel.CRITICAL,
-        action_type="deploy:production",
-    )
-    await repo.save(pending)
-    await repo.save(approved)
-    await repo.save(rejected)
-
-    pending_only = await repo.list_items(status=ApprovalStatus.PENDING)
-    pending_ids = {i.id for i in pending_only}
-    assert pending.id in pending_ids
-    assert approved.id not in pending_ids
-
-    hires = await repo.list_items(action_type="scaling:hire")
-    hire_ids = {i.id for i in hires}
-    assert pending.id in hire_ids
-    assert approved.id in hire_ids
-    assert rejected.id not in hire_ids
-
-    crits = await repo.list_items(risk_level=ApprovalRiskLevel.CRITICAL)
-    crit_ids = {i.id for i in crits}
-    assert rejected.id in crit_ids
-
-
-async def test_delete_round_trip(
-    repo: PostgresApprovalRepository,
-) -> None:
-    """Delete returns True then False on repeat; the row is gone."""
-    item = _make_item(approval_id="approval-delete-001")
-    await repo.save(item)
-    assert await repo.get(item.id) is not None
-
-    deleted_first = await repo.delete(item.id)
-    assert deleted_first is True
-    assert await repo.get(item.id) is None
-
-    deleted_second = await repo.delete(item.id)
-    assert deleted_second is False
-
-
-async def test_save_update_overwrites(
-    repo: PostgresApprovalRepository,
-) -> None:
-    """Repeating save() upserts; status transitions are visible."""
-    item = _make_item(
-        approval_id="approval-upsert-001",
-        status=ApprovalStatus.PENDING,
-    )
-    await repo.save(item)
-    updated = item.model_copy(
-        update={
-            "status": ApprovalStatus.APPROVED,
-            "decided_at": datetime.now(UTC),
-            "decided_by": "operator-b",
-        },
-    )
-    await repo.save(updated)
-    fetched = await repo.get(item.id)
-    assert fetched is not None
-    assert fetched.status == ApprovalStatus.APPROVED
-    assert fetched.decided_by == "operator-b"
-
-
 async def test_pydantic_invalid_row_raises_query_error(
     repo: PostgresApprovalRepository,
     postgres_backend: PostgresPersistenceBackend,
@@ -236,7 +111,7 @@ async def test_pydantic_invalid_row_raises_query_error(
                 "agent-eng-001",
                 "high",
                 "pending",
-                datetime.now(UTC),
+                _FIXED_NOW,
                 None,
                 None,
                 None,
@@ -318,7 +193,7 @@ async def test_constraint_violation_surfaces_from_save(
     # The Pydantic validator refuses to build this state directly, so
     # use model_construct to bypass field validation and force the DB
     # CHECK to surface the violation.
-    now = datetime.now(UTC)
+    now = _FIXED_NOW
     bad_item = ApprovalItem.model_construct(
         id="approval-ck-001",
         action_type="deploy:production",

@@ -5,8 +5,14 @@ so the controller stays thin (parse / shape / return) and the raw
 ``app_state.persistence.get_db()`` handle stays inside the persistence
 package where it belongs.
 
-Fine-tuning operates against SQLite backends; non-SQLite backends that do
-not expose ``fine_tune_runs`` / ``fine_tune_checkpoints`` raise a typed
+The service is backend-agnostic: both SQLite and Postgres expose the
+``FineTuneRunRepository`` + ``FineTuneCheckpointRepository`` protocols
+via ``PersistenceBackend.fine_tune_runs`` and
+``PersistenceBackend.fine_tune_checkpoints``, and the parametrized
+conformance suite at ``tests/conformance/persistence/`` exercises both
+arms on every run. When an active backend still does not expose those
+repos (or the orchestrator has not been wired for the current
+deployment), the fine-tune lifecycle methods raise a typed
 :class:`BackendUnsupportedError` so MCP handlers can route the failure
 through the standard ``not_supported()`` envelope.
 """

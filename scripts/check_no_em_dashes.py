@@ -37,7 +37,17 @@ def main() -> int:
             print(f"WARNING: skipping {path}: {exc}", file=sys.stderr)
             continue
     if found:
-        print("\nEm-dashes (U+2014) found -- use ASCII double-dashes (--) instead.")
+        print(
+            "\nEm-dashes (U+2014) found. Replace with the ASCII punctuation that"
+            " matches the sentence. Usually one of:\n"
+            "  : (colon)          - introducing a list, clause, or explanation\n"
+            "  ; (semicolon)      - joining two independent clauses\n"
+            "  , (comma)          - short aside or enumeration\n"
+            "  . (period)         - split into two sentences\n"
+            "  ( ... )            - parenthetical aside\n"
+            "  -                  - compound hyphen only (do NOT use for asides)\n"
+            "Bare '--' is almost never right; prefer one of the above or rewrite."
+        )
         return 1
     return 0
 

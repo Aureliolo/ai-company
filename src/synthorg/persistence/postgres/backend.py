@@ -60,6 +60,10 @@ from synthorg.persistence.postgres.custom_rule_repo import (
     PostgresCustomRuleRepository,
 )
 from synthorg.persistence.postgres.decision_repo import PostgresDecisionRepository
+from synthorg.persistence.postgres.fine_tune_repo import (
+    PostgresFineTuneCheckpointRepository,
+    PostgresFineTuneRunRepository,
+)
 from synthorg.persistence.postgres.heartbeat_repo import (
     PostgresHeartbeatRepository,
 )
@@ -246,6 +250,8 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._project_cost_aggregates: PostgresProjectCostAggregateRepository | None = (
             None
         )
+        self._fine_tune_runs: PostgresFineTuneRunRepository | None = None
+        self._fine_tune_checkpoints: PostgresFineTuneCheckpointRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset pool and repository references to ``None``."""
@@ -290,6 +296,8 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._org_facts = None
         self._ontology_entities = None
         self._ontology_drift = None
+        self._fine_tune_runs = None
+        self._fine_tune_checkpoints = None
 
     def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active pool."""
@@ -367,6 +375,8 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._org_facts = PostgresOrgFactRepository(pool)
         self._ontology_entities = PostgresOntologyEntityRepository(pool)
         self._ontology_drift = PostgresOntologyDriftReportRepository(pool)
+        self._fine_tune_runs = PostgresFineTuneRunRepository(pool)
+        self._fine_tune_checkpoints = PostgresFineTuneCheckpointRepository(pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
@@ -589,29 +599,16 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
 
     @property
     def fine_tune_checkpoints(self) -> FineTuneCheckpointRepository:
-        """Repository for fine-tune checkpoint persistence.
-
-        Fine-tuning is SQLite-only today; the Postgres backend does not
-        expose a matching table. Callers (currently the memory admin
-        controller) must guard against non-SQLite backends rather than
-        accessing this property. Raising here surfaces the mismatch
-        loudly instead of silently returning an SQLite-specific repo
-        constructed over a Postgres connection.
-        """
-        msg = (
-            "Fine-tune checkpoint persistence is SQLite-only; "
-            "the Postgres backend does not yet provide an implementation."
+        """Repository for fine-tune checkpoint persistence."""
+        return self._require_connected(
+            self._fine_tune_checkpoints,
+            "fine_tune_checkpoints",
         )
-        raise NotImplementedError(msg)
 
     @property
     def fine_tune_runs(self) -> FineTuneRunRepository:
-        """Repository for fine-tune pipeline runs (SQLite-only, see above)."""
-        msg = (
-            "Fine-tune run persistence is SQLite-only; "
-            "the Postgres backend does not yet provide an implementation."
-        )
-        raise NotImplementedError(msg)
+        """Repository for fine-tune pipeline runs."""
+        return self._require_connected(self._fine_tune_runs, "fine_tune_runs")
 
     @property
     def connections(self) -> InMemoryConnectionRepository:

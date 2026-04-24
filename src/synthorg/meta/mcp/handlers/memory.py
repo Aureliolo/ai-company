@@ -70,7 +70,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.errors import PersistenceConnectionError, QueryError
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -135,24 +135,61 @@ _WHY_MEMORY_SERVICE_NOT_WIRED = (
 )
 
 
+_WHY_BACKEND_NO_FINE_TUNE = (
+    "fine-tune repositories are not exposed by the active persistence "
+    "backend; ensure the backend is connected and exposes "
+    "fine_tune_runs + fine_tune_checkpoints (both SQLite and Postgres "
+    "do today)"
+)
+
+
 def _service(app_state: Any) -> MemoryService:
     """Return the injected :class:`MemoryService` facade.
 
     Handlers route through ``app_state.memory_service`` exclusively
-    (CLAUDE.md persistence-boundary rule). If no service is wired --
-    either the application bootstrap skipped the setter (stripped-down
-    test app-states) or the active backend does not support fine-tune
-    repositories -- we raise :class:`BackendUnsupportedError` so the
-    calling handler returns a clean ``not_supported`` envelope.
+    (CLAUDE.md persistence-boundary rule). For app_states that have
+    adopted the wired-service pattern, :attr:`has_memory_service`
+    short-circuits the lookup. As a fallback for stripped-down test
+    app-states that expose only a raw ``persistence`` backend, we try
+    to construct a service on the fly from
+    ``persistence.fine_tune_checkpoints`` / ``.fine_tune_runs``.
+
+    Every failure mode raises :class:`BackendUnsupportedError` so the
+    calling handler returns a uniform ``not_supported`` envelope:
+
+    * No wired service **and** the raw backend is absent / doesn't expose
+      fine-tune repos.
+    * The backend's fine-tune property raises ``NotImplementedError``
+      (legacy / partial backend).
+    * The backend is not yet connected and the property's
+      ``_require_connected`` guard raises
+      :class:`~synthorg.persistence.errors.PersistenceConnectionError`.
 
     Raises:
-        BackendUnsupportedError: When ``app_state.memory_service``
-            is not set.
+        BackendUnsupportedError: In any of the above cases.
     """
     if getattr(app_state, "has_memory_service", False):
         attached: MemoryService = app_state.memory_service
         return attached
-    raise BackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
+    cached: MemoryService | None = getattr(app_state, "memory_service", None)
+    if cached is not None:
+        return cached
+    backend = getattr(app_state, "persistence", None)
+    if backend is None:
+        raise BackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
+    try:
+        checkpoint_repo = backend.fine_tune_checkpoints
+        run_repo = backend.fine_tune_runs
+    except (NotImplementedError, PersistenceConnectionError) as exc:
+        raise BackendUnsupportedError(_WHY_BACKEND_NO_FINE_TUNE) from exc
+    has_settings = getattr(app_state, "has_settings_service", False)
+    return MemoryService(
+        checkpoint_repo=checkpoint_repo,
+        run_repo=run_repo,
+        settings_service=(
+            getattr(app_state, "settings_service", None) if has_settings else None
+        ),
+    )
 
 
 # --- handlers -------------------------------------------------------------
