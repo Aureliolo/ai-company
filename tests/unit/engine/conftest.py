@@ -60,7 +60,7 @@ from synthorg.providers.models import (
 from tests.unit.engine.task_engine_helpers import FakeMessageBus, FakePersistence
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Mapping
 
     from synthorg.core.enums import ConflictEscalation
     from synthorg.engine.workspace.models import (
@@ -293,6 +293,13 @@ class MockCompletionProvider:
             cost_per_1k_input=0.01,
             cost_per_1k_output=0.03,
         )
+
+    async def batch_get_capabilities(
+        self,
+        models: tuple[str, ...],
+    ) -> Mapping[str, ModelCapabilities | None]:
+        """Return capabilities for each requested model."""
+        return {m: await self.get_model_capabilities(m) for m in models}
 
 
 def make_completion_response(

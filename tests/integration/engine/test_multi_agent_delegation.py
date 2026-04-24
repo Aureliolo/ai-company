@@ -76,7 +76,7 @@ from synthorg.providers.models import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Mapping
 
     from synthorg.providers.capabilities import ModelCapabilities
 
@@ -176,6 +176,13 @@ class _DeterministicProvider:
             cost_per_1k_input=0.01,
             cost_per_1k_output=0.03,
         )
+
+    async def batch_get_capabilities(
+        self,
+        models: tuple[str, ...],
+    ) -> Mapping[str, ModelCapabilities | None]:
+        """Return capabilities for each requested model."""
+        return {m: await self.get_model_capabilities(m) for m in models}
 
 
 # ── Agent Factories ────────────────────────────────────────────────

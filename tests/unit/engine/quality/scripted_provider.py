@@ -6,7 +6,7 @@ silent drift between the two suites.
 """
 
 import copy
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 from synthorg.providers.capabilities import ModelCapabilities
@@ -162,3 +162,10 @@ class ScriptedProvider:
         """Return the configured capabilities regardless of ``model``."""
         del model
         return self._capabilities
+
+    async def batch_get_capabilities(
+        self,
+        models: tuple[str, ...],
+    ) -> Mapping[str, ModelCapabilities | None]:
+        """Return the configured capabilities keyed by each requested model."""
+        return dict.fromkeys(models, copy.deepcopy(self._capabilities))
