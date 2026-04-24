@@ -5,7 +5,7 @@ On-demand reference for product telemetry. The short rule in `CLAUDE.md` is: tel
 ## Enabling
 
 - Off by default. Enable with `SYNTHORG_TELEMETRY=true` or the `telemetry.enabled` setting.
-- Delivery backend is Logfire; missing token or extra downgrades to the noop reporter silently.
+- Delivery backend is Logfire; missing token or invalid extra config downgrades to the noop reporter silently.
 
 ## Privacy by allowlist
 
