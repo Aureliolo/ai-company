@@ -1,4 +1,5 @@
-import { GraduationCap } from 'lucide-react'
+import { GraduationCap, Users } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -137,6 +138,12 @@ export default function TrainingPage() {
       <SectionCard title="Agent training plans" icon={GraduationCap}>
         {loading ? (
           <SkeletonTable rows={6} />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="No agents to train"
+            description="Agents appear here once the company has been set up. Run the setup wizard to bring a roster online."
+          />
         ) : (
           <TrainingPlanTable rows={rows} onExecute={handleExecute} />
         )}

@@ -7,6 +7,13 @@ export interface SearchInputHandle {
   clear: () => void
 }
 
+export type SearchInputWidth = 'narrow' | 'wide'
+
+const SEARCH_WIDTH_STYLE: Record<SearchInputWidth, string> = {
+  narrow: 'var(--so-search-max-narrow)',
+  wide: 'var(--so-search-max-wide)',
+}
+
 export interface SearchInputProps {
   value: string
   onChange: (value: string) => void
@@ -20,6 +27,12 @@ export interface SearchInputProps {
    */
   focusShortcut?: boolean
   disabled?: boolean
+  /**
+   * Maximum width cap. `'wide'` (default) suits list-page primary search;
+   * `'narrow'` suits compact contexts like settings search. Mapped to
+   * `--so-search-max-*` tokens so the cap adapts with theme density.
+   */
+  maxWidth?: SearchInputWidth
   className?: string
   /** React 19 style ref that exposes `focus` and `clear` imperative methods. */
   ref?: RefObject<SearchInputHandle | null>
@@ -39,6 +52,7 @@ export function SearchInput({
   ariaLabel = 'Search',
   focusShortcut = false,
   disabled,
+  maxWidth = 'wide',
   className,
   ref,
 }: SearchInputProps) {
@@ -63,7 +77,10 @@ export function SearchInput({
   }, [focusShortcut, disabled])
 
   return (
-    <div className={cn('relative', className)}>
+    <div
+      className={cn('relative w-full', className)}
+      style={{ maxWidth: SEARCH_WIDTH_STYLE[maxWidth] }}
+    >
       <Search
         className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden="true"

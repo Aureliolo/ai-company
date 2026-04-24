@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { AnimatePresence } from 'motion/react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Filter, Plus, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { ROUTES } from '@/router/routes'
 import { useWorkflowsData } from '@/hooks/useWorkflowsData'
@@ -8,6 +8,7 @@ import { useWorkflowsStore } from '@/stores/workflows'
 import { Button } from '@/components/ui/button'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -154,7 +155,20 @@ export default function WorkflowsPage() {
       )}
 
       <WorkflowFilters />
-      {viewMode === 'grid' ? (
+      {totalWorkflows > 0 && filteredWorkflows.length === 0 ? (
+        <EmptyState
+          icon={Filter}
+          title="No matching workflows"
+          description="Try a different search, loosen the workflow-type filter, or clear everything."
+          action={{
+            label: 'Clear filters',
+            onClick: () => {
+              useWorkflowsStore.getState().setSearchQuery('')
+              useWorkflowsStore.getState().setWorkflowTypeFilter(null)
+            },
+          }}
+        />
+      ) : viewMode === 'grid' ? (
         <WorkflowGridView
           workflows={filteredWorkflows}
           onDelete={handleDelete}

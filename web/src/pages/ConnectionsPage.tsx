@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Filter, Plus } from 'lucide-react'
 import type { Connection } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
@@ -24,8 +25,17 @@ export default function ConnectionsPage() {
     useConnectionsData()
   const runHealthCheck = useConnectionsStore((s) => s.runHealthCheck)
   const deleteConnection = useConnectionsStore((s) => s.deleteConnection)
+  const setSearchQuery = useConnectionsStore((s) => s.setSearchQuery)
+  const setTypeFilter = useConnectionsStore((s) => s.setTypeFilter)
+  const setHealthFilter = useConnectionsStore((s) => s.setHealthFilter)
   const [modal, setModal] = useState<ModalState>({ kind: 'closed' })
   const [pendingDelete, setPendingDelete] = useState<Connection | null>(null)
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setTypeFilter(null)
+    setHealthFilter(null)
+  }
 
   useEffect(() => {
     document.title = 'Connections · SynthOrg'
@@ -56,6 +66,13 @@ export default function ConnectionsPage() {
 
       {loading && !hasData ? (
         <ConnectionsSkeleton />
+      ) : connections.length > 0 && filteredConnections.length === 0 ? (
+        <EmptyState
+          icon={Filter}
+          title="No matching connections"
+          description="Try a different search or clear your filters."
+          action={{ label: 'Clear filters', onClick: clearFilters }}
+        />
       ) : (
         <ErrorBoundary level="section">
           <ConnectionGridView

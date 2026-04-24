@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import type { UseSettingsDataReturn } from '@/hooks/useSettingsData'
 import type { SettingEntry } from '@/api/types/settings'
 
@@ -116,11 +116,13 @@ vi.mock('@/stores/settings', () => ({
 import SettingsPage from '@/pages/SettingsPage'
 
 function renderSettings() {
-  return render(
-    <MemoryRouter>
-      <SettingsPage />
-    </MemoryRouter>,
+  // SettingsPage uses useUnsavedChangesGuard (calls useBlocker internally),
+  // which requires a data router rather than a plain MemoryRouter.
+  const router = createMemoryRouter(
+    [{ path: '/', element: <SettingsPage /> }],
+    { initialEntries: ['/'] },
   )
+  return render(<RouterProvider router={router} />)
 }
 
 describe('SettingsPage', () => {
