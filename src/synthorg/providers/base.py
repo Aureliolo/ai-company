@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any, TypeVar
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CALL_ERROR,
     PROVIDER_CALL_START,
@@ -140,11 +140,18 @@ class BaseCompletionProvider(ABC):
             else:
                 result = await _attempt()
         except Exception as exc:
-            logger.error(
+            # SEC-1: ``logger.exception`` (what TRY400 suggests) would
+            # attach a traceback whose serialized frame-locals can
+            # leak provider credentials (API keys in headers, connection
+            # URLs with user:pass).  Use ``logger.error`` with the
+            # structured ``error_type`` + scrubbed ``error`` fields
+            # instead -- traceback frames never reach any log sink.
+            logger.error(  # noqa: TRY400 -- see SEC-1 rationale above
                 PROVIDER_CALL_ERROR,
                 model=model,
                 latency_ms=(time.monotonic() - t_start) * 1000.0,
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             record_provider_error(
                 provider=self._provider_label(),
@@ -218,7 +225,15 @@ class BaseCompletionProvider(ABC):
         try:
             return await self._resilient_execute(_attempt)
         except Exception as exc:
-            logger.error(PROVIDER_CALL_ERROR, model=model, exc_info=True)
+            # SEC-1: see the ``complete`` sibling handler; ``logger.error``
+            # + scrubbed fields instead of ``logger.exception`` prevents
+            # traceback frame-locals from leaking provider credentials.
+            logger.error(  # noqa: TRY400 -- see SEC-1 rationale above
+                PROVIDER_CALL_ERROR,
+                model=model,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             record_provider_error(
                 provider=self._provider_label(),
                 model=model,

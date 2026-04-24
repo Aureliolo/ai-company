@@ -180,7 +180,7 @@ sum by (category) (rate(synthorg_api_error_classification_total{status_class="5x
 # Provider error rate per class (hot loop: rate_limit + timeout + connection)
 sum by (provider, error_class) (rate(synthorg_provider_errors_total[5m]))
 
-# Ratio of errors to token usage per provider (failures per successful call)
+# Token-normalized provider error rate (error events per token volume)
 sum by (provider) (rate(synthorg_provider_errors_total[5m]))
   / clamp_min(sum by (provider) (rate(synthorg_provider_tokens_total[5m])), 1)
 ```

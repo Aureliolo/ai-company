@@ -79,6 +79,11 @@ class TestHealthCheckSec1Logging:
         assert log["error"]
         assert "Traceback" not in log["error"]
         assert "exc_info" not in log
+        # Belt-and-braces: the credential fragments from the test
+        # config's connection URL must never reach the log record.
+        assert "super-secret-token" not in log["error"]
+        assert "operator:super-secret-token" not in log["error"]
+        assert "operator:" not in log["error"]
 
     async def test_healthy_connection_returns_true(self) -> None:
         """Happy path: flush succeeds, ``True`` returned, no warning."""

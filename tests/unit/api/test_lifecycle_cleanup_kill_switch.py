@@ -4,6 +4,10 @@ When operators flip ``api.lifecycle_cleanup_enabled=false`` the WS
 ticket / session / lockout cleanup loop must short-circuit every
 tick without tearing down the task.  When ``True`` the loop must
 call all three cleanup paths on every tick.
+
+The per-tick driver below monkeypatches ``asyncio.sleep`` on the
+lifecycle helpers module so the loop advances deterministically by
+exactly N ticks; no wall-clock races.
 """
 
 import asyncio
@@ -42,20 +46,30 @@ def _build_app_state(*, enabled: bool) -> SimpleNamespace:
     )
 
 
-async def _run_loop_ticks(app_state: Any, ticks: int) -> None:
-    """Drive the cleanup loop for *ticks* iterations, then cancel.
+async def _run_loop_ticks(
+    app_state: Any,
+    ticks: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Drive the cleanup loop for exactly *ticks* iterations, then cancel.
 
-    Uses ``_resolve_ticket_cleanup_interval`` via the stubbed
-    resolver (returning 1ms) so the loop advances predictably without
-    any wall-clock assumptions.  Cancellation is the loop's terminal
-    state; the test observes side-effects on the stub stores.
+    Monkeypatches ``lifecycle_helpers.asyncio.sleep`` to a counting
+    stub that yields control on each call and cancels the loop after
+    the Nth sleep.  Cancellation is the loop's terminal state; the
+    test observes side-effects on the stub stores.
     """
+    real_sleep = asyncio.sleep
+    remaining = ticks
+
+    async def _deterministic_sleep(_: float) -> None:
+        nonlocal remaining
+        if remaining <= 0:
+            raise asyncio.CancelledError
+        remaining -= 1
+        await real_sleep(0)
+
+    monkeypatch.setattr(lifecycle_helpers.asyncio, "sleep", _deterministic_sleep)
     task = asyncio.create_task(lifecycle_helpers._ticket_cleanup_loop(app_state))
-    # Yield control long enough for the stubbed ``asyncio.sleep(0.001)``
-    # to advance through *ticks* iterations.
-    for _ in range(ticks):
-        await asyncio.sleep(0.01)
-    task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
@@ -64,30 +78,38 @@ async def _run_loop_ticks(app_state: Any, ticks: int) -> None:
 class TestLifecycleCleanupKillSwitch:
     """Flipping the setting gates all three cleanup paths together."""
 
-    async def test_enabled_calls_all_cleanup_paths(self) -> None:
-        """When ``enabled=True`` every tick runs all three cleanups."""
+    async def test_enabled_calls_all_cleanup_paths(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When ``enabled=True`` every tick runs all three cleanups exactly once."""
         app_state = _build_app_state(enabled=True)
 
-        await _run_loop_ticks(app_state, ticks=2)
+        await _run_loop_ticks(app_state, ticks=2, monkeypatch=monkeypatch)
 
-        assert app_state.ticket_store.cleanup_expired.call_count >= 1
-        assert app_state.session_store.cleanup_expired.await_count >= 1
-        assert app_state.lockout_store.cleanup_expired.await_count >= 1
+        assert app_state.ticket_store.cleanup_expired.call_count == 2
+        assert app_state.session_store.cleanup_expired.await_count == 2
+        assert app_state.lockout_store.cleanup_expired.await_count == 2
+        # One resolver consult per tick -- the gate is live, not frozen.
+        assert app_state.config_resolver.get_bool.await_count == 2
 
-    async def test_disabled_short_circuits_every_tick(self) -> None:
-        """When ``enabled=False`` no cleanup path runs, but the loop stays alive."""
+    async def test_disabled_short_circuits_every_tick(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When ``enabled=False`` no cleanup path runs on any tick.
+
+        The resolver is consulted once per tick so the loop stays
+        responsive to a live re-enable.
+        """
         app_state = _build_app_state(enabled=False)
 
-        await _run_loop_ticks(app_state, ticks=3)
+        await _run_loop_ticks(app_state, ticks=3, monkeypatch=monkeypatch)
 
-        # The kill-switch must gate all three cleanup sites together.
         assert app_state.ticket_store.cleanup_expired.call_count == 0
         assert app_state.session_store.cleanup_expired.await_count == 0
         assert app_state.lockout_store.cleanup_expired.await_count == 0
-        # But the resolver must have been consulted at least once per
-        # tick -- proves the loop is running and the gate is live,
-        # not frozen.
-        assert app_state.config_resolver.get_bool.await_count >= 1
+        assert app_state.config_resolver.get_bool.await_count == 3
 
 
 @pytest.mark.unit

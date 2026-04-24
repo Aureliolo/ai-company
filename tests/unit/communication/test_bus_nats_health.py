@@ -50,16 +50,31 @@ class TestNatsBusHealthCheck:
         assert await bus.health_check() is False
         client.flush.assert_not_called()
 
-    async def test_returns_false_and_logs_when_flush_raises(self) -> None:
-        # SEC-1 (#1538): flush exceptions log ``error_type`` +
+    @pytest.mark.parametrize(
+        "flush_exc",
+        [
+            TimeoutError("flush timed out"),
+            ConnectionError("broker unreachable"),
+            OSError("socket closed"),
+            RuntimeError("client in bad state"),
+        ],
+        ids=["timeout", "connection", "os", "runtime"],
+    )
+    async def test_returns_false_and_logs_when_flush_raises(
+        self,
+        flush_exc: Exception,
+    ) -> None:
+        # SEC-1: flush exceptions log ``error_type`` +
         # ``error=safe_error_description(exc)``; no ``exc_info=True``
         # because serialized traceback frame-locals can leak the
-        # credentials embedded in the NATS connection URL.
+        # credentials embedded in the NATS connection URL. The fix
+        # is exception-type-agnostic, so the assertion holds across
+        # timeout / connection / OS / generic runtime failures.
         bus = _make_bus()
         bus._state.running = True
         client = MagicMock()
         client.is_connected = True
-        client.flush = AsyncMock(side_effect=TimeoutError("simulated"))
+        client.flush = AsyncMock(side_effect=flush_exc)
         bus._state.client = client
         with patch("synthorg.communication.bus.nats.logger") as mock_logger:
             result = await bus.health_check()
@@ -68,7 +83,7 @@ class TestNatsBusHealthCheck:
         call_args = mock_logger.warning.call_args
         assert call_args.args[0] == COMM_BUS_HEALTH_CHECK_FAILED
         assert call_args.kwargs["phase"] == "flush"
-        assert call_args.kwargs["error_type"] == "TimeoutError"
+        assert call_args.kwargs["error_type"] == type(flush_exc).__name__
         assert isinstance(call_args.kwargs["error"], str)
         assert call_args.kwargs["error"]
         assert "exc_info" not in call_args.kwargs

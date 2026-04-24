@@ -257,17 +257,21 @@ _ERROR_CLASS_MAP: Final[dict[type[BaseException], ProviderErrorLabel]] = {
 
 
 def classify_provider_error(exc: BaseException) -> ProviderErrorLabel:
-    """Map *exc* onto one of :data:`VALID_PROVIDER_ERROR_CLASSES`.
+    """Classify *exc* into one of nine bounded Prometheus label values.
+
+    Falls back to ``"other"`` for any exception not in the direct
+    canonical map, which guarantees the label set in
+    :data:`VALID_PROVIDER_ERROR_CLASSES` stays finite even as driver
+    implementations add new error types.
 
     Uses a direct-type lookup first (cheapest), then falls back to
     ``isinstance`` for the hierarchy so subclasses of the canonical
     provider-error types are bucketed with their parents.  Any
     ``ProviderError`` subclass that is not in the direct map (e.g.
-    ``DriverNotRegisteredError``, ``ProviderValidationError``) also
-    falls through to ``"other"`` rather than inflating the label set.
-    Unknown exception types likewise map to ``"other"`` -- the
-    Prometheus label set stays bounded regardless of what the
-    provider driver raises.
+    ``DriverNotRegisteredError``, ``ProviderValidationError``) and
+    unknown (non-``ProviderError``) exception types both resolve to
+    ``"other"``; the Prometheus label set therefore stays bounded
+    regardless of what the provider driver raises.
 
     Returns:
         One of the :data:`ProviderErrorLabel` literal values; the

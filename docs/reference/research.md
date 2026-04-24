@@ -2,7 +2,7 @@
 
 ## Existing Frameworks Comparison
 
-The following table compares major multi-agent frameworks that informed the design of SynthOrg. Star counts and version information as of March 2026.
+The following table compares major multi-agent frameworks that informed the design of SynthOrg.
 
 | Framework | Stars | Architecture | Roles | Models | Memory | Custom Roles | Production Ready |
 |-----------|-------|-------------|-------|--------|--------|-------------|-----------------|

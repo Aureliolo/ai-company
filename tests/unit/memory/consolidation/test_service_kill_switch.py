@@ -98,8 +98,12 @@ class TestConsolidationKillSwitch:
             result = await service.run_maintenance(_AGENT_ID)
 
         assert result.consolidated_count == 0
+        # No backend interactions at all while disabled -- the kill-switch
+        # dominates every branch of the maintenance cycle.
         strategy.consolidate.assert_not_awaited()
         backend.retrieve.assert_not_awaited()
+        backend.count.assert_not_awaited()
+        backend.delete.assert_not_awaited()
         # The maintenance-scope skip log includes ``scope="maintenance"``
         # so operators can distinguish from consolidation-only skips.
         assert any(

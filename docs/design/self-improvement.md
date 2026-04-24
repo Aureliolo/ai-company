@@ -2,9 +2,7 @@
 
 The self-improvement meta-loop observes company-wide signals from 7 existing subsystems and produces deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval.
 
-### Breaking defaults (2026-04-23)
-
-- **Company autonomy level: `semi` → `supervised`.** Fresh installs now queue approvals for most state-mutating agent actions (rank order: `full` > `semi` > `supervised` > `locked`). This matches the "ask-first" posture operators expect before they trust the organization. To restore the pre-flip behavior set `company.autonomy_level=semi` in settings or `config.autonomy.level: semi` in the company YAML.
+Company autonomy ships at `supervised` so most state-mutating agent actions queue for approval before execution; raise to `semi` or `full` via `company.autonomy_level` (or `config.autonomy.level` in the company YAML) once operators trust the organization. Rank order: `full` > `semi` > `supervised` > `locked`.
 
 ## Architecture Overview
 

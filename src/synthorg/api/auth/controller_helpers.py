@@ -94,11 +94,12 @@ async def make_session_cookies(  # noqa: PLR0913
                     )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_AUTH_FAILED,
                     reason="refresh_token_persist_failed",
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         else:
             logger.warning(
@@ -195,13 +196,14 @@ async def create_session_record(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_SESSION_CREATE_FAILED,
-            error="Session creation failed (non-fatal)",
+            reason="Session creation failed (non-fatal)",
             session_id=session_id,
             user_id=user.id,
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 
@@ -225,11 +227,12 @@ def extract_jti(request: Request[Any, Any, Any]) -> str | None:
             reason="jti_extraction_jwt_error",
         )
         return None
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_AUTH_FAILED,
             reason="jti_extraction_failed",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
     else:

@@ -4,7 +4,11 @@ The WebSocket first-message auth handler reads the timeout from
 ``app_state.ws_auth_timeout_seconds``, which is baked in at startup
 by ``_apply_bridge_config`` from the ``api.ws_auth_timeout_seconds``
 setting.  Flipping the value on ``app_state`` must change the
-effective timeout the handler enforces.
+effective timeout the handler passes to ``asyncio.wait_for``.
+
+The two "is this read from app_state?" assertions monkeypatch
+``asyncio.wait_for`` to observe the timeout value the handler
+actually passes -- no wall-clock races.
 """
 
 import asyncio
@@ -13,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from synthorg.api.controllers import ws as ws_module
 from synthorg.api.controllers.ws import _WS_CLOSE_AUTH_FAILED, _read_auth_message
 
 
@@ -49,34 +54,83 @@ class _NeverResolvingSocket:
 class TestWsAuthTimeoutKillSwitch:
     """The configured timeout gates first-message auth behavior."""
 
-    async def test_short_timeout_closes_socket_with_4001(self) -> None:
-        """A 10ms timeout closes the socket with the auth-timeout code."""
-        socket = _NeverResolvingSocket(ws_auth_timeout_seconds=0.01)
+    async def test_timeout_expiry_closes_socket_with_auth_failed_code(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A fired timeout closes the socket with the auth-timeout code.
+
+        Deterministic: ``asyncio.wait_for`` is stubbed to raise
+        ``TimeoutError`` immediately so the handler's timeout branch
+        runs without racing a real clock.
+        """
+        socket = _NeverResolvingSocket(ws_auth_timeout_seconds=5.0)
+        seen: dict[str, float] = {}
+
+        async def _fake_wait_for(awaitable: Any, timeout: float) -> str:  # noqa: ASYNC109 -- signature mirrors asyncio.wait_for
+            seen["timeout"] = timeout
+            if asyncio.iscoroutine(awaitable):
+                awaitable.close()
+            raise TimeoutError
+
+        monkeypatch.setattr(ws_module.asyncio, "wait_for", _fake_wait_for)
 
         result = await _read_auth_message(socket)  # type: ignore[arg-type]
 
         assert result is None
+        assert seen["timeout"] == pytest.approx(5.0)
         assert socket.closed_with is not None
         code, _reason = socket.closed_with
         assert code == _WS_CLOSE_AUTH_FAILED
 
-    async def test_timeout_read_from_app_state(self) -> None:
-        """Handler reads the timeout from ``app_state`` (not a module constant).
-
-        A 100ms timeout must not expire within a ~10ms wait window;
-        the ``wait_for`` is therefore driven by ``app_state`` rather
-        than any hardcoded value.
-        """
+    async def test_timeout_read_from_app_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Handler passes ``app_state.ws_auth_timeout_seconds`` to ``wait_for``."""
         socket = _NeverResolvingSocket(ws_auth_timeout_seconds=100.0)
+        seen: dict[str, float] = {}
 
-        # Race the handler against a tight explicit timeout. If the
-        # handler honors ``app_state.ws_auth_timeout_seconds=100``,
-        # the outer ``wait_for`` fires first.
-        with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(
-                _read_auth_message(socket),  # type: ignore[arg-type]
-                timeout=0.05,
-            )
-        # The inner timeout (100s) hasn't fired, so the socket was
-        # never closed by the handler itself.
+        async def _fake_wait_for(awaitable: Any, timeout: float) -> str:  # noqa: ASYNC109 -- signature mirrors asyncio.wait_for
+            seen["timeout"] = timeout
+            if asyncio.iscoroutine(awaitable):
+                awaitable.close()
+            return '{"action":"auth","ticket":"t"}'
+
+        monkeypatch.setattr(ws_module.asyncio, "wait_for", _fake_wait_for)
+
+        result = await _read_auth_message(socket)  # type: ignore[arg-type]
+
+        # The inner timeout (100s) was honored: the handler passed the
+        # app_state value straight into wait_for, not a hardcoded number.
+        assert seen["timeout"] == pytest.approx(100.0)
         assert socket.closed_with is None
+        # ``_read_auth_message`` returns the extracted ticket, not the
+        # raw JSON frame.
+        assert result == "t"
+
+    async def test_timeout_rebound_before_handler_entry(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Mutating ``app_state.ws_auth_timeout_seconds`` before entry takes effect.
+
+        Confirms the handler does not cache the timeout behind its own
+        module constant -- the in-flight value on ``app_state`` is the
+        value actually passed to ``wait_for`` at entry.
+        """
+        socket = _NeverResolvingSocket(ws_auth_timeout_seconds=10.0)
+        socket.app.state["app_state"].ws_auth_timeout_seconds = 42.0
+        seen: dict[str, float] = {}
+
+        async def _fake_wait_for(awaitable: Any, timeout: float) -> str:  # noqa: ASYNC109 -- signature mirrors asyncio.wait_for
+            seen["timeout"] = timeout
+            if asyncio.iscoroutine(awaitable):
+                awaitable.close()
+            raise TimeoutError
+
+        monkeypatch.setattr(ws_module.asyncio, "wait_for", _fake_wait_for)
+
+        await _read_auth_message(socket)  # type: ignore[arg-type]
+
+        assert seen["timeout"] == pytest.approx(42.0)

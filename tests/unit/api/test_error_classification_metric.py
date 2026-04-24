@@ -33,9 +33,30 @@ def _fake_request() -> Any:
     return SimpleNamespace(accept=accept)
 
 
-def test_build_response_emits_api_error_metric_for_5xx(
+# Exhaustive matrix: every ErrorCategory value paired with a canonical
+# status code in its natural HTTP range.  Using ErrorCode.PROVIDER_ERROR
+# as the error_code for every row keeps the focus on the category /
+# status_class wiring; the wire ``error_code`` is orthogonal to the
+# metric labels.
+@pytest.mark.parametrize(
+    ("category", "status_code"),
+    [
+        (ErrorCategory.AUTH, 401),
+        (ErrorCategory.VALIDATION, 422),
+        (ErrorCategory.NOT_FOUND, 404),
+        (ErrorCategory.CONFLICT, 409),
+        (ErrorCategory.RATE_LIMIT, 429),
+        (ErrorCategory.BUDGET_EXHAUSTED, 402),
+        (ErrorCategory.PROVIDER_ERROR, 502),
+        (ErrorCategory.INTERNAL, 500),
+    ],
+)
+def test_build_response_emits_api_error_metric_per_category(
     monkeypatch: pytest.MonkeyPatch,
+    category: ErrorCategory,
+    status_code: int,
 ) -> None:
+    """Every ErrorCategory value emits the metric with its category label."""
     recorder = MagicMock()
     monkeypatch.setattr(exception_handlers, "record_api_error", recorder)
 
@@ -43,28 +64,11 @@ def test_build_response_emits_api_error_metric_for_5xx(
         _fake_request(),
         detail="boom",
         error_code=ErrorCode.PROVIDER_ERROR,
-        error_category=ErrorCategory.INTERNAL,
-        status_code=500,
+        error_category=category,
+        status_code=status_code,
     )
 
-    recorder.assert_called_once_with(category="internal", status_code=500)
-
-
-def test_build_response_emits_api_error_metric_for_4xx(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    recorder = MagicMock()
-    monkeypatch.setattr(exception_handlers, "record_api_error", recorder)
-
-    exception_handlers._build_response(
-        _fake_request(),
-        detail="bad",
-        error_code=ErrorCode.VALIDATION_ERROR,
-        error_category=ErrorCategory.VALIDATION,
-        status_code=422,
-    )
-
-    recorder.assert_called_once_with(category="validation", status_code=422)
+    recorder.assert_called_once_with(category=category.value, status_code=status_code)
 
 
 def test_build_response_skips_metric_on_success(
