@@ -212,7 +212,7 @@ describe('ApprovalDetailDrawer', () => {
     defaultHandlers.onApprove.mockResolvedValueOnce(false)
     renderDrawer()
     await user.click(screen.getByRole('button', { name: /approve/i }))
-    await user.type(screen.getByLabelText('Approval comment'), 'Looks good')
+    await user.type(screen.getByLabelText('Optional comment'), 'Looks good')
     const approveDialog = screen.getByRole('alertdialog')
     await user.click(within(approveDialog).getByRole('button', { name: /approve/i }))
     // Wait for the async onApprove to resolve before asserting the
@@ -225,7 +225,7 @@ describe('ApprovalDetailDrawer', () => {
     // surfaced the error toast.
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     expect(
-      (screen.getByLabelText('Approval comment') as HTMLTextAreaElement).value,
+      (screen.getByLabelText('Optional comment') as HTMLTextAreaElement).value,
     ).toBe('Looks good')
   })
 
@@ -234,7 +234,7 @@ describe('ApprovalDetailDrawer', () => {
     defaultHandlers.onReject.mockResolvedValueOnce(false)
     renderDrawer()
     await user.click(screen.getByRole('button', { name: /reject/i }))
-    await user.type(screen.getByLabelText('Rejection reason'), 'Missing context')
+    await user.type(screen.getByLabelText(/reason for rejection/i), 'Missing context')
     const rejectDialog = screen.getByRole('alertdialog')
     await user.click(within(rejectDialog).getByRole('button', { name: /reject/i }))
     await waitFor(() => {
@@ -242,7 +242,7 @@ describe('ApprovalDetailDrawer', () => {
     })
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     expect(
-      (screen.getByLabelText('Rejection reason') as HTMLTextAreaElement).value,
+      (screen.getByLabelText(/reason for rejection/i) as HTMLTextAreaElement).value,
     ).toBe('Missing context')
   })
 
@@ -250,7 +250,7 @@ describe('ApprovalDetailDrawer', () => {
     const user = userEvent.setup()
     renderDrawer()
     await user.click(screen.getByRole('button', { name: /approve/i }))
-    await user.type(screen.getByLabelText('Approval comment'), 'Looks good')
+    await user.type(screen.getByLabelText('Optional comment'), 'Looks good')
     const approveDialog = screen.getByRole('alertdialog')
     await user.click(within(approveDialog).getByRole('button', { name: /approve/i }))
     expect(defaultHandlers.onApprove).toHaveBeenCalledWith('test-1', { comment: 'Looks good' })
@@ -260,7 +260,7 @@ describe('ApprovalDetailDrawer', () => {
     const user = userEvent.setup()
     renderDrawer()
     await user.click(screen.getByRole('button', { name: /reject/i }))
-    await user.type(screen.getByLabelText('Rejection reason'), 'Missing documentation')
+    await user.type(screen.getByLabelText(/reason for rejection/i), 'Missing documentation')
     const rejectDialog = screen.getByRole('alertdialog')
     await user.click(within(rejectDialog).getByRole('button', { name: /reject/i }))
     expect(defaultHandlers.onReject).toHaveBeenCalledWith('test-1', { reason: 'Missing documentation' })

@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { Plus, Server } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useProvidersData } from '@/hooks/useProvidersData'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ErrorBanner } from '@/components/ui/error-banner'
+import { ListHeader } from '@/components/ui/list-header'
 import { Button } from '@/components/ui/button'
 import { ProviderGridView } from './providers/ProviderGridView'
 import { ProviderFilters } from './providers/ProviderFilters'
@@ -17,26 +19,25 @@ export default function ProvidersPage() {
 
   return (
     <div className="flex flex-col gap-section-gap">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Server className="size-5 text-text-secondary" />
-          <h1 className="text-lg font-semibold text-foreground">Providers</h1>
-        </div>
-        <Button size="sm" onClick={() => setDrawerOpen(true)}>
-          <Plus className="size-3.5 mr-1.5" />
-          Add Provider
-        </Button>
-      </div>
+      <ListHeader
+        title="Providers"
+        count={providers.length}
+        primaryAction={
+          <Button size="sm" onClick={() => setDrawerOpen(true)}>
+            <Plus className="size-3.5 mr-1.5" />
+            Add Provider
+          </Button>
+        }
+      />
 
-      {/* Error banner */}
       {error && (
-        <div className="rounded-md bg-danger/10 p-card text-sm text-danger">
-          {error}
-        </div>
+        <ErrorBanner
+          severity="error"
+          title="Could not load providers"
+          description={error}
+        />
       )}
 
-      {/* Filters */}
       <ProviderFilters />
 
       {/* Content */}

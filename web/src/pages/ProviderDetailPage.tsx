@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router'
 import { useProviderDetailData } from '@/hooks/useProviderDetailData'
 import { useProvidersStore } from '@/stores/providers'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ROUTES } from '@/router/routes'
@@ -50,9 +51,11 @@ export default function ProviderDetailPage() {
   if (error && !provider) {
     return (
       <div className="flex flex-col gap-section-gap">
-        <div className="rounded-md bg-danger/10 p-card text-sm text-danger">
-          {error}
-        </div>
+        <ErrorBanner
+          severity="error"
+          title="Could not load provider"
+          description={error}
+        />
       </div>
     )
   }
@@ -72,9 +75,11 @@ export default function ProviderDetailPage() {
     <div className="flex flex-col gap-section-gap">
       {/* Partial error banner */}
       {error && (
-        <div className="rounded-md bg-warning/10 p-card text-sm text-warning">
-          {error}
-        </div>
+        <ErrorBanner
+          severity="warning"
+          title="Some provider data could not be refreshed"
+          description={error}
+        />
       )}
 
       {/* Header */}

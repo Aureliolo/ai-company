@@ -21,13 +21,13 @@ describe('BatchActionBar', () => {
 
   it('calls onApproveAll when Approve All is clicked', async () => {
     render(<BatchActionBar {...defaultProps} />)
-    await userEvent.click(screen.getByRole('button', { name: /approve all/i }))
+    await userEvent.click(screen.getByRole('button', { name: /approve 3/i }))
     expect(defaultProps.onApproveAll).toHaveBeenCalledTimes(1)
   })
 
   it('calls onRejectAll when Reject All is clicked', async () => {
     render(<BatchActionBar {...defaultProps} />)
-    await userEvent.click(screen.getByRole('button', { name: /reject all/i }))
+    await userEvent.click(screen.getByRole('button', { name: /reject 3/i }))
     expect(defaultProps.onRejectAll).toHaveBeenCalledTimes(1)
   })
 
@@ -39,8 +39,8 @@ describe('BatchActionBar', () => {
 
   it('disables buttons when loading', () => {
     render(<BatchActionBar {...defaultProps} loading />)
-    expect(screen.getByRole('button', { name: /approve all/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /reject all/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /approve 3/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /reject 3/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /clear/i })).toBeDisabled()
   })
 

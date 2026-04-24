@@ -591,7 +591,7 @@ describe('setup wizard store', () => {
           const body = (await request.json()) as { preset_name: string }
           if (body.preset_name === 'openrouter') {
             return HttpResponse.json(
-              apiError('Provider unreachable', 502),
+              apiError('Provider unreachable'),
               { status: 502 },
             )
           }
@@ -621,7 +621,7 @@ describe('setup wizard store', () => {
         http.post('/api/v1/providers/probe-preset', async ({ request }) => {
           const body = (await request.json()) as { preset_name: string }
           if (body.preset_name === 'openrouter') {
-            return HttpResponse.json(apiError('boom', 502), { status: 502 })
+            return HttpResponse.json(apiError('boom'), { status: 502 })
           }
           return HttpResponse.json(
             apiSuccess({ url: null, model_count: 0, candidates_tried: 0 }),

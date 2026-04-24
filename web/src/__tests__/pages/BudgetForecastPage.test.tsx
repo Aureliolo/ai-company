@@ -134,9 +134,12 @@ describe('BudgetForecastPage', () => {
     expect(screen.getByText('Day 3')).toBeInTheDocument()
   })
 
-  it('renders "Back to Budget" link', () => {
+  it('renders breadcrumb navigation back to Budget', () => {
     renderWithRouter()
-    expect(screen.getByLabelText('Back to Budget')).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(nav).toBeInTheDocument()
+    const budgetLink = screen.getByRole('link', { name: 'Budget' })
+    expect(budgetLink).toHaveAttribute('href', '/budget')
   })
 
   it('shows error banner when error is set', () => {

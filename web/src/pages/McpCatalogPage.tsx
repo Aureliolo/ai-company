@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Package } from 'lucide-react'
 import type { ConnectionType, McpCatalogEntry } from '@/api/types/integrations'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ListHeader } from '@/components/ui/list-header'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
 import { useMcpCatalogData } from '@/hooks/useMcpCatalogData'
 import { useMcpCatalogStore } from '@/stores/mcp-catalog'
@@ -47,21 +48,18 @@ export default function McpCatalogPage() {
 
   return (
     <div className="flex flex-col gap-section-gap">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Package className="size-5 text-text-secondary" aria-hidden />
-          <h1 className="text-lg font-semibold text-foreground">MCP Catalog</h1>
-        </div>
-        <McpCatalogSearch />
-      </div>
+      <ListHeader
+        title="MCP Catalog"
+        count={visibleEntries.length}
+        primaryAction={<McpCatalogSearch />}
+      />
 
       {error && (
-        <div
-          role="alert"
-          className="rounded-md bg-danger/10 p-card text-sm text-danger"
-        >
-          {error}
-        </div>
+        <ErrorBanner
+          severity="error"
+          title="Could not load MCP catalog"
+          description={error}
+        />
       )}
 
       {(loading || searchLoading) && visibleEntries.length === 0 ? (

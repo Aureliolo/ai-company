@@ -14,6 +14,7 @@ import {
 import { AnimatePresence } from 'motion/react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ListHeader } from '@/components/ui/list-header'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
 import { useOptimisticUpdate } from '@/hooks/useOptimisticUpdate'
 import { useToastStore } from '@/stores/toast'
@@ -233,29 +234,37 @@ export default function TaskBoardPage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Task Board</h1>
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-1.5 text-xs text-text-muted">
-            <input
-              type="checkbox"
-              checked={showDeps}
-              onChange={(e) => setShowDeps(e.target.checked)}
-              className="rounded border-border"
-            />
-            Dependencies
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-text-muted">
-            <input
-              type="checkbox"
-              checked={showTerminal}
-              onChange={(e) => setShowTerminal(e.target.checked)}
-              className="rounded border-border"
-            />
-            Show terminal
-          </label>
-        </div>
-      </div>
+      <ListHeader
+        title="Task Board"
+        count={filteredTasks.length}
+        countLabel={
+          filteredTasks.length === tasks.length
+            ? undefined
+            : `${filteredTasks.length} of ${tasks.length}`
+        }
+        secondaryActions={
+          <>
+            <label className="flex items-center gap-1.5 text-xs text-text-muted">
+              <input
+                type="checkbox"
+                checked={showDeps}
+                onChange={(e) => setShowDeps(e.target.checked)}
+                className="rounded border-border"
+              />
+              Dependencies
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-text-muted">
+              <input
+                type="checkbox"
+                checked={showTerminal}
+                onChange={(e) => setShowTerminal(e.target.checked)}
+                className="rounded border-border"
+              />
+              Show terminal
+            </label>
+          </>
+        }
+      />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load tasks" description={error} />

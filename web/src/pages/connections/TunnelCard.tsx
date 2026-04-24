@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { AlertTriangle, Copy, Radio } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ToggleField } from '@/components/ui/toggle-field'
@@ -154,9 +155,12 @@ export function TunnelCard() {
         )}
 
         {error && !isRunning && (
-          <div className="rounded-md bg-danger/10 p-card text-xs text-danger">
-            {error}
-          </div>
+          <ErrorBanner
+            variant="inline"
+            severity="error"
+            title="Tunnel failed to start"
+            description={error}
+          />
         )}
 
         {isRunning && (
