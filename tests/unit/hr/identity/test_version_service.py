@@ -5,11 +5,15 @@ from datetime import UTC, date, datetime
 from uuid import uuid4
 
 import pytest
+import structlog.testing
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.identity.version_service import AgentVersionService
+from synthorg.observability.events.agent_identity_version import (
+    AGENT_IDENTITY_INVALID_REQUEST,
+)
 from synthorg.versioning.models import VersionSnapshot
 
 pytestmark = pytest.mark.unit
@@ -181,23 +185,35 @@ class TestListVersions:
         identity = _make_identity()
         service = AgentVersionService(version_repo=_FakeVersionRepo([]))
 
-        with pytest.raises(ValueError, match="offset"):
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(ValueError, match="offset"),
+        ):
             await service.list_versions(
                 NotBlankStr(str(identity.id)),
                 offset=-1,
                 limit=10,
             )
+        assert any(e.get("event") == AGENT_IDENTITY_INVALID_REQUEST for e in events), (
+            "invalid-request event must fire before the ValueError"
+        )
 
     async def test_non_positive_limit_rejects(self) -> None:
         identity = _make_identity()
         service = AgentVersionService(version_repo=_FakeVersionRepo([]))
 
-        with pytest.raises(ValueError, match="limit"):
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(ValueError, match="limit"),
+        ):
             await service.list_versions(
                 NotBlankStr(str(identity.id)),
                 offset=0,
                 limit=0,
             )
+        assert any(e.get("event") == AGENT_IDENTITY_INVALID_REQUEST for e in events), (
+            "invalid-request event must fire before the ValueError"
+        )
 
 
 class TestGetVersion:

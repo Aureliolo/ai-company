@@ -1,6 +1,7 @@
 """Unit tests for :class:`ActivityFeedService`."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -8,6 +9,7 @@ from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.core.enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.hr import activity_service as activity_service_module
 from synthorg.hr.activity_service import ActivityFeedService
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
@@ -16,12 +18,46 @@ from synthorg.tools.invocation_record import ToolInvocationRecord
 
 pytestmark = pytest.mark.unit
 
-# Anchor timestamps relative to real wall-clock time so the service's
-# ``datetime.now(UTC)`` window does not drop records that happen to be
-# dated after a test-local constant (see ``get_agent_activity`` -- the
-# window ends at ``datetime.now(UTC)``).
-_NOW = datetime.now(UTC) - timedelta(hours=1)
+# Fixed "now" used across the module so the service's window calc is
+# deterministic relative to test data. ``_FROZEN_NOW`` is one hour
+# before the module's pinned wall-clock anchor to mirror the real
+# service behaviour ("events after ``now`` cannot exist"); the
+# ``freeze_activity_clock`` fixture patches ``datetime.now`` on the
+# service module so ``get_agent_activity`` computes ``since`` against
+# the same anchor.
+_FROZEN_WALL = datetime(2026, 4, 24, 12, 0, 0, tzinfo=UTC)
+_NOW = _FROZEN_WALL - timedelta(hours=1)
 _AGENT_ID = "agent-alice"
+
+
+class _FrozenDatetime(datetime):
+    """``datetime`` subclass whose ``.now`` returns ``_FROZEN_WALL``."""
+
+    @classmethod
+    def now(cls, tz: Any = None) -> _FrozenDatetime:
+        # Cast to the subclass so mypy treats the return value as
+        # ``_FrozenDatetime`` (matching the supertype covariance rule).
+        base = _FROZEN_WALL if tz is None else _FROZEN_WALL.astimezone(tz)
+        return cls(
+            base.year,
+            base.month,
+            base.day,
+            base.hour,
+            base.minute,
+            base.second,
+            base.microsecond,
+            tzinfo=base.tzinfo,
+        )
+
+
+@pytest.fixture(autouse=True)
+def freeze_activity_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin ``datetime.now`` on the service module to ``_FROZEN_WALL``.
+
+    The service imports ``datetime`` directly (``from datetime import
+    ... datetime``), so patching the imported name is sufficient.
+    """
+    monkeypatch.setattr(activity_service_module, "datetime", _FrozenDatetime)
 
 
 def _lifecycle(

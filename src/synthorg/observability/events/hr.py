@@ -60,6 +60,7 @@ HR_AGENT_HEALTH_COMPUTED: Final[str] = "hr.agent.health_computed"
 
 HR_TRAINING_SESSION_RECORDED: Final[str] = "hr.training.session_recorded"
 HR_TRAINING_SESSION_LISTED: Final[str] = "hr.training.session_listed"
+HR_TRAINING_SESSION_RECORD_FAILED: Final[str] = "hr.training.session_record_failed"
 
 # ── Pruning ────────────────────────────────────────────────────
 

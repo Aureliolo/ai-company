@@ -5,10 +5,10 @@ so the controller stays thin (parse / shape / return) and the raw
 ``app_state.persistence.get_db()`` handle stays inside the persistence
 package where it belongs.
 
-The service operates on SQLite today because the fine-tuning pipeline is
-SQLite-only (Postgres does not yet expose a matching repository); the
-abstraction is ready to grow a Postgres sibling without touching the
-controller.
+Fine-tuning operates against SQLite backends; non-SQLite backends that do
+not expose ``fine_tune_runs`` / ``fine_tune_checkpoints`` raise a typed
+:class:`BackendUnsupportedError` so MCP handlers can route the failure
+through the standard ``not_supported()`` envelope.
 """
 
 import json

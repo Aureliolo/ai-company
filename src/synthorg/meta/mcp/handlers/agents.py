@@ -247,7 +247,7 @@ async def _agents_delete(
         _log_invalid(tool, exc)
         return err(exc)
     try:
-        reason, _ = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
@@ -272,7 +272,7 @@ async def _agents_delete(
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_id(actor),
+        actor_agent_id=_actor_id(resolved_actor),
         reason=reason,
         target_id=str(removed.id),
     )

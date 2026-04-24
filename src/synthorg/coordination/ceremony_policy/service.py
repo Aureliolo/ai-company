@@ -11,9 +11,9 @@ helpers; this service is the narrow glue the handler layer needs
 plus a stable frozen ``ActiveCeremonyStrategy`` response model.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import (
@@ -59,6 +59,24 @@ class ActiveCeremonyStrategy(BaseModel):
         default=None,
         description="Active sprint id",
     )
+
+    @model_validator(mode="after")
+    def _validate_coupling(self) -> Self:
+        """Reject logically inconsistent combinations.
+
+        ``strategy`` and ``sprint_id`` are always either both known
+        (a sprint is active and locked onto a strategy) or both absent
+        (no sprint is running). Constructing a snapshot with one set
+        and the other ``None`` would hand callers an ambiguous state
+        the scheduler never produces.
+        """
+        if (self.strategy is None) != (self.sprint_id is None):
+            msg = (
+                "strategy and sprint_id must be both set or both None "
+                "(cannot have one without the other)"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class CeremonyPolicyService:

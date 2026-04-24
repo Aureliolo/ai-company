@@ -8,6 +8,7 @@ directly -- easier to test with a minimal stub.
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -20,6 +21,12 @@ from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,
     CeremonyStrategyType,
 )
+
+if TYPE_CHECKING:
+    from synthorg.api.controllers.ceremony_policy import (
+        ResolvedCeremonyPolicyResponse,
+    )
+    from synthorg.api.state import AppState
 
 pytestmark = pytest.mark.unit
 
@@ -70,7 +77,7 @@ class TestGetPolicy:
             strategy=CeremonyStrategyType.TASK_DRIVEN,
         )
 
-        async def _fake_fetch(_state):  # type: ignore[no-untyped-def]
+        async def _fake_fetch(_state: AppState) -> CeremonyPolicyConfig:
             return expected
 
         monkeypatch.setattr(
@@ -120,10 +127,13 @@ class TestGetResolvedPolicy:
             ),
         )
 
-        async def _fake_fetch(_state):  # type: ignore[no-untyped-def]
+        async def _fake_fetch(_state: AppState) -> CeremonyPolicyConfig:
             return project
 
-        def _fake_build(proj, dept):  # type: ignore[no-untyped-def]
+        def _fake_build(
+            proj: CeremonyPolicyConfig,
+            dept: CeremonyPolicyConfig | None,
+        ) -> ResolvedCeremonyPolicyResponse:
             assert proj is project
             assert dept is None
             return response
@@ -184,14 +194,20 @@ class TestGetResolvedPolicy:
             ),
         )
 
-        async def _fake_project(_state):  # type: ignore[no-untyped-def]
+        async def _fake_project(_state: AppState) -> CeremonyPolicyConfig:
             return project
 
-        async def _fake_dept(_state, department):  # type: ignore[no-untyped-def]
+        async def _fake_dept(
+            _state: AppState,
+            department: NotBlankStr,
+        ) -> CeremonyPolicyConfig:
             calls["department"] = department
             return dept
 
-        def _fake_build(proj, d):  # type: ignore[no-untyped-def]
+        def _fake_build(
+            proj: CeremonyPolicyConfig,
+            d: CeremonyPolicyConfig | None,
+        ) -> ResolvedCeremonyPolicyResponse:
             calls["proj"] = proj
             calls["dept"] = d
             return response

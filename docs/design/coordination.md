@@ -512,6 +512,17 @@ routing decisions and wave outcomes:
 
 ---
 
+## Coordination Service Layer
+
+MCP tools for coordination and ceremony policy route through dedicated service facades instead of reaching into the coordinator + scheduler directly, so the handler layer stays thin and audit logging + pagination stay uniform across every read.
+
+| Service | Module | Role |
+|---|---|---|
+| `CoordinationService` | `src/synthorg/coordination/service.py` | Read-only facade over the coordinator and `coordination_metrics_store`. Powers `synthorg_coordination_coordinate_task` (task lookup, newest-first) and `synthorg_coordination_metrics_list` (paged metrics with `(items, total)` return shape). Triggering coordination is intentionally out of scope -- this service serves the read side only. |
+| `CeremonyPolicyService` | `src/synthorg/coordination/ceremony_policy/service.py` | Glue between MCP handlers and the ceremony policy helpers in `api/controllers/ceremony_policy.py` + `engine/workflow/ceremony_policy.py`. Exposes `get_config`, `get_resolved`, and `get_active_strategy`. Returns a frozen `ActiveCeremonyStrategy` model that enforces the `strategy`/`sprint_id` coupling invariant via a cross-field validator: both fields are always either both set (a sprint is active and locked to a strategy) or both `None`. |
+
+The services import `AppState` for re-use of the existing 3-level resolution (`settings_service` + `config_resolver` + `ceremony_scheduler`) rather than introducing a parallel protocol stack.
+
 ## See Also
 
 - [Task & Workflow Engine](engine.md) -- task dispatch, state coordination

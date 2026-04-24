@@ -1112,3 +1112,28 @@ class MemoryInjectionStrategy(Protocol):
 ```
 
 Strategy selection via config: ``memory.retrieval.strategy: context | tool_based | self_editing``
+
+## Memory Service Layer
+
+`MemoryService` (at `src/synthorg/memory/service.py`) is the single entry point for `/memory/fine-tune/*` REST endpoints and the MCP memory tools. Controllers and handlers never reach into `app_state.persistence.*` directly -- the service owns the repository handle, audit logging, and typed error routing.
+
+### Fine-tune lifecycle
+
+`MemoryService` exposes the full fine-tune lifecycle as typed async methods:
+
+- `start_fine_tune(plan: FineTunePlan) -> FineTuneRun`
+- `resume_fine_tune(run_id) -> FineTuneRun`
+- `get_fine_tune_status(run_id) -> FineTuneStatus`
+- `cancel_fine_tune(run_id, *, reason) -> FineTuneRun` (destructive)
+- `run_preflight(plan: FineTunePlan) -> PreflightResult`
+- `list_runs(*, offset, limit) -> tuple[tuple[FineTuneRun, ...], int]`
+- `get_active_embedder() -> ActiveEmbedderSnapshot`
+- `rollback_checkpoint(checkpoint_id, *, reason) -> None` (destructive)
+
+`FineTunePlan` is an MCP-facing Pydantic model (`src/synthorg/memory/fine_tune_plan.py`) that mirrors the runner's internal `FineTuneRequest` field-for-field but isolates the public contract from runner internals. A `@model_validator` rejects parent-directory traversal, backslashes, and Windows drive letters on `source_dir` / `output_dir` before the runner's subprocess or container mount could expose the host filesystem.
+
+### BackendUnsupportedError routing
+
+Fine-tune orchestration is SQLite-backed. On a persistence backend that does not expose `fine_tune_runs` / `fine_tune_checkpoints`, the service raises a typed `BackendUnsupportedError` (`domain_code = "not_supported"`, frozen with `__slots__ = ("reason",)`) instead of a generic `NotImplementedError`. MCP handlers catch it and forward through the standard `not_supported()` envelope, which emits `MCP_HANDLER_NOT_IMPLEMENTED` at WARNING -- distinct from `MCP_HANDLER_CAPABILITY_GAP` (handler wired, primitive method missing) and `MCP_HANDLER_SERVICE_FALLBACK` (legacy helper, zero call sites). REST controllers map it to HTTP 501 with the same domain code.
+
+The typed error keeps the "which gap" question resolvable without string-matching exception messages: backend-unsupported is always exactly one error class and one emitted event.

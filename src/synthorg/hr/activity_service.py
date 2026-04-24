@@ -12,9 +12,6 @@ keeps its own richer implementation because it also owns the
 graceful-degradation + role-based cost redaction that are specific
 to the HTTP surface. Those concerns are intentionally not mirrored
 here; MCP callers are already admin-scoped.
-
-A task-scoped entry point (``get_task_activity``) is a planned
-extension on the same class for the task-centric MCP tools.
 """
 
 import asyncio
@@ -43,6 +40,33 @@ logger = get_logger(__name__)
 _DEFAULT_WINDOW_HOURS: int = 168  # 7 days -- matches API controller cap.
 _MAX_WINDOW_HOURS: int = 720  # 30 days -- upper cap for pathological queries.
 _LIFECYCLE_CAP: int = 1000
+
+
+def _collect_result[ResultT](
+    task: asyncio.Task[ResultT],
+    *,
+    source: str,
+) -> ResultT:
+    """Return ``task.result()`` with a fallback source-label log on failure.
+
+    The ``_fetch_*`` helpers already catch non-fatal exceptions and
+    return safe defaults, so a completed ``TaskGroup`` should never
+    reach this call with a failed task. This wrapper is defence in
+    depth for monkeypatched / subclassed helpers that surface
+    exceptions via ``.result()`` directly: it preserves the
+    ``source=...`` label that would otherwise be dropped by the
+    caller-facing exception.
+    """
+    try:
+        return task.result()
+    except Exception as exc:
+        logger.error(  # noqa: TRY400 -- explicit structured audit event
+            HR_ACTIVITY_SOURCE_FETCH_FAILED,
+            source=source,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise
 
 
 class ActivityFeedService:
@@ -175,9 +199,16 @@ class ActivityFeedService:
                 self._fetch_delegations(agent_key, since, now),
             )
 
-        cost_records = cost_task.result()
-        tool_invocations = tool_task.result()
-        sent, received = delegation_task.result()
+        # ``.result()`` would only re-raise for worker exceptions not
+        # caught by the helpers (MemoryError / RecursionError). Those
+        # abort the whole ``TaskGroup`` before we get here, so these
+        # calls are expected to succeed. The ``_collect_result`` helper
+        # preserves the ``source=...`` label in the unlikely corner
+        # case that a subclass / monkeypatch ever surfaces an exception
+        # via ``.result()`` directly.
+        cost_records = _collect_result(cost_task, source="cost_tracker")
+        tool_invocations = _collect_result(tool_task, source="tool_tracker")
+        sent, received = _collect_result(delegation_task, source="delegation_store")
 
         timeline = merge_activity_timeline(
             lifecycle_events=lifecycle_events,

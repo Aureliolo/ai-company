@@ -45,59 +45,74 @@ def _result(plan_id: str = "plan-1", new_agent_id: str = "agent-new") -> Trainin
     )
 
 
-class _StubTrainingService(TrainingService):
-    """Subclass that skips the full pipeline for session tests.
+class _NoopSelector:
+    """Minimal selector protocol stub -- never invoked in session tests."""
 
-    Intentionally bypasses ``TrainingService.__init__``: the real
-    constructor wires the full training pipeline (selector / curator /
-    trainer / validator / graduation gate), none of which these tests
-    exercise. We only call ``start_session`` / ``list_sessions`` /
-    ``get_session``, which rely exclusively on the three fields
-    manually initialised below (``_idempotency_lock``, ``_sessions``,
-    ``_session_lock``). If ``TrainingService.__init__`` gains new
-    initialisation logic that ``start_session`` depends on, these
-    tests will start failing -- that is the intended signal to update
-    this stub.
+    async def select_sources(self, plan: TrainingPlan) -> tuple:  # type: ignore[type-arg]
+        return ()
+
+
+class _NoopCuration:
+    """Minimal curation protocol stub -- never invoked in session tests."""
+
+    async def curate(  # type: ignore[no-untyped-def]
+        self, items, plan, content_type
+    ):
+        return ()
+
+
+class _NoopMemoryBackend:
+    """Minimal memory backend stub -- never invoked in session tests."""
+
+    async def store(self, request):  # type: ignore[no-untyped-def]
+        return None
+
+
+def _build_service(*, raises: Exception | None = None) -> TrainingService:
+    """Construct a real :class:`TrainingService` wired to noop stubs.
+
+    The session-method tests exercise only ``start_session`` /
+    ``list_sessions`` / ``get_session``, which delegate pipeline work
+    to ``_execute_locked``. Constructing the full service (rather than
+    a subclass that bypasses ``__init__``) ensures that when
+    ``TrainingService.__init__`` gains new required state, these tests
+    fail with a clear ``TypeError`` instead of silently missing the
+    new attribute.
+
+    The returned service has ``_execute_locked`` monkey-patched onto
+    the instance so ``start_session`` sees a predictable synthetic
+    result (or the requested exception).
     """
+    service = TrainingService(
+        selector=_NoopSelector(),  # type: ignore[arg-type]
+        extractors={},
+        curation=_NoopCuration(),  # type: ignore[arg-type]
+        guards=(),
+        memory_backend=_NoopMemoryBackend(),  # type: ignore[arg-type]
+    )
+    calls: list[str] = []
 
-    def __init__(
-        self,
-        *,
-        raises: Exception | None = None,
-    ) -> None:
-        self._executed_plan_ids = set()
-        import asyncio as _asyncio
-        from collections import OrderedDict
-
-        self._idempotency_lock = _asyncio.Lock()
-        self._sessions = OrderedDict()
-        self._session_lock = _asyncio.Lock()
-        self._raises = raises
-        self.calls: list[str] = []
-
-    async def _execute_locked(
-        self,
+    async def _fake_execute_locked(
         plan: TrainingPlan,
     ) -> tuple[TrainingResult, bool]:
-        # Override the locked helper directly because ``start_session``
-        # calls it rather than ``execute`` (the public method now
-        # delegates to ``_execute_locked`` so the "did work run?"
-        # flag can be reported under the lock).
-        self.calls.append(str(plan.id))
-        if self._raises is not None:
-            raise self._raises
+        calls.append(str(plan.id))
+        if raises is not None:
+            raise raises
         return _result(str(plan.id), str(plan.new_agent_id)), True
 
-    async def execute(self, plan: TrainingPlan) -> TrainingResult:
-        result, _ran = await self._execute_locked(plan)
-        return result
+    # Bind to the instance so future ``__init__`` additions don't
+    # affect this test surface; the real class method remains
+    # available via ``type(service)._execute_locked`` if needed.
+    service._execute_locked = _fake_execute_locked  # type: ignore[method-assign]
+    service.calls = calls  # type: ignore[attr-defined]
+    return service
 
 
 class TestStartSession:
     """Happy path + failure path."""
 
     async def test_records_executed_status_on_success(self) -> None:
-        service = _StubTrainingService()
+        service = _build_service()
         plan = _plan("plan-1")
 
         result = await service.start_session(plan)
@@ -110,7 +125,7 @@ class TestStartSession:
 
     async def test_records_failed_status_on_exception(self) -> None:
         boom = RuntimeError("pipeline exploded")
-        service = _StubTrainingService(raises=boom)
+        service = _build_service(raises=boom)
         plan = _plan("plan-2")
 
         with pytest.raises(RuntimeError, match="pipeline exploded"):
@@ -126,7 +141,7 @@ class TestListSessions:
     """Ordering + pagination + FIFO eviction."""
 
     async def test_newest_first(self) -> None:
-        service = _StubTrainingService()
+        service = _build_service()
         for idx in range(3):
             await service.start_session(
                 _plan(plan_id=f"plan-{idx}", new_agent_id=f"agent-{idx}"),
@@ -138,7 +153,7 @@ class TestListSessions:
         assert [s.id for s in page] == ["plan-2", "plan-1", "plan-0"]
 
     async def test_paginates(self) -> None:
-        service = _StubTrainingService()
+        service = _build_service()
         for idx in range(5):
             await service.start_session(
                 _plan(plan_id=f"plan-{idx}", new_agent_id=f"agent-{idx}"),
@@ -150,7 +165,7 @@ class TestListSessions:
         assert [s.id for s in page] == ["plan-2", "plan-1"]
 
     async def test_empty_returns_zero_total(self) -> None:
-        service = _StubTrainingService()
+        service = _build_service()
 
         page, total = await service.list_sessions(offset=0, limit=50)
 
@@ -158,13 +173,13 @@ class TestListSessions:
         assert page == ()
 
     async def test_negative_offset_rejects(self) -> None:
-        service = _StubTrainingService()
+        service = _build_service()
 
         with pytest.raises(ValueError, match="offset"):
             await service.list_sessions(offset=-1, limit=50)
 
     async def test_non_positive_limit_rejects(self) -> None:
-        service = _StubTrainingService()
+        service = _build_service()
 
         with pytest.raises(ValueError, match="limit"):
             await service.list_sessions(offset=0, limit=0)
@@ -174,7 +189,7 @@ class TestGetSession:
     """Present + missing."""
 
     async def test_returns_plan_when_present(self) -> None:
-        service = _StubTrainingService()
+        service = _build_service()
         await service.start_session(_plan("plan-1"))
 
         session = await service.get_session(NotBlankStr("plan-1"))
@@ -183,7 +198,7 @@ class TestGetSession:
         assert session.id == "plan-1"
 
     async def test_returns_none_when_missing(self) -> None:
-        service = _StubTrainingService()
+        service = _build_service()
 
         session = await service.get_session(NotBlankStr("nope"))
 
@@ -201,7 +216,7 @@ class TestSessionCap:
         original = svc_mod._SESSION_STORE_MAX
         svc_mod._SESSION_STORE_MAX = 3
         try:
-            service = _StubTrainingService()
+            service = _build_service()
             for idx in range(5):
                 await service.start_session(
                     _plan(

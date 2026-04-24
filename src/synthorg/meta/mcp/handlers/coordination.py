@@ -63,12 +63,19 @@ def _log_invalid(tool: str, exc: Exception) -> None:
     )
 
 
-def _log_failed(tool: str, exc: Exception) -> None:
+def _log_failed(tool: str, exc: Exception, **context: str) -> None:
+    """Emit the invoke-failed audit event with optional context labels.
+
+    ``context`` surfaces ids (e.g. ``task_id``, ``decision_id``) so
+    operators can correlate a 404 with a specific user request instead
+    of seeing anonymous "record missing" entries.
+    """
     logger.warning(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
         error_type=type(exc).__name__,
         error=safe_error_description(exc),
+        **context,
     )
 
 
@@ -132,7 +139,7 @@ async def _coordination_coordinate_task(
         missing = NotFoundError(
             f"No coordination metrics recorded for task {task_id!r}",
         )
-        _log_failed(tool, missing)
+        _log_failed(tool, missing, task_id=str(task_id))
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=record.model_dump(mode="json"))
@@ -224,7 +231,7 @@ async def _scaling_get_decision(
         return err(exc)
     if decision is None:
         missing = NotFoundError(f"Scaling decision {decision_id!r} not found")
-        _log_failed(tool, missing)
+        _log_failed(tool, missing, decision_id=str(decision_id))
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=decision.model_dump(mode="json"))

@@ -4,12 +4,14 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+import structlog.testing
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.config import ScalingConfig
 from synthorg.hr.scaling.decision_service import ScalingDecisionService
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.hr.scaling.models import ScalingDecision
+from synthorg.observability.events.hr import HR_SCALING_CONTROLLER_INVALID_REQUEST
 
 pytestmark = pytest.mark.unit
 
@@ -108,15 +110,27 @@ class TestListDecisions:
         svc = _FakeScalingService()
         service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
 
-        with pytest.raises(ValueError, match="offset"):
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(ValueError, match="offset"),
+        ):
             await service.list_decisions(offset=-1, limit=1)
+        assert any(
+            e.get("event") == HR_SCALING_CONTROLLER_INVALID_REQUEST for e in events
+        ), "invalid-request event must fire before the ValueError is raised"
 
     async def test_non_positive_limit_rejects(self) -> None:
         svc = _FakeScalingService()
         service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
 
-        with pytest.raises(ValueError, match="limit"):
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(ValueError, match="limit"),
+        ):
             await service.list_decisions(offset=0, limit=0)
+        assert any(
+            e.get("event") == HR_SCALING_CONTROLLER_INVALID_REQUEST for e in events
+        ), "invalid-request event must fire before the ValueError is raised"
 
 
 class TestGetDecision:

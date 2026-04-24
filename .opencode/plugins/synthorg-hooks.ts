@@ -6,15 +6,19 @@
  *
  * Committed Claude Code hooks (from .claude/settings.json):
  *   PreToolUse (Bash): scripts/check_push_rebased.sh
+ *   PreToolUse (Bash): scripts/check_bash_no_write.sh
+ *   PreToolUse (Bash): scripts/check_git_c_cwd.sh
+ *   PreToolUse (Edit|Write): scripts/check_no_edit_migration.sh
+ *   PreToolUse (Edit|Write): scripts/check_no_edit_baseline.sh
+ *   PreToolUse (Edit|Write): scripts/check_pre_pr_review_triage_gate.sh
+ *   PostToolUse (Edit|Write): scripts/check_web_design_system.py
+ *   PostToolUse (Edit|Write): scripts/check_backend_regional_defaults.py
  *
  * Hookify rules enforced via this plugin (from .claude/hookify.*.md):
  *   block-pr-create: blocks direct `gh pr create`
  *   enforce-parallel-tests: enforces `-n 8` with pytest
  *   no-cd-prefix: blocks `cd` prefix in Bash commands
  *   no-local-coverage: blocks `--cov` flags locally
- *   check_bash_no_write.sh: blocks file writes via Bash
- *   check_git_c_cwd.sh: blocks unnecessary git -C to cwd
- *   check_web_design_system.py: validates design tokens on web file edits
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
@@ -53,12 +57,54 @@ function runHookScript(
   }
 }
 
+/** Parse the ``hookSpecificOutput.permissionDecision`` envelope, tolerating legacy
+ * ``block`` or ``deny`` plain-text fallbacks. Returns a deny reason (to raise) or
+ * ``null`` if the hook allowed the action. */
+function parseHookDecision(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw);
+    const decision = parsed?.hookSpecificOutput?.permissionDecision;
+    if (decision === "deny") {
+      return parsed?.hookSpecificOutput?.permissionDecisionReason || "Hook denied this action";
+    }
+    return null;
+  } catch {
+    // Not JSON: treat legacy ``block`` / ``deny`` substring as denial
+    if (/\b(block|deny)\b/i.test(raw)) {
+      return raw;
+    }
+    return null;
+  }
+}
+
 export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
   return {
     tool: {
       execute: {
         before: async (input, output) => {
-          // Only intercept Bash/shell tool calls
+          // Edit / Write PreToolUse hooks -- migration / baseline / triage-gate lock
+          if (input.tool === "edit" || input.tool === "write") {
+            const filePath = typeof output.args?.file_path === "string"
+              ? output.args.file_path as string
+              : "";
+            const payload = { tool_input: { file_path: filePath } } as Record<string, unknown>;
+
+            for (const script of [
+              "scripts/check_no_edit_migration.sh",
+              "scripts/check_no_edit_baseline.sh",
+              "scripts/check_pre_pr_review_triage_gate.sh",
+            ]) {
+              const raw = runHookScript(script, payload.tool_input as Record<string, unknown>, 5000);
+              if (raw) {
+                const denyReason = parseHookDecision(raw);
+                if (denyReason) {
+                  throw new Error(denyReason);
+                }
+              }
+            }
+          }
+
+          // Only the remaining bash / shell checks apply below
           if (input.tool === "bash" || input.tool === "shell") {
             const command = (output.args?.command as string) ?? "";
 
@@ -104,16 +150,9 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
                 15000,
               );
               if (result) {
-                try {
-                  const parsed = JSON.parse(result);
-                  if (parsed.hookSpecificOutput?.permissionDecision === "deny") {
-                    throw new Error(parsed.hookSpecificOutput?.permissionDecisionReason || "Push blocked");
-                  }
-                } catch {
-                  // Not JSON or parse error - check for legacy "block" pattern
-                  if (result.includes("block")) {
-                    throw new Error(result);
-                  }
+                const denyReason = parseHookDecision(result);
+                if (denyReason) {
+                  throw new Error(denyReason);
                 }
               }
             }
@@ -142,12 +181,15 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
           }
         },
         after: async (input, output) => {
+          if (input.tool !== "edit" && input.tool !== "write") {
+            return;
+          }
+          const filePath = typeof output.args?.file_path === "string"
+            ? output.args.file_path as string
+            : "";
+
           // check_web_design_system.py -- validate design tokens on web file edits
-          if (
-            (input.tool === "edit" || input.tool === "write") &&
-            typeof output.args?.file_path === "string" &&
-            output.args.file_path.includes("web/src/")
-          ) {
+          if (filePath.includes("web/src/")) {
             try {
               execSync(
                 `python scripts/check_web_design_system.py`,
@@ -156,7 +198,21 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             } catch (error: unknown) {
               const err = error as { message?: string; stderr?: string };
               const errMsg = err.message || err.stderr || "Unknown error";
-              throw new Error(`Design system check failed for ${output.args.file_path}: ${errMsg}`);
+              throw new Error(`Design system check failed for ${filePath}: ${errMsg}`);
+            }
+          }
+
+          // check_backend_regional_defaults.py -- backend regional-defaults audit
+          if (filePath.includes("src/synthorg/") && filePath.endsWith(".py")) {
+            try {
+              execSync(
+                `python scripts/check_backend_regional_defaults.py`,
+                { timeout: 10000, encoding: "utf-8" },
+              );
+            } catch (error: unknown) {
+              const err = error as { message?: string; stderr?: string };
+              const errMsg = err.message || err.stderr || "Unknown error";
+              throw new Error(`Backend regional-defaults check failed for ${filePath}: ${errMsg}`);
             }
           }
         },

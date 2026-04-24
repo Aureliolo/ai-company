@@ -1,8 +1,4 @@
-"""Training service orchestrator.
-
-Executes the full training pipeline: source resolution, parallel
-extraction + curation, sequential guard chain, memory storage.
-"""
+"""Training service orchestrator."""
 
 import asyncio
 import copy
@@ -24,9 +20,10 @@ from synthorg.hr.training.models import (
 )
 from synthorg.memory.errors import MemoryError as _MemoryError
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_TRAINING_SESSION_LISTED,
+    HR_TRAINING_SESSION_RECORD_FAILED,
     HR_TRAINING_SESSION_RECORDED,
 )
 from synthorg.observability.events.training import (
@@ -182,10 +179,15 @@ class TrainingService:
             try:
                 result = await self._run_pipeline(plan, started_at)
             except Exception as exc:
-                logger.exception(
+                # SEC-1: prefer ``warning`` + ``safe_error_description`` over
+                # ``logger.exception(..., error=str(exc))`` so ``str(exc)``
+                # on provider / memory errors doesn't land credential text
+                # in the traceback-bearing frame-locals.
+                logger.warning(
                     HR_TRAINING_PLAN_FAILED,
                     plan_id=str(plan.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             self._executed_plan_ids.add(str(plan.id))
@@ -221,7 +223,22 @@ class TrainingService:
         # the set and returns an empty result. Using the locked
         # helper's ``ran_pipeline`` flag makes the record decision
         # race-free.
-        await self._record_session(plan)
+        #
+        # Entry-call record runs under the session lock and may raise
+        # if the store is corrupted or the lock is contended. A failure
+        # here must not leave the pipeline un-run; log + continue so
+        # the execute path still attempts the work and terminal status
+        # (FAILED/EXECUTED) gets recorded via the branches below.
+        try:
+            await self._record_session(plan)
+        except Exception as exc:
+            logger.warning(
+                HR_TRAINING_SESSION_RECORD_FAILED,
+                plan_id=str(plan.id),
+                stage="entry",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
         try:
             result, ran_pipeline = await self._execute_locked(plan)
         except Exception:
@@ -231,7 +248,16 @@ class TrainingService:
                     "executed_at": datetime.now(UTC),
                 },
             )
-            await self._record_session(failed)
+            try:
+                await self._record_session(failed)
+            except Exception as exc:
+                logger.warning(
+                    HR_TRAINING_SESSION_RECORD_FAILED,
+                    plan_id=str(failed.id),
+                    stage="failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
             raise
         if not ran_pipeline:
             return result
@@ -241,7 +267,16 @@ class TrainingService:
                 "executed_at": result.completed_at,
             },
         )
-        await self._record_session(executed)
+        try:
+            await self._record_session(executed)
+        except Exception as exc:
+            logger.warning(
+                HR_TRAINING_SESSION_RECORD_FAILED,
+                plan_id=str(executed.id),
+                stage="executed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
         return result
 
     async def list_sessions(
@@ -465,11 +500,13 @@ class TrainingService:
                 new_agent_level=plan.new_agent_level,
             )
         except Exception as exc:
-            logger.exception(
+            # SEC-1: see comment at the top of ``_execute_locked``.
+            logger.warning(
                 HR_TRAINING_EXTRACTION_FAILED,
                 plan_id=str(plan.id),
                 content_type=ct.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -487,11 +524,13 @@ class TrainingService:
                 content_type=ct,
             )
         except Exception as exc:
-            logger.exception(
+            # SEC-1: see comment at the top of ``_execute_locked``.
+            logger.warning(
                 HR_TRAINING_CURATION_FAILED,
                 plan_id=str(plan.id),
                 content_type=ct.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -576,12 +615,14 @@ class TrainingService:
                     plan=plan,
                 )
             except Exception as exc:
-                logger.exception(
+                # SEC-1: see comment at the top of ``_execute_locked``.
+                logger.warning(
                     HR_TRAINING_GUARD_FAILED,
                     plan_id=str(plan.id),
                     guard=guard.name,
                     content_type=ct.value,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
 

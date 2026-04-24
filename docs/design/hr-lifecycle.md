@@ -694,6 +694,19 @@ See [Client Simulation](client-simulation.md) for the full architecture.
 
 ---
 
+## HR Service Layer
+
+MCP handlers and REST controllers never reach into HR repositories directly; every read goes through a narrow service facade so auditing, pagination, and optional-dependency degradation stay in one place per domain. The services follow the standard protocol + strategy + factory + config-discriminator pattern where interchangeable backends exist (e.g. `AutonomyPolicyService`, `ScalingConfigService`), and collapse to a single class where the behaviour is strictly orchestration (e.g. `ActivityFeedService`).
+
+| Service | Module | Role |
+|---|---|---|
+| `ActivityFeedService` | `src/synthorg/hr/activity_service.py` | Aggregates lifecycle events, task metrics, cost records, tool invocations, and delegation records into a single agent-scoped timeline for `synthorg_agents_get_activity`. Uses `asyncio.TaskGroup` with per-source safe-default helpers so one failing tracker cannot abort the merge. |
+| `AgentHealthService` | `src/synthorg/hr/health/service.py` | Derives a compact `AgentHealthReport` (`healthy` / `degraded` / `unavailable`) from the tightest populated `PerformanceTracker` window. Rejects reports where `recent_failed_count > recent_task_count` via a cross-field validator. |
+| `AgentVersionService` | `src/synthorg/hr/identity/version_service.py` | Reads paged identity-version history for `synthorg_agents_get_history`. Lifted out of the REST controller so the MCP surface doesn't depend on HTTP request/response shapes. |
+| `PersonalityService` | `src/synthorg/hr/personalities/service.py` | Thin facade over `PersonalityPresetService` for MCP list/get endpoints. |
+| `ScalingDecisionService` | `src/synthorg/hr/scaling/decision_service.py` | Wraps the scaling decision repository + trigger. MCP tools list paged decisions, look up a specific one, read current config, and trigger an evaluation. |
+| `TrainingService` (extended) | `src/synthorg/hr/training/service.py` | Already owned the training pipeline; now additionally owns a bounded in-memory session store (FIFO, cap 500) used by `synthorg_training_list_sessions` / `_get_session` / `_start_session`. |
+
 ## See Also
 
 - [Agents](agents.md) -- agent identity, personality, skills, identity versioning

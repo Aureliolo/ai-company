@@ -257,6 +257,78 @@ class TestNoServiceFallbackEvents:
                 f"{sorted(set(gap_tool_counts) - set(not_supported_counts))}."
             )
 
+    @pytest.mark.parametrize(
+        "tool_name",
+        [
+            "synthorg_memory_get_fine_tune_status",
+            "synthorg_memory_list_runs",
+            "synthorg_memory_get_active_embedder",
+        ],
+    )
+    async def test_backend_unsupported_error_routes_to_not_supported(
+        self,
+        fake_app_state: SimpleNamespace,
+        actor: AgentIdentity,
+        tool_name: str,
+    ) -> None:
+        """A :class:`BackendUnsupportedError` must land as the not_supported envelope.
+
+        Injects a ``memory_service`` stub whose methods raise
+        ``BackendUnsupportedError`` so the handler's catch + forward
+        to ``not_supported()`` is exercised end to end. The default
+        ``fake_app_state`` fixture wires a working memory_service, so
+        this branch is never hit by the generic blast; this test
+        pins the behaviour explicitly.
+        """
+        from synthorg.memory.fine_tune_plan import BackendUnsupportedError
+
+        unsupported_reason = "fine-tune repositories not available on active backend"
+
+        class _UnsupportedMemoryService:
+            async def get_fine_tune_status(
+                self,
+                run_id: Any = None,
+            ) -> None:
+                raise BackendUnsupportedError(unsupported_reason)
+
+            async def list_runs(
+                self,
+                *,
+                offset: int,
+                limit: int,
+            ) -> None:
+                raise BackendUnsupportedError(unsupported_reason)
+
+            async def get_active_embedder(self) -> None:
+                raise BackendUnsupportedError(unsupported_reason)
+
+        fake_app_state.memory_service = _UnsupportedMemoryService()
+        fake_app_state.has_memory_service = True
+
+        handlers = build_handler_map()
+        handler = handlers[tool_name]
+        with structlog.testing.capture_logs() as events:
+            raw = await handler(
+                app_state=fake_app_state,
+                arguments=dict(_BLAST_ARGS),
+                actor=actor,
+            )
+        body = json.loads(raw)
+        assert body["domain_code"] == "not_supported", (
+            f"{tool_name} should return not_supported when BackendUnsupported "
+            f"fires, got {body!r}"
+        )
+        not_implemented = [
+            e
+            for e in events
+            if e.get("event") == MCP_HANDLER_NOT_IMPLEMENTED
+            and e.get("tool_name") == tool_name
+        ]
+        assert not_implemented, (
+            f"{tool_name} routed via not_supported() but no "
+            f"MCP_HANDLER_NOT_IMPLEMENTED event fired"
+        )
+
     async def test_every_tool_returns_well_formed_envelope(
         self,
         fake_app_state: SimpleNamespace,

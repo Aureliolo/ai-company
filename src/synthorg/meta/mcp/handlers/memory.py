@@ -6,13 +6,14 @@ application bootstrap; handlers route through that facade exclusively
 and never reach into ``app_state.persistence.*`` directly (CLAUDE.md
 persistence-boundary rule).
 
-Backend-unsupported routing. Any attempt to invoke a fine-tune
-lifecycle method on a service without an orchestrator (or against a
-persistence backend that lacks fine-tune repos) raises
-:class:`BackendUnsupportedError`. When no :class:`MemoryService` is
-wired at all (stripped-down test app-states, or unsupported backends),
-:func:`_service` raises the same exception. Handlers catch it and
-forward to :func:`not_supported`, which both:
+Backend-unsupported routing. :class:`BackendUnsupportedError` is
+raised in two well-defined places: (1) :class:`MemoryService`
+fine-tune lifecycle methods when the active persistence backend does
+not expose fine-tune repos, and (2) :func:`_service` here when no
+:class:`MemoryService` is wired at all (stripped-down test app-states,
+unsupported backends). Every handler in this module catches the
+exception and forwards it -- without exception -- to
+:func:`not_supported`, which both:
 
 - returns the shared ``not_supported`` wire envelope
   (``{"status": "error", "domain_code": "not_supported"}``), and
@@ -506,10 +507,9 @@ async def _memory_list_runs(
         return err(exc)
     try:
         service = _service(app_state)
+        runs, total = await service.list_runs(limit=limit, offset=offset)
     except BackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    try:
-        runs, total = await service.list_runs(limit=limit, offset=offset)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
@@ -529,10 +529,9 @@ async def _memory_get_active_embedder(
     tool = "synthorg_memory_get_active_embedder"
     try:
         service = _service(app_state)
+        snap = await service.get_active_embedder()
     except BackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    try:
-        snap = await service.get_active_embedder()
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
