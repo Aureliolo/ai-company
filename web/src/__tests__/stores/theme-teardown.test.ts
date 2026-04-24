@@ -105,4 +105,24 @@ describe('useThemeStore teardown', () => {
     store.teardown()
     expect(attachedListeners.size).toBe(0)
   })
+
+  it('reattach() restores end-to-end reactivity to matchMedia change events', () => {
+    // Proves the contract that motivated reattach() in the first place:
+    // after teardown() + reattach() against a fresh instrumented
+    // matchMedia, firing a change event drives the store as if this
+    // were the first test in the suite.
+    const store = useThemeStore.getState()
+    store.teardown()
+    store.reattach()
+
+    expect(attachedListeners.size).toBe(1)
+    const [listener] = [...attachedListeners]
+
+    const before = useThemeStore.getState().reducedMotionDetected
+    listener({ matches: !before } as MediaQueryListEvent)
+    expect(useThemeStore.getState().reducedMotionDetected).toBe(!before)
+
+    // Flip back so the singleton state is restored for neighbouring tests.
+    listener({ matches: before } as MediaQueryListEvent)
+  })
 })

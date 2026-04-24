@@ -109,14 +109,38 @@ class SettingsChangeDispatcher:
                 raise RuntimeError(msg)
 
             await self._ensure_channel()
+            # Subscribe + spawn must be transactional: if subscribe()
+            # succeeds but the task spawn (or any subsequent step that
+            # could be added later) raises, we must roll back the
+            # subscription so a retried start() does not double-subscribe
+            # and stop() does not silently skip cleanup (stop() early-
+            # returns on ``_running=False``).
             await self._bus.subscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
-
-            self._running = True
-            self._task = asyncio.create_task(
-                self._poll_loop(),
-                name="settings-dispatcher",
-            )
-            self._task.add_done_callback(self._on_task_done)
+            try:
+                self._running = True
+                self._task = asyncio.create_task(
+                    self._poll_loop(),
+                    name="settings-dispatcher",
+                )
+                self._task.add_done_callback(self._on_task_done)
+            except BaseException:
+                self._running = False
+                self._task = None
+                try:
+                    await self._bus.unsubscribe(
+                        _SETTINGS_CHANNEL,
+                        _SUBSCRIBER_ID,
+                    )
+                except Exception:
+                    # Best-effort rollback -- a failed unsubscribe
+                    # during already-failed start() should not mask
+                    # the original exception below.
+                    logger.warning(
+                        SETTINGS_DISPATCHER_STARTED,
+                        error="rollback unsubscribe failed during start() cleanup",
+                        exc_info=True,
+                    )
+                raise
             logger.info(
                 SETTINGS_DISPATCHER_STARTED,
                 subscriber_count=len(self._subscribers),

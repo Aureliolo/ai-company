@@ -115,16 +115,22 @@ async def subscribe(
             state.channels[channel_name] = updated_channel
 
     if cleanup_sub is not None:
-        try:
-            await cleanup_sub.unsubscribe()
-        except Exception:
-            logger.warning(
-                COMM_SUBSCRIPTION_REMOVED,
-                channel=channel_name,
-                subscriber=subscriber_id,
-                phase="cleanup_duplicate_consumer",
-                exc_info=True,
-            )
+        # Do NOT call ``cleanup_sub.unsubscribe()`` here. JetStream
+        # durable consumers are keyed by ``durable_name(channel,
+        # subscriber)``; two concurrent ``pull_subscribe`` calls with
+        # the same durable name return distinct client-side
+        # ``Subscription`` objects that reference the **same**
+        # server-side consumer. Calling ``unsubscribe()`` on this
+        # duplicate would delete that shared consumer and break the
+        # winning coroutine's subscription on the next fetch. Dropping
+        # the local reference is the correct cleanup: the server-side
+        # consumer remains bound to the winner in ``state.subscriptions``.
+        logger.debug(
+            COMM_SUBSCRIPTION_REMOVED,
+            channel=channel_name,
+            subscriber=subscriber_id,
+            phase="discard_duplicate_subscription_ref",
+        )
 
     if updated_channel is not None:
         await write_channel_to_kv(state, updated_channel)
