@@ -148,6 +148,7 @@ class AppStateServicesMixin(_FacadesMixin):
     _mcp_catalog_service: CatalogService | None
     _mcp_installations_repo: McpInstallationRepository | None
     _persistence: Any
+    _ws_auth_timeout_seconds: float
 
     @property
     def settings_service(self) -> SettingsService:
@@ -289,20 +290,28 @@ class AppStateServicesMixin(_FacadesMixin):
     def ws_auth_timeout_seconds(self) -> float:
         """Return the WebSocket first-message auth-handshake timeout.
 
-        Baked in by ``_apply_bridge_config`` from
-        ``api.ws_auth_timeout_seconds`` (``restart_required=True``);
+        Populated by ``_apply_bridge_config`` from
+        ``api.ws_auth_timeout_seconds`` (``restart_required=True``, so the
+        operator-visible contract is "takes effect at the next restart");
         always has a sane built-in default (10.0 s) so the handler
-        never reaches back through the resolver per-connection.
+        never reaches back through the resolver per-connection.  The
+        setter below is permissive by design -- tests and subsystems that
+        need a different value at runtime may call it -- so the effective
+        value is whichever ``set_ws_auth_timeout_seconds`` call ran most
+        recently.
         """
         return self._ws_auth_timeout_seconds
 
     def set_ws_auth_timeout_seconds(self, value: float) -> None:
-        """Bake in the resolved WebSocket auth timeout once at startup.
+        """Store a validated WebSocket auth timeout on the app state.
 
         Mirrors the ``set_max_pending_per_user`` pattern used by the
         ticket store: ``_apply_bridge_config`` resolves the setting
-        and calls this setter with the validated value, which is
-        then read by the ``/ws`` handler. Bounds mirror the
+        and calls this setter with the validated value at startup,
+        which is then read by the ``/ws`` handler.  Repeated calls
+        are allowed and the latest value wins -- tests monkeypatch
+        this freely and no state in the mixin enforces a single-shot
+        contract.  Bounds mirror the
         ``ApiBridgeConfig.ws_auth_timeout_seconds`` Pydantic field;
         the shared ``WS_AUTH_TIMEOUT_{MIN,MAX}_SECONDS`` constants
         keep the two sites aligned (DRY).

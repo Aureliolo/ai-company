@@ -11,12 +11,13 @@ _r = get_registry()
 # Safety net: the SettingDefinition default below and
 # :attr:`AutonomyConfig.level`'s default must agree, otherwise a fresh
 # install resolves autonomy differently depending on which side read the
-# value first.  Fail loudly at import time if the two ever drift.
-_AUTONOMY_DEFAULT_STR = AutonomyConfig.model_fields["level"].default
-assert isinstance(_AUTONOMY_DEFAULT_STR, AutonomyLevel), (  # noqa: S101
-    "AutonomyConfig.level default must be an AutonomyLevel enum"
-)
-_EXPECTED_AUTONOMY_DEFAULT = _AUTONOMY_DEFAULT_STR.value
+# value first.  Raised explicitly (not ``assert``) so ``python -O`` still
+# trips the drift guard.
+_AUTONOMY_DEFAULT_RAW = AutonomyConfig.model_fields["level"].default
+if not isinstance(_AUTONOMY_DEFAULT_RAW, AutonomyLevel):
+    _msg = "AutonomyConfig.level default must be an AutonomyLevel enum"
+    raise TypeError(_msg)
+_EXPECTED_AUTONOMY_DEFAULT = _AUTONOMY_DEFAULT_RAW.value
 
 _r.register(
     SettingDefinition(
@@ -42,10 +43,12 @@ _r.register(
     )
 )
 
-assert _EXPECTED_AUTONOMY_DEFAULT == "supervised", (  # noqa: S101
-    "AutonomyConfig.level default drifted from the 'autonomy_level' "
-    "SettingDefinition default; update both in lockstep."
-)
+if _EXPECTED_AUTONOMY_DEFAULT != "supervised":
+    _msg = (
+        "AutonomyConfig.level default drifted from the 'autonomy_level' "
+        "SettingDefinition default; update both in lockstep."
+    )
+    raise RuntimeError(_msg)
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMPANY,

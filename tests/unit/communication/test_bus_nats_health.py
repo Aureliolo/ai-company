@@ -13,6 +13,7 @@ import pytest
 from synthorg.communication.bus.nats import JetStreamMessageBus
 from synthorg.communication.config import MessageBusConfig, NatsConfig
 from synthorg.communication.enums import MessageBusBackend
+from synthorg.observability import safe_error_description
 from synthorg.observability.events.communication import COMM_BUS_HEALTH_CHECK_FAILED
 
 
@@ -84,8 +85,10 @@ class TestNatsBusHealthCheck:
         assert call_args.args[0] == COMM_BUS_HEALTH_CHECK_FAILED
         assert call_args.kwargs["phase"] == "flush"
         assert call_args.kwargs["error_type"] == type(flush_exc).__name__
-        assert isinstance(call_args.kwargs["error"], str)
-        assert call_args.kwargs["error"]
+        # Exact-match the scrubbed payload so a regression that re-emits
+        # ``str(exc)`` (which can carry attacker-controlled bytes) would
+        # flip the test, not just a non-empty-string check.
+        assert call_args.kwargs["error"] == safe_error_description(flush_exc)
         assert "exc_info" not in call_args.kwargs
 
     async def test_returns_true_when_flush_succeeds(self) -> None:

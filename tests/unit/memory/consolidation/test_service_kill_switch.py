@@ -69,8 +69,13 @@ class TestConsolidationKillSwitch:
 
         assert result.consolidated_count == 0
         assert result.removed_ids == ()
+        # No backend interactions at all while disabled -- the kill-switch
+        # dominates every branch of the consolidation cycle, not just
+        # ``retrieve``.
         strategy.consolidate.assert_not_awaited()
         backend.retrieve.assert_not_awaited()
+        backend.count.assert_not_awaited()
+        backend.delete.assert_not_awaited()
         skipped = [
             log for log in logs if log.get("event") == "consolidation.run.skipped"
         ]

@@ -160,9 +160,9 @@ sum by (change_type) (rate(synthorg_agent_identity_version_changes_total[5m]))
 ### API health
 
 ```promql
-# 5xx rate as a fraction of total
+# 5xx rate as a fraction of total (clamp_min avoids NaN/Inf in idle windows)
 sum(rate(synthorg_api_request_duration_seconds_count{status_class="5xx"}[5m]))
-  / sum(rate(synthorg_api_request_duration_seconds_count[5m]))
+  / clamp_min(sum(rate(synthorg_api_request_duration_seconds_count[5m])), 1)
 
 # Request rate by status class (histogram's auto-emitted _count series)
 sum by (status_class) (rate(synthorg_api_request_duration_seconds_count[1m]))
