@@ -65,9 +65,18 @@ echo
 # match refs/heads/* and refs/tags/* (NOT refs/pull/*). For PR-triggered envs
 # (cloudflare-preview, atlas) the workflow-level `if:` guard is the actual
 # gate -- see docs/reference/github-environments.md for rationale.
+# `release` is scoped to `main` alone because it holds the
+# `RELEASE_PLEASE_TOKEN` secret. GitHub's deployment branch policies match
+# ref *names* only -- they do NOT verify that a tag's commit descends from
+# main -- so admitting `v*` here would grant token access to any v-shaped
+# tag, including ones created on unmerged feature branches. Tag-only
+# release jobs (cli-release, docker.yml:update-release) ride on
+# `release-tags` instead, which carries no privileged secrets and only
+# provides a structural ref gate.
 ENV_CONFIG=(
   "github-pages|main"
-  "release|main,v*"
+  "release|main"
+  "release-tags|v*"
   "apko-lock|main"
   "image-push|main,v*"
 )

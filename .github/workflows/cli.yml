@@ -262,11 +262,11 @@ jobs:
     needs: [cli-lint, cli-test, cli-build, cli-vuln]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Environment-gated: the `release` env branch policy (main,v*) prevents
-    # this job from running on feature-branch refs even if triggered via
-    # workflow_dispatch or routing error. Guards the RELEASE_PLEASE_TOKEN
-    # surface and GoReleaser push path.
-    environment: release
+    # Environment-gated: the `release-tags` env branch policy (`v*`) is a
+    # structural ref gate for the GoReleaser push path. This env carries
+    # no privileged secrets -- `RELEASE_PLEASE_TOKEN` lives on the
+    # main-only `release` env so a forged `v*` tag cannot unlock it.
+    environment: release-tags
     permissions:
       contents: write
       id-token: write

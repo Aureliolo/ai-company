@@ -1098,7 +1098,11 @@ jobs:
       needs.build-fine-tune-publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: release
+    # Uses `release-tags` (v*-only, no privileged secrets), not `release`
+    # (main-only, holds RELEASE_PLEASE_TOKEN). This job writes release
+    # notes via the ambient `GITHUB_TOKEN`, so it does not need the
+    # release-please PAT.
+    environment: release-tags
     permissions:
       contents: write
     steps:

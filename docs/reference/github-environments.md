@@ -13,11 +13,21 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | Environment | Branch policy | Triggered by |
 |---|---|---|
 | `github-pages` | `main` | `pages.yml` push to main |
-| `release` | `main`, `v*` | `release.yml` + `dev-release.yml` (main pushes), `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes), `finalize-release.yml:publish` (workflow_run on main) |
+| `release` | `main` | `release.yml` + `dev-release.yml` (main pushes), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main). Holds `RELEASE_PLEASE_TOKEN`. |
+| `release-tags` | `v*` | `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes). Structural ref gate only; no privileged secrets. |
 | `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
 | `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch |
 | `cloudflare-preview` | _none_ (see below) | `pages-preview.yml` pull_request events |
 | `atlas` | _none_ (see below) | `ci.yml:schema-validate` push + pull_request |
+
+The release path is intentionally split into two environments. GitHub's
+deployment branch policies only match ref *names* -- they do NOT verify
+that a tag's commit is reachable from an allowed branch. Admitting `v*`
+on the secret-bearing environment would let any `v`-prefixed tag
+(including one forged on an unmerged feature branch) unlock
+`RELEASE_PLEASE_TOKEN`. Keeping `release` main-only and routing tag-only
+jobs through `release-tags` preserves the structural ref gate without
+exposing the PAT.
 
 ## Why `cloudflare-preview` and `atlas` have no branch policy
 
@@ -76,11 +86,12 @@ gh api repos/Aureliolo/synthorg/environments/apko-lock/deployment-branch-policie
 ```
 
 Expected output for the reconciled environments (`github-pages`, `apko-lock`,
-`release`, `image-push`):
+`release`, `release-tags`, `image-push`):
 
 - `deployment_branch_policy`: `{"protected_branches": false, "custom_branch_policies": true}`
-- `branch_policies` for `github-pages`, `apko-lock`: `["main"]`
-- `branch_policies` for `release`, `image-push`: `["main", "v*"]`
+- `branch_policies` for `github-pages`, `apko-lock`, `release`: `["main"]`
+- `branch_policies` for `release-tags`: `["v*"]`
+- `branch_policies` for `image-push`: `["main", "v*"]`
 
 `cloudflare-preview` and `atlas` are intentionally excluded from the
 `custom_branch_policies` expectation -- see the rationale above.
@@ -141,10 +152,13 @@ scoped to the new repo path rather than granting org admin.
   the environment secret; revoke the old PAT from the PAT owner's GitHub
   settings to close the window.
 
-**Access control**: the `release` environment's branch policy (`main`,
-`v*`) is the structural gate. A workflow triggered from any other ref
+**Access control**: the `release` environment's branch policy (`main`
+only) is the structural gate. A workflow triggered from any other ref
 cannot read the secret even if it declares `secrets.RELEASE_PLEASE_TOKEN`
-in its YAML.
+in its YAML. Tag-only release jobs (`cli.yml:cli-release`,
+`docker.yml:update-release`) deliberately run under the separate
+`release-tags` environment, which carries no privileged secrets, so a
+forged `v*` tag on unmerged code cannot unlock the PAT.
 
 ## Testing the `apko-lock` gate
 
