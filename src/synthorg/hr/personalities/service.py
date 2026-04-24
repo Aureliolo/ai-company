@@ -63,7 +63,17 @@ class PersonalityService:
 
         Returns:
             Tuple of ``(page, total)``.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` is not
+                strictly positive.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         all_entries = await self._presets.list_all()
         total = len(all_entries)
         page = all_entries[offset : offset + limit]
