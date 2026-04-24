@@ -135,6 +135,23 @@ class TrainingService:
         Returns:
             Training result with pipeline metrics.
         """
+        result, _ran = await self._execute_locked(plan)
+        return result
+
+    async def _execute_locked(
+        self,
+        plan: TrainingPlan,
+    ) -> tuple[TrainingResult, bool]:
+        """Internal: run pipeline if needed, report whether work ran.
+
+        Returns ``(result, ran_pipeline)`` so :meth:`start_session`
+        can make a race-free decision about whether to record an
+        ``EXECUTED`` session. Two concurrent callers of
+        :meth:`start_session` both enter the idempotency check before
+        either runs the pipeline; only the caller that actually
+        acquires the lock and runs gets ``ran_pipeline=True``, so
+        only that caller writes the terminal ``EXECUTED`` session.
+        """
         started_at = datetime.now(UTC)
 
         # Pre-flight short-circuits do not require the lock.
@@ -144,14 +161,14 @@ class TrainingService:
                 plan_id=str(plan.id),
                 reason="status_executed",
             )
-            return self._empty_result(plan, started_at)
+            return self._empty_result(plan, started_at), False
 
         if plan.skip_training:
             logger.info(
                 HR_TRAINING_SKIPPED,
                 plan_id=str(plan.id),
             )
-            return self._empty_result(plan, started_at)
+            return self._empty_result(plan, started_at), False
 
         async with self._idempotency_lock:
             if str(plan.id) in self._executed_plan_ids:
@@ -160,7 +177,7 @@ class TrainingService:
                     plan_id=str(plan.id),
                     reason="already_executed_in_service",
                 )
-                return self._empty_result(plan, started_at)
+                return self._empty_result(plan, started_at), False
 
             try:
                 result = await self._run_pipeline(plan, started_at)
@@ -172,7 +189,7 @@ class TrainingService:
                 )
                 raise
             self._executed_plan_ids.add(str(plan.id))
-            return result
+            return result, True
 
     async def start_session(self, plan: TrainingPlan) -> TrainingResult:
         """Execute *plan* and record the session on the in-memory store.
@@ -195,23 +212,18 @@ class TrainingService:
                 re-raised after the session is recorded as
                 ``FAILED``.
         """
-        # ``execute`` short-circuits (returning an empty
-        # :class:`TrainingResult`) in three cases: ``plan.skip_training``,
-        # ``plan.status == EXECUTED``, or ``plan.id`` already present in
-        # the service's executed-id set. In any of those cases no
-        # pipeline work runs, so we must not overwrite the plan's
-        # status with EXECUTED + a fresh executed_at -- that would
-        # misrepresent an idempotent replay as a new run.
-        plan_id_str = str(plan.id)
-        idempotent_replay = (
-            plan.skip_training
-            or plan.status == TrainingPlanStatus.EXECUTED
-            or plan_id_str in self._executed_plan_ids
-        )
-
+        # Use ``_execute_locked`` rather than ``execute`` so the
+        # "did pipeline work actually run?" answer is reported from
+        # INSIDE the idempotency lock. A pre-call check on
+        # ``_executed_plan_ids`` would race: concurrent callers both
+        # observe the id missing, both reach ``execute``, but only
+        # one acquires the lock and runs -- the other sees the id in
+        # the set and returns an empty result. Using the locked
+        # helper's ``ran_pipeline`` flag makes the record decision
+        # race-free.
         await self._record_session(plan)
         try:
-            result = await self.execute(plan)
+            result, ran_pipeline = await self._execute_locked(plan)
         except Exception:
             failed = plan.model_copy(
                 update={
@@ -221,7 +233,7 @@ class TrainingService:
             )
             await self._record_session(failed)
             raise
-        if idempotent_replay:
+        if not ran_pipeline:
             return result
         executed = plan.model_copy(
             update={

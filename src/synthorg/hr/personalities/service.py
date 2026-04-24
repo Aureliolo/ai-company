@@ -16,7 +16,10 @@ from typing import TYPE_CHECKING
 from synthorg.api.errors import NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.observability import get_logger
-from synthorg.observability.events.preset import PRESET_NOT_FOUND
+from synthorg.observability.events.preset import (
+    PRESET_INVALID_REQUEST,
+    PRESET_NOT_FOUND,
+)
 
 if TYPE_CHECKING:
     from synthorg.templates.preset_service import (
@@ -70,9 +73,19 @@ class PersonalityService:
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                PRESET_INVALID_REQUEST,
+                param="offset",
+                value=offset,
+            )
             raise ValueError(msg)
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                PRESET_INVALID_REQUEST,
+                param="limit",
+                value=limit,
+            )
             raise ValueError(msg)
         all_entries = await self._presets.list_all()
         total = len(all_entries)

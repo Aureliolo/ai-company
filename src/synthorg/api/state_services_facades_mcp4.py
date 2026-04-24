@@ -57,6 +57,26 @@ class _MetaMcp4FacadesMixin:
         """
         raise NotImplementedError
 
+    def _attach_service(
+        self,
+        *,
+        slot: str,
+        service: Any,
+        name: str,
+    ) -> None:
+        """Run ``_set_once`` then emit the INFO audit event.
+
+        Logging must happen *after* the slot is set so a duplicate
+        attach (which ``_set_once`` rejects by raising) does not
+        produce a misleading ``API_STATE_SERVICE_ATTACHED`` event.
+        """
+        self._set_once(slot, service, name)
+        logger.info(
+            API_STATE_SERVICE_ATTACHED,
+            slot=slot,
+            service_class=type(service).__name__,
+        )
+
     # Slot attrs (declared on the concrete AppState; redeclared here
     # so mypy narrows access through the mixin).
     _activity_feed_service: ActivityFeedService | None
@@ -108,15 +128,10 @@ class _MetaMcp4FacadesMixin:
             RuntimeError: If a service has already been attached to
                 this slot.
         """
-        logger.info(
-            API_STATE_SERVICE_ATTACHED,
+        self._attach_service(
             slot="_activity_feed_service",
-            service_class=type(service).__name__,
-        )
-        self._set_once(
-            "_activity_feed_service",
-            service,
-            "ActivityFeedService",
+            service=service,
+            name="ActivityFeedService",
         )
 
     # ── AgentHealthService ───────────────────────────────────────
@@ -150,15 +165,10 @@ class _MetaMcp4FacadesMixin:
         Raises:
             RuntimeError: If already attached.
         """
-        logger.info(
-            API_STATE_SERVICE_ATTACHED,
+        self._attach_service(
             slot="_agent_health_service",
-            service_class=type(service).__name__,
-        )
-        self._set_once(
-            "_agent_health_service",
-            service,
-            "AgentHealthService",
+            service=service,
+            name="AgentHealthService",
         )
 
     # ── AgentVersionService ──────────────────────────────────────
@@ -192,15 +202,10 @@ class _MetaMcp4FacadesMixin:
         Raises:
             RuntimeError: If already attached.
         """
-        logger.info(
-            API_STATE_SERVICE_ATTACHED,
+        self._attach_service(
             slot="_agent_version_service",
-            service_class=type(service).__name__,
-        )
-        self._set_once(
-            "_agent_version_service",
-            service,
-            "AgentVersionService",
+            service=service,
+            name="AgentVersionService",
         )
 
     # ── CeremonyPolicyService ────────────────────────────────────
@@ -234,15 +239,10 @@ class _MetaMcp4FacadesMixin:
         Raises:
             RuntimeError: If already attached.
         """
-        logger.info(
-            API_STATE_SERVICE_ATTACHED,
+        self._attach_service(
             slot="_ceremony_policy_service",
-            service_class=type(service).__name__,
-        )
-        self._set_once(
-            "_ceremony_policy_service",
-            service,
-            "CeremonyPolicyService",
+            service=service,
+            name="CeremonyPolicyService",
         )
 
     # ── CoordinationService ──────────────────────────────────────
@@ -276,15 +276,10 @@ class _MetaMcp4FacadesMixin:
         Raises:
             RuntimeError: If already attached.
         """
-        logger.info(
-            API_STATE_SERVICE_ATTACHED,
+        self._attach_service(
             slot="_coordination_service",
-            service_class=type(service).__name__,
-        )
-        self._set_once(
-            "_coordination_service",
-            service,
-            "CoordinationService",
+            service=service,
+            name="CoordinationService",
         )
 
     # ── MemoryService ────────────────────────────────────────────
@@ -318,15 +313,10 @@ class _MetaMcp4FacadesMixin:
         Raises:
             RuntimeError: If already attached.
         """
-        logger.info(
-            API_STATE_SERVICE_ATTACHED,
+        self._attach_service(
             slot="_memory_service",
-            service_class=type(service).__name__,
-        )
-        self._set_once(
-            "_memory_service",
-            service,
-            "MemoryService",
+            service=service,
+            name="MemoryService",
         )
 
     # ── PersonalityService ───────────────────────────────────────
@@ -360,15 +350,10 @@ class _MetaMcp4FacadesMixin:
         Raises:
             RuntimeError: If already attached.
         """
-        logger.info(
-            API_STATE_SERVICE_ATTACHED,
+        self._attach_service(
             slot="_personality_service",
-            service_class=type(service).__name__,
-        )
-        self._set_once(
-            "_personality_service",
-            service,
-            "PersonalityService",
+            service=service,
+            name="PersonalityService",
         )
 
     # ── ScalingDecisionService ───────────────────────────────────
@@ -402,15 +387,10 @@ class _MetaMcp4FacadesMixin:
         Raises:
             RuntimeError: If already attached.
         """
-        logger.info(
-            API_STATE_SERVICE_ATTACHED,
+        self._attach_service(
             slot="_scaling_decision_service",
-            service_class=type(service).__name__,
-        )
-        self._set_once(
-            "_scaling_decision_service",
-            service,
-            "ScalingDecisionService",
+            service=service,
+            name="ScalingDecisionService",
         )
 
 

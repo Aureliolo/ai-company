@@ -318,9 +318,17 @@ async def _ceremony_policy_get_resolved(
     tool = "synthorg_ceremony_policy_get_resolved"
     if not getattr(app_state, "has_ceremony_policy_service", False):
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
-    department_raw = arguments.get("department")
     department: NotBlankStr | None = None
-    if department_raw is not None:
+    if "department" in arguments:
+        department_raw = arguments["department"]
+        # Reject null AND empty / non-string. ``.get`` used to
+        # conflate "key absent" with "key present but null" and that
+        # silently mapped a malformed request to the "no filter"
+        # path.
+        if department_raw is None:
+            exc = invalid_argument("department", _TY_NON_BLANK)
+            _log_invalid(tool, exc)
+            return err(exc)
         if not isinstance(department_raw, str) or not department_raw.strip():
             exc = invalid_argument("department", _TY_NON_BLANK)
             _log_invalid(tool, exc)

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.observability import get_logger
 from synthorg.observability.events.agent_identity_version import (
+    AGENT_IDENTITY_INVALID_REQUEST,
     AGENT_IDENTITY_VERSION_FETCHED,
     AGENT_IDENTITY_VERSION_LISTED,
 )
@@ -78,9 +79,21 @@ class AgentVersionService:
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                AGENT_IDENTITY_INVALID_REQUEST,
+                param="offset",
+                value=offset,
+                agent_id=agent_id,
+            )
             raise ValueError(msg)
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                AGENT_IDENTITY_INVALID_REQUEST,
+                param="limit",
+                value=limit,
+                agent_id=agent_id,
+            )
             raise ValueError(msg)
         versions = await self._repo.list_versions(
             agent_id,
@@ -118,6 +131,12 @@ class AgentVersionService:
         """
         if version < 1:
             msg = f"version must be >= 1, got {version}"
+            logger.warning(
+                AGENT_IDENTITY_INVALID_REQUEST,
+                param="version",
+                value=version,
+                agent_id=agent_id,
+            )
             raise ValueError(msg)
         snapshot = await self._repo.get_version(agent_id, version)
         if snapshot is not None:

@@ -123,16 +123,46 @@ class ActivityFeedService:
         since = now - timedelta(hours=window_hours)
         agent_key = str(agent_id)
 
-        lifecycle_events = await self._lifecycle_repo.list_events(
-            agent_id=agent_key,
-            since=since,
-            limit=_LIFECYCLE_CAP,
-        )
-        task_metrics = self._performance_tracker.get_task_metrics(
-            agent_id=agent_key,
-            since=since,
-            until=now,
-        )
+        try:
+            lifecycle_events = await self._lifecycle_repo.list_events(
+                agent_id=agent_key,
+                since=since,
+                limit=_LIFECYCLE_CAP,
+            )
+        except Exception as exc:
+            # Lifecycle is a required source; re-raise so the
+            # handler surfaces the failure instead of silently
+            # dropping the entire activity window. The log gives
+            # operators enough context to triage without leaking the
+            # error into the caller's response.
+            logger.error(  # noqa: TRY400 -- explicit structured audit event
+                HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                source="lifecycle_repo",
+                agent_id=agent_key,
+                since=since.isoformat(),
+                until=now.isoformat(),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+
+        try:
+            task_metrics = self._performance_tracker.get_task_metrics(
+                agent_id=agent_key,
+                since=since,
+                until=now,
+            )
+        except Exception as exc:
+            logger.error(  # noqa: TRY400 -- explicit structured audit event
+                HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                source="performance_tracker",
+                agent_id=agent_key,
+                since=since.isoformat(),
+                until=now.isoformat(),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
 
         async with asyncio.TaskGroup() as tg:
             cost_task = tg.create_task(

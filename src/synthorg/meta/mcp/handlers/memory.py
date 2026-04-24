@@ -187,7 +187,7 @@ async def _memory_start_fine_tune(
     return ok(data=run.model_dump(mode="json"))
 
 
-async def _memory_resume_fine_tune(
+async def _memory_resume_fine_tune(  # noqa: PLR0911 -- branching by ex type
     *,
     app_state: Any,
     arguments: dict[str, Any],
@@ -204,8 +204,21 @@ async def _memory_resume_fine_tune(
         run = await service.resume_fine_tune(NotBlankStr(run_id))
     except BackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except ValueError as exc:
+    except RuntimeError as exc:
+        # Another run is already active -- same ``conflict`` mapping
+        # as :func:`_memory_start_fine_tune`.
         _log_failed(tool, exc)
+        return err(exc, domain_code="conflict")
+    except ValueError as exc:
+        # ``MemoryService.resume_fine_tune`` raises ``ValueError``
+        # for both "unknown run id" and "run exists but is not in a
+        # resumable state" -- map the non-resumable variant to a
+        # ``conflict`` domain code so callers can distinguish the
+        # two without string matching on the exception message.
+        _log_failed(tool, exc)
+        message = str(exc).lower()
+        if "not resumable" in message or "cannot resume" in message:
+            return err(exc, domain_code="conflict")
         return err(exc, domain_code="not_found")
     except MemoryError, RecursionError:
         raise

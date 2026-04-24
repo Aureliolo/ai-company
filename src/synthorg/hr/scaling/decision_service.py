@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
+    HR_SCALING_CONTROLLER_INVALID_REQUEST,
     HR_SCALING_MANUAL_TRIGGER_REQUESTED,
 )
 
@@ -73,9 +74,21 @@ class ScalingDecisionService:
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                HR_SCALING_CONTROLLER_INVALID_REQUEST,
+                param="offset",
+                value=offset,
+                surface="mcp.list_decisions",
+            )
             raise ValueError(msg)
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                HR_SCALING_CONTROLLER_INVALID_REQUEST,
+                param="limit",
+                value=limit,
+                surface="mcp.list_decisions",
+            )
             raise ValueError(msg)
         decisions = self._scaling.get_recent_decisions()
         # ``get_recent_decisions`` returns oldest-first (deque order).

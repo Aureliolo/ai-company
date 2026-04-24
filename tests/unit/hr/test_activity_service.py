@@ -207,7 +207,15 @@ class _FakeDelegationStore:
         start: datetime,
         end: datetime,
     ) -> tuple[DelegationRecord, ...]:
-        return tuple(self._sent)
+        # Enforce the query contract: only records for *agent_id*
+        # (as the delegator) within ``[start, end]``. This makes
+        # the fake catch bugs where ``ActivityFeedService`` forwards
+        # the wrong identifier or window.
+        return tuple(
+            r
+            for r in self._sent
+            if str(r.delegator_id) == agent_id and start <= r.timestamp <= end
+        )
 
     async def get_records_as_delegatee(
         self,
@@ -216,7 +224,11 @@ class _FakeDelegationStore:
         start: datetime,
         end: datetime,
     ) -> tuple[DelegationRecord, ...]:
-        return tuple(self._received)
+        return tuple(
+            r
+            for r in self._received
+            if str(r.delegatee_id) == agent_id and start <= r.timestamp <= end
+        )
 
 
 class TestGetAgentActivity:

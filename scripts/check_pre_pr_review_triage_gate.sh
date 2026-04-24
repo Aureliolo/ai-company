@@ -71,12 +71,17 @@ else
         fi
 
         # Allow writes to the lock file itself so the skill can
-        # manage its own marker. Match by the final path segment so
-        # we don't accidentally allow any file whose name contains
-        # the lock basename as a substring.
-        LOCK_BASENAME="${LOCK##*/}"
-        if [[ "${NORMALISED##*/}" == "$LOCK_BASENAME" ]]; then
-            exit 0
+        # manage its own marker. Compare the canonical path against
+        # the canonical lock path so only the exact lock location
+        # (``.claude/pre-pr-review-active.lock`` relative to the
+        # repo root) is permitted -- a basename-only check would
+        # allow any file anywhere in the tree that happens to share
+        # the lock's filename.
+        if LOCK_CANONICAL=$(realpath -m "$LOCK" 2>/dev/null); then
+            LOCK_NORMALISED="${LOCK_CANONICAL//\\//}"
+            if [[ "$NORMALISED" == "$LOCK_NORMALISED" ]]; then
+                exit 0
+            fi
         fi
     else
         deny "realpath -m failed to canonicalise FILE_PATH; cannot safely apply allowlist"

@@ -75,11 +75,22 @@ class _StubTrainingService(TrainingService):
         self._raises = raises
         self.calls: list[str] = []
 
-    async def execute(self, plan: TrainingPlan) -> TrainingResult:
+    async def _execute_locked(
+        self,
+        plan: TrainingPlan,
+    ) -> tuple[TrainingResult, bool]:
+        # Override the locked helper directly because ``start_session``
+        # calls it rather than ``execute`` (the public method now
+        # delegates to ``_execute_locked`` so the "did work run?"
+        # flag can be reported under the lock).
         self.calls.append(str(plan.id))
         if self._raises is not None:
             raise self._raises
-        return _result(str(plan.id), str(plan.new_agent_id))
+        return _result(str(plan.id), str(plan.new_agent_id)), True
+
+    async def execute(self, plan: TrainingPlan) -> TrainingResult:
+        result, _ran = await self._execute_locked(plan)
+        return result
 
 
 class TestStartSession:
@@ -145,6 +156,18 @@ class TestListSessions:
 
         assert total == 0
         assert page == ()
+
+    async def test_negative_offset_rejects(self) -> None:
+        service = _StubTrainingService()
+
+        with pytest.raises(ValueError, match="offset"):
+            await service.list_sessions(offset=-1, limit=50)
+
+    async def test_non_positive_limit_rejects(self) -> None:
+        service = _StubTrainingService()
+
+        with pytest.raises(ValueError, match="limit"):
+            await service.list_sessions(offset=0, limit=0)
 
 
 class TestGetSession:

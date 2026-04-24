@@ -37,6 +37,7 @@ from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_ROLLBACK_FAILED,
     MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+    MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
     MEMORY_FINE_TUNE_CANCELLED,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
@@ -452,6 +453,14 @@ class MemoryService:
             msg = (
                 "fine-tune orchestration is not available on the active "
                 "persistence backend (SQLite-only today)"
+            )
+            # Log before raising so operators can see the failure
+            # path in telemetry even when handlers swallow the
+            # exception into a ``not_supported`` wire envelope.
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                method="_require_orchestrator",
+                reason="orchestrator_not_wired",
             )
             raise BackendUnsupportedError(msg)
         return self._orchestrator

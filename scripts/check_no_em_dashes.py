@@ -9,6 +9,13 @@ from pathlib import Path
 _PATTERNS = ("\u2014", "&" + "mdash;", "&" + "#8212;", "&" + "#x2014;")
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# Auto-generated files whose em-dash content is produced by tooling
+# (release-please regenerates the changelog on every release from
+# historical commit subjects). Hand-edits are discouraged; excluding
+# them avoids forcing manual scrubs that would be overwritten on the
+# next release anyway.
+_EXCLUDED_RELATIVE: frozenset[str] = frozenset({".github/CHANGELOG.md"})
+
 
 def main() -> int:
     """Scan files for em-dash characters and report locations."""
@@ -16,6 +23,9 @@ def main() -> int:
     for path in sys.argv[1:]:
         resolved = Path(path).resolve()
         if not resolved.is_relative_to(_REPO_ROOT):
+            continue
+        relative = resolved.relative_to(_REPO_ROOT).as_posix()
+        if relative in _EXCLUDED_RELATIVE:
             continue
         try:
             with resolved.open(encoding="utf-8") as f:

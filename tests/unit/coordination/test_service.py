@@ -69,14 +69,21 @@ class TestListMetrics:
 
     async def test_paginates_with_total(self) -> None:
         store = CoordinationMetricsStore()
+        # Distinct ``computed_at`` per record so the newest-first
+        # ordering is unambiguous; without this the assertion on
+        # page contents would depend on store-level tie-breaking.
         for idx in range(5):
-            store.record(_record(f"task-{idx}"))
+            store.record(_record(f"task-{idx}", offset_seconds=idx))
         service = CoordinationService(metrics_store=store)
 
         page, total = await service.list_metrics(offset=1, limit=2)
 
         assert total == 5
         assert len(page) == 2
+        # Newest-first ordering across the full window is
+        # [task-4, task-3, task-2, task-1, task-0]; offset=1 limit=2
+        # returns the second and third entries.
+        assert [str(r.task_id) for r in page] == ["task-3", "task-2"]
 
     async def test_empty_returns_zero_total(self) -> None:
         service = CoordinationService(

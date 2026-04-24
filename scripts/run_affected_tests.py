@@ -174,7 +174,7 @@ def _parse_test_count(pytest_output: str) -> int | None:
     return None
 
 
-def _check_timing_regression(  # noqa: PLR0911 -- branching by data shape
+def _check_timing_regression(  # noqa: PLR0911, C901 -- branching by data shape
     elapsed: float,
     *,
     run_all: bool,
@@ -212,13 +212,14 @@ def _check_timing_regression(  # noqa: PLR0911 -- branching by data shape
         return False
 
     # Honor the same override used by the conftest guard.
+    import math
     import os
 
     env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
     env_max_allowed: float | None = None
     if env_override is not None:
         try:
-            env_max_allowed = float(env_override)
+            parsed = float(env_override)
         except ValueError:
             # Fail closed on malformed env -- silently swallowing a
             # typo (``UNIT_SUITE_MAX_SECONDS=3oo``) would mean the
@@ -230,6 +231,22 @@ def _check_timing_regression(  # noqa: PLR0911 -- branching by data shape
                 f"the override and using the baseline tolerance.",
                 file=sys.stderr,
             )
+        else:
+            # ``float("nan")`` / ``float("inf")`` parse cleanly but
+            # make the guard meaningless (every elapsed comparison
+            # is False for NaN; Inf disables the cap entirely). A
+            # zero or negative cap would block every run. Ignore
+            # these and fall back to the baseline tolerance.
+            if math.isfinite(parsed) and parsed > 0:
+                env_max_allowed = parsed
+            else:
+                print(
+                    f"run_affected_tests: UNIT_SUITE_MAX_SECONDS="
+                    f"{env_override!r} must be a finite positive "
+                    f"number; ignoring the override and using the "
+                    f"baseline tolerance.",
+                    file=sys.stderr,
+                )
 
     border = "!" * 60
     # Env-cap hard rail: if the operator set an absolute ceiling
