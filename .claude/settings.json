@@ -28,6 +28,11 @@
             "type": "command",
             "command": "bash scripts/check_no_edit_baseline.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_pre_pr_review_triage_gate.sh",
+            "timeout": 5000
           }
         ]
       }

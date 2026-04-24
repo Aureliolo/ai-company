@@ -113,6 +113,8 @@ async def _coordination_coordinate_task(
         record = await app_state.coordination_service.coordinate_task(
             NotBlankStr(task_id),
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -145,6 +147,8 @@ async def _coordination_metrics_list(
             offset=offset,
             limit=limit,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -175,6 +179,8 @@ async def _scaling_list_decisions(
             offset=offset,
             limit=limit,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -201,6 +207,8 @@ async def _scaling_get_decision(
         decision = await app_state.scaling_decision_service.get_decision(
             NotBlankStr(decision_id),
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -223,6 +231,8 @@ async def _scaling_get_config(
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
         config = await app_state.scaling_decision_service.get_config()
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -257,6 +267,8 @@ async def _scaling_trigger(
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
         decisions = await app_state.scaling_decision_service.trigger(agent_ids)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -278,6 +290,8 @@ async def _ceremony_policy_get(
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
     try:
         policy = await app_state.ceremony_policy_service.get_policy()
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -306,6 +320,8 @@ async def _ceremony_policy_get_resolved(
         resolved = await app_state.ceremony_policy_service.get_resolved_policy(
             department=department,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -324,6 +340,8 @@ async def _ceremony_policy_get_active_strategy(
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
     try:
         active = await app_state.ceremony_policy_service.get_active_strategy()
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)

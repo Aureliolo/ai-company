@@ -34,6 +34,7 @@ from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_DEPLOYED,
     MEMORY_CHECKPOINT_ROLLBACK,
     MEMORY_CHECKPOINT_ROLLBACK_FAILED,
+    MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
     MEMORY_FINE_TUNE_CANCELLED,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
@@ -555,18 +556,36 @@ class MemoryService:
         """
         if self._settings is None:
             return None, False
+        # SettingNotFoundError is the "setting genuinely absent" path --
+        # benign and stays at DEBUG. Anything else (connection / auth /
+        # corruption) is operationally interesting and escalates to
+        # WARNING so prod monitoring catches prolonged settings-service
+        # outages during a checkpoint-deploy rollback.
+        from synthorg.settings.errors import (  # noqa: PLC0415 -- cycle break
+            SettingNotFoundError,
+        )
+
         try:
             value = await self._settings.get("memory", key)
-        except Exception as exc:
+        except SettingNotFoundError as exc:
             logger.debug(
                 MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
                 setting=key,
                 error_type=type(exc).__name__,
-                reason="read_for_rollback",
+                reason="read_for_rollback_not_found",
             )
-            # Any exception (missing, storage glitch, ...) collapses to
-            # exists=False so rollback will explicitly delete the
-            # newly-written setting instead of leaving it in place.
+            return None, False
+        except Exception as exc:
+            logger.warning(
+                MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+                setting=key,
+                error_type=type(exc).__name__,
+                reason="read_for_rollback_transient",
+            )
+            # Any non-NotFound exception (storage glitch, auth, network
+            # timeout, ...) collapses to exists=False so rollback will
+            # explicitly delete the newly-written setting instead of
+            # leaving it in place.
             return None, False
         return value.value, True
 
@@ -589,11 +608,21 @@ class MemoryService:
         try:
             await coro
         except Exception as exc:
+            # Emit both the legacy aggregate event (for existing
+            # dashboards / alerting) AND the step-specific event so
+            # alerts can pick up partial-rollback conditions distinctly
+            # from the overall rollback failure signal.
             logger.warning(
                 MEMORY_CHECKPOINT_ROLLBACK_FAILED,
                 checkpoint_id=checkpoint_id,
                 error_type=type(exc).__name__,
                 stage="rollback",
+                step=step,
+            )
+            logger.error(  # noqa: TRY400 -- not an exception-context log; distinct audit event, not a traceback dump
+                MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
+                checkpoint_id=checkpoint_id,
+                error_type=type(exc).__name__,
                 step=step,
             )
 

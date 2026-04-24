@@ -116,6 +116,13 @@ MEMORY_CHECKPOINT_DEPLOYED: Final[str] = "memory.checkpoint.deployed"
 MEMORY_CHECKPOINT_DEPLOY_FAILED: Final[str] = "memory.checkpoint.deploy_failed"
 MEMORY_CHECKPOINT_ROLLBACK: Final[str] = "memory.checkpoint.rollback"
 MEMORY_CHECKPOINT_ROLLBACK_FAILED: Final[str] = "memory.checkpoint.rollback_failed"
+# Emitted when an inner rollback step fails during a deploy / rollback
+# recovery path (distinct from the overall rollback_failed event so
+# alerting can detect partial-rollback conditions where the primary
+# operation already has its own failure signal).
+MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED: Final[str] = (
+    "memory.checkpoint.rollback_step_failed"
+)
 
 # ── Composite routing ────────────────────────────────────────────
 

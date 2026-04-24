@@ -288,6 +288,22 @@ class TestCancelFineTune:
 
         assert orch.cancel_calls == 1
 
+    async def test_emits_cancelled_event_on_success(self) -> None:
+        import structlog.testing
+
+        from synthorg.observability.events.memory import (
+            MEMORY_FINE_TUNE_CANCELLED,
+        )
+
+        orch = _FakeOrchestrator()
+        service = _service(orchestrator=orch)
+
+        with structlog.testing.capture_logs() as events:
+            await service.cancel_fine_tune()
+
+        cancelled = [e for e in events if e.get("event") == MEMORY_FINE_TUNE_CANCELLED]
+        assert cancelled, "cancel_fine_tune must emit MEMORY_FINE_TUNE_CANCELLED"
+
 
 class TestRunPreflight:
     """Preflight is platform-agnostic; we mock the filesystem calls.

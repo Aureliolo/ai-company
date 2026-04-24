@@ -137,6 +137,16 @@ class TestGetConfig:
 
 
 class TestTrigger:
+    async def test_empty_evaluate_result_returns_empty(self) -> None:
+        svc = _FakeScalingService()
+        svc.queue_evaluate_result(())
+        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+
+        result = await service.trigger((NotBlankStr("a-1"),))
+
+        assert result == ()
+        assert svc.evaluate_calls == [("a-1",)]
+
     async def test_delegates_and_returns_decisions(self) -> None:
         svc = _FakeScalingService()
         expected = (_decision(decision_id="d-1"),)

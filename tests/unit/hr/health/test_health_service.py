@@ -97,6 +97,19 @@ class TestVerdict:
 
         assert report.status == "degraded"
 
+    async def test_exact_healthy_threshold_is_healthy(self) -> None:
+        """At exactly 0.8 the verdict stays healthy (inclusive lower bound)."""
+        snap = _snapshot(
+            (_window(window_size="7d", success_rate=0.8, completed=8, failed=2),),
+        )
+        service = AgentHealthService(
+            performance_tracker=_FakeTracker(snap),  # type: ignore[arg-type]
+        )
+
+        report = await service.get_agent_health(NotBlankStr("agent-xyz"))
+
+        assert report.status == "healthy"
+
     @pytest.mark.parametrize("rate", [0.5, 0.3, 0.0])
     async def test_unavailable_band(self, rate: float) -> None:
         total = 100
