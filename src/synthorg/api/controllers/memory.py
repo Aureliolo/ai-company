@@ -457,7 +457,7 @@ class MemoryAdminController(Controller):
         limit = min(max(limit, 1), 200)
         offset = max(offset, 0)
         service = _build_memory_service(state.app_state)
-        runs = await service.list_runs(limit=limit, offset=offset)
+        runs, _ = await service.list_runs(limit=limit, offset=offset)
         return ApiResponse(data=runs)
 
     # -- Embedder config ---------------------------------------------
