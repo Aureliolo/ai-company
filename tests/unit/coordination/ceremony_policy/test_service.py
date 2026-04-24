@@ -238,6 +238,54 @@ class TestGetResolvedPolicy:
         assert calls["dept"] is dept
 
 
+class TestGetResolvedPolicyDepartmentNotFound:
+    """NotFoundError on the department lookup must propagate unchanged.
+
+    The handler layer relies on ``NotFoundError`` to map to the
+    shared ``not_found`` wire envelope. If the service caught the
+    error and re-raised something else, MCP clients would see a
+    generic ``internal_error`` for a user-correctable bad department
+    name.
+    """
+
+    async def test_not_found_propagates(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.api.errors import NotFoundError
+
+        project = CeremonyPolicyConfig(
+            strategy=CeremonyStrategyType.TASK_DRIVEN,
+        )
+
+        async def _fake_project(_state: AppState) -> CeremonyPolicyConfig:
+            return project
+
+        async def _fake_dept(
+            _state: AppState,
+            department: NotBlankStr,
+        ) -> CeremonyPolicyConfig:
+            msg = f"department {department!r} not found"
+            raise NotFoundError(msg)
+
+        monkeypatch.setattr(
+            "synthorg.api.controllers.ceremony_policy._fetch_project_policy",
+            _fake_project,
+        )
+        monkeypatch.setattr(
+            "synthorg.api.controllers.ceremony_policy._fetch_department_policy",
+            _fake_dept,
+        )
+        service = CeremonyPolicyService(
+            app_state=_FakeAppState(),  # type: ignore[arg-type]
+        )
+
+        with pytest.raises(NotFoundError, match="not found"):
+            await service.get_resolved_policy(
+                department=NotBlankStr("nonexistent"),
+            )
+
+
 class TestGetActiveStrategy:
     async def test_no_scheduler(self) -> None:
         service = CeremonyPolicyService(

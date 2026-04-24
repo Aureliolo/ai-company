@@ -234,28 +234,30 @@ class TestNoServiceFallbackEvents:
             if e.get("event")
             in {MCP_HANDLER_CAPABILITY_GAP, MCP_HANDLER_NOT_IMPLEMENTED}
         ]
-        if not_supported_tools:
-            assert gap_events, (
-                f"tools returned not_supported but no CAPABILITY_GAP / "
-                f"NOT_IMPLEMENTED event was emitted: {not_supported_tools}"
-            )
-            assert all("tool_name" in e for e in gap_events), (
-                "every capability event must identify the tool that triggered it"
-            )
-            # Use Counter, not set, so a tool that emits the envelope
-            # once but emits CAPABILITY_GAP / NOT_IMPLEMENTED twice
-            # fails the invariant. The test is about strict 1:1
-            # envelope-to-event pairing.
-            gap_tool_counts = Counter(e["tool_name"] for e in gap_events)
-            not_supported_counts = Counter(not_supported_tools)
-            assert gap_tool_counts == not_supported_counts, (
-                f"1:1 mismatch between not_supported envelopes and "
-                f"capability events. "
-                f"Envelope-but-no-event: "
-                f"{sorted(set(not_supported_counts) - set(gap_tool_counts))}. "
-                f"Event-but-no-envelope: "
-                f"{sorted(set(gap_tool_counts) - set(not_supported_counts))}."
-            )
+        # The pairing invariant is unconditional: an ``all-supported``
+        # run (``not_supported_tools == []``) must also produce zero
+        # gap events, because an orphan CAPABILITY_GAP /
+        # NOT_IMPLEMENTED event without a matching ``not_supported``
+        # envelope indicates a handler is emitting the audit signal
+        # on the wrong branch. Gating the pairing check on
+        # ``if not_supported_tools`` silently tolerates that case.
+        assert all("tool_name" in e for e in gap_events), (
+            "every capability event must identify the tool that triggered it"
+        )
+        # Use Counter, not set, so a tool that emits the envelope
+        # once but emits CAPABILITY_GAP / NOT_IMPLEMENTED twice
+        # fails the invariant. The test is about strict 1:1
+        # envelope-to-event pairing.
+        gap_tool_counts = Counter(e["tool_name"] for e in gap_events)
+        not_supported_counts = Counter(not_supported_tools)
+        assert gap_tool_counts == not_supported_counts, (
+            f"1:1 mismatch between not_supported envelopes and "
+            f"capability events. "
+            f"Envelope-but-no-event: "
+            f"{sorted(set(not_supported_counts) - set(gap_tool_counts))}. "
+            f"Event-but-no-envelope: "
+            f"{sorted(set(gap_tool_counts) - set(not_supported_counts))}."
+        )
 
     @pytest.mark.parametrize(
         "tool_name",

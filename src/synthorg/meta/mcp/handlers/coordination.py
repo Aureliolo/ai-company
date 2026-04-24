@@ -1,9 +1,9 @@
 """Coordination domain MCP handlers.
 
-9 tools across coordination, scaling, and ceremony-policy, all wired
-to service facades after META-MCP-4:
+Wires 9 tools across coordination, scaling, and ceremony-policy to
+their service facades:
 
-- :class:`CoordinationService` (``coordinate_task``, ``metrics_list``)
+- :class:`CoordinationService` (``get_task_metrics``, ``metrics_list``)
 - :class:`ScalingDecisionService` (``scaling_list_decisions``,
   ``_get_decision``, ``_get_config``, ``_trigger``)
 - :class:`CeremonyPolicyService` (``ceremony_policy_get``,
@@ -112,13 +112,13 @@ _WHY_CEREMONY_NOT_WIRED = (
 # --- Coordination ---------------------------------------------------------
 
 
-async def _coordination_coordinate_task(
+async def _coordination_get_task_metrics(
     *,
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    tool = "synthorg_coordination_coordinate_task"
+    tool = "synthorg_coordination_get_task_metrics"
     try:
         task_id = _require_non_blank(arguments, "task_id")
     except ArgumentValidationError as exc:
@@ -127,7 +127,7 @@ async def _coordination_coordinate_task(
     if not getattr(app_state, "has_coordination_service", False):
         return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
     try:
-        record = await app_state.coordination_service.coordinate_task(
+        record = await app_state.coordination_service.get_task_metrics(
             NotBlankStr(task_id),
         )
     except MemoryError, RecursionError:
@@ -383,7 +383,7 @@ def _require_non_blank_value(value: Any, arg_name: str) -> str:
 COORDINATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     copy.deepcopy(
         {
-            "synthorg_coordination_coordinate_task": _coordination_coordinate_task,
+            "synthorg_coordination_get_task_metrics": _coordination_get_task_metrics,
             "synthorg_coordination_metrics_list": _coordination_metrics_list,
             "synthorg_scaling_list_decisions": _scaling_list_decisions,
             "synthorg_scaling_get_decision": _scaling_get_decision,

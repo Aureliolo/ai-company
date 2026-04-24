@@ -1,9 +1,9 @@
 """Memory domain MCP handlers (fine-tune checkpoints + runs).
 
-11 tools, all wired through :class:`MemoryService` after META-MCP-4.
-The service is injected via ``app_state.memory_service`` by the
-application bootstrap; handlers route through that facade exclusively
-and never reach into ``app_state.persistence.*`` directly (CLAUDE.md
+Wires 11 tools through :class:`MemoryService`. The service is
+injected via ``app_state.memory_service`` by the application
+bootstrap; handlers route through that facade exclusively and never
+reach into ``app_state.persistence.*`` directly (CLAUDE.md
 persistence-boundary rule).
 
 Backend-unsupported routing. :class:`BackendUnsupportedError` is
@@ -279,7 +279,7 @@ async def _memory_cancel_fine_tune(
         return err(exc)
     try:
         service = _service(app_state)
-        await service.cancel_fine_tune()
+        target_id = await service.cancel_fine_tune()
     except BackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except MemoryError, RecursionError:
@@ -293,6 +293,7 @@ async def _memory_cancel_fine_tune(
         tool_name=tool,
         actor_agent_id=_actor_id(resolved_actor),
         reason=reason,
+        target_id=target_id,
     )
     return ok()
 

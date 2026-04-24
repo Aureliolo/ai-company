@@ -39,7 +39,7 @@ def _record(
     )
 
 
-class TestCoordinateTask:
+class TestGetTaskMetrics:
     """Lookup by task_id."""
 
     async def test_returns_newest_record(self) -> None:
@@ -50,7 +50,7 @@ class TestCoordinateTask:
         store.record(_record("task-1", offset_seconds=1, team_size=5))
         service = CoordinationService(metrics_store=store)
 
-        result = await service.coordinate_task(NotBlankStr("task-1"))
+        result = await service.get_task_metrics(NotBlankStr("task-1"))
 
         assert result is not None
         assert result.team_size == 5
@@ -59,7 +59,7 @@ class TestCoordinateTask:
         store = CoordinationMetricsStore()
         service = CoordinationService(metrics_store=store)
 
-        result = await service.coordinate_task(NotBlankStr("missing"))
+        result = await service.get_task_metrics(NotBlankStr("missing"))
 
         assert result is None
 

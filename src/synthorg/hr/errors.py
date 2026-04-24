@@ -1,8 +1,23 @@
-"""HR domain error hierarchy."""
+"""HR domain error hierarchy.
+
+All HR errors default to ``is_retryable = False``. HR operations are
+either deterministic lookups (agent registry, personality catalogue,
+training session store) or write-ops against authoritative state
+(hiring, promotion, pruning) where silent retries would double-apply.
+Subclasses that genuinely represent a transient network/I/O failure
+should override ``is_retryable = True`` explicitly.
+"""
 
 
 class HRError(Exception):
-    """Base error for all HR operations."""
+    """Base error for all HR operations.
+
+    ``is_retryable`` defaults to ``False`` so the provider-retry layer
+    surfaces HR errors immediately; subclasses override to ``True``
+    only for genuine transient I/O / network failures.
+    """
+
+    is_retryable: bool = False
 
 
 # ── Hiring ────────────────────────────────────────────────────────

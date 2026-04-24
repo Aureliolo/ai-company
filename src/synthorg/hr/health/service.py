@@ -23,8 +23,11 @@ from typing import TYPE_CHECKING, Final, Literal, Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic runtime
-from synthorg.observability import get_logger
-from synthorg.observability.events.hr import HR_AGENT_HEALTH_COMPUTED
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.hr import (
+    HR_AGENT_HEALTH_COMPUTED,
+    HR_AGENT_HEALTH_FAILED,
+)
 
 if TYPE_CHECKING:
     from synthorg.hr.performance.models import (
@@ -87,12 +90,24 @@ class AgentHealthReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_counts(self) -> Self:
-        """Reject reports where failed_count > task_count.
+        """Reject reports with inconsistent counts or window/rate coupling.
 
-        The verdict logic derives status from the success rate, which
-        would be negative if failed exceeded total. Enforcing the
-        invariant at construction time means any report handed to a
-        handler is already well-formed.
+        Two invariants:
+
+        1. ``recent_failed_count <= recent_task_count`` -- the verdict
+           logic derives status from the success rate, which would be
+           negative if failed exceeded total.
+        2. ``recent_window`` and ``recent_success_rate`` are either
+           both present or both absent. The factory enforces this by
+           construction (both set together when a populated window
+           exists, both left at ``None`` otherwise), but the
+           invariant is part of the public contract -- a caller that
+           mints an ``AgentHealthReport`` directly should not be
+           able to produce an inconsistent "rate-without-window" or
+           "window-without-rate" report.
+
+        Enforcing both at construction time means any report handed
+        to a handler is already well-formed.
         """
         if self.recent_failed_count > self.recent_task_count:
             msg = (
@@ -100,16 +115,20 @@ class AgentHealthReport(BaseModel):
                 f"exceed recent_task_count ({self.recent_task_count})"
             )
             raise ValueError(msg)
+        window_set = self.recent_window is not None
+        rate_set = self.recent_success_rate is not None
+        if window_set != rate_set:
+            msg = (
+                "recent_window and recent_success_rate must both be set or "
+                f"both be None (got window={self.recent_window!r}, "
+                f"rate={self.recent_success_rate!r})"
+            )
+            raise ValueError(msg)
         return self
 
 
 class AgentHealthService:
-    """Derives :class:`AgentHealthReport` from performance snapshots.
-
-    Constructor:
-        performance_tracker: The tracker that holds rolling task-metric
-            windows per agent.
-    """
+    """Derives :class:`AgentHealthReport` from performance snapshots."""
 
     __slots__ = ("_performance_tracker",)
 
@@ -118,7 +137,12 @@ class AgentHealthService:
         *,
         performance_tracker: PerformanceTracker,
     ) -> None:
-        """Initialise with the performance tracker dependency."""
+        """Initialize the service with the performance tracker dependency.
+
+        Args:
+            performance_tracker: The tracker that holds rolling
+                task-metric windows per agent.
+        """
         self._performance_tracker = performance_tracker
 
     async def get_agent_health(
@@ -132,9 +156,25 @@ class AgentHealthService:
 
         Returns:
             A health report with status + the window that backed it.
+
+        Raises:
+            Exception: Re-raises whatever the snapshot fetch or report
+                construction raises, after logging a structured
+                failure event so the error is never silent outside
+                the handler layer.
         """
-        snapshot = await self._performance_tracker.get_snapshot(agent_id)
-        report = _report_from_snapshot(agent_id, snapshot)
+        try:
+            snapshot = await self._performance_tracker.get_snapshot(agent_id)
+            report = _report_from_snapshot(agent_id, snapshot)
+        except Exception as exc:
+            logger.error(  # noqa: TRY400 -- explicit structured audit event
+                HR_AGENT_HEALTH_FAILED,
+                agent_id=agent_id,
+                stage=("snapshot" if "snapshot" not in locals() else "report"),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.info(
             HR_AGENT_HEALTH_COMPUTED,
             agent_id=agent_id,

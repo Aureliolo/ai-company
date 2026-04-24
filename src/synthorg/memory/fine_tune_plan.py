@@ -58,9 +58,13 @@ class BackendUnsupportedError(Exception):
     __slots__ = ("reason",)
 
     domain_code: str = "not_supported"
+    # Deterministic capability gate -- retrying cannot make the backend
+    # suddenly grow fine-tune repos, so callers in the provider-retry
+    # layer must surface this error immediately.
+    is_retryable: bool = False
 
     def __init__(self, reason: str) -> None:
-        """Initialise with the operator-visible reason string.
+        """Initialize with the operator-visible reason string.
 
         Raises:
             ValueError: If *reason* is empty or whitespace-only.

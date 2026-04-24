@@ -11,16 +11,20 @@ if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
 COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
-    # --- Task coordination ---
-    write_tool(
+    # --- Task coordination metrics (read-only lookup) ---
+    read_tool(
         "coordination",
-        "coordinate_task",
-        "Coordinate a task assignment.",
+        "get_task_metrics",
+        (
+            "Return the most recent coordination metrics record for a task. "
+            "This is a read-only lookup over the metrics store; triggering "
+            "coordination is owned by the engine loop and exposed via the "
+            "REST endpoint, not MCP."
+        ),
         {
             "task_id": {"type": "string", "description": "Task UUID"},
-            "strategy": {"type": "string", "description": "Coordination strategy"},
         },
-        required=("task_id", "strategy"),
+        required=("task_id",),
     ),
     # --- Coordination metrics ---
     read_tool(

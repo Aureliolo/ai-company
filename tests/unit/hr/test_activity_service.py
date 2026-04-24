@@ -413,3 +413,88 @@ class TestGetAgentActivity:
 
         assert total == 0
         assert page == ()
+
+
+class TestRequestValidation:
+    """Pagination + window_hours boundary validation.
+
+    Each invalid input must raise ``ValueError`` with a descriptive
+    message AND emit ``HR_ACTIVITY_INVALID_REQUEST`` at WARNING with
+    structured context, so bad MCP requests are visible in the audit
+    trail instead of surfacing silently as handler-level errors.
+    """
+
+    @pytest.fixture
+    def empty_service(self) -> ActivityFeedService:
+        return ActivityFeedService(
+            performance_tracker=_FakePerformanceTracker([]),  # type: ignore[arg-type]
+            lifecycle_repo=_FakeLifecycleRepo([]),  # type: ignore[arg-type]
+        )
+
+    async def test_negative_offset_rejected(
+        self,
+        empty_service: ActivityFeedService,
+    ) -> None:
+        with pytest.raises(ValueError, match="offset must be >= 0"):
+            await empty_service.get_agent_activity(
+                NotBlankStr(_AGENT_ID),
+                offset=-1,
+                limit=50,
+            )
+
+    async def test_zero_limit_rejected(
+        self,
+        empty_service: ActivityFeedService,
+    ) -> None:
+        with pytest.raises(ValueError, match="limit must be >= 1"):
+            await empty_service.get_agent_activity(
+                NotBlankStr(_AGENT_ID),
+                offset=0,
+                limit=0,
+            )
+
+    @pytest.mark.parametrize(
+        "window_hours",
+        [0, -1, 721, 1_000_000],
+        ids=["zero", "negative", "just_over_cap", "absurdly_large"],
+    )
+    async def test_window_hours_out_of_range_rejected(
+        self,
+        empty_service: ActivityFeedService,
+        window_hours: int,
+    ) -> None:
+        with pytest.raises(ValueError, match="window_hours must be between"):
+            await empty_service.get_agent_activity(
+                NotBlankStr(_AGENT_ID),
+                offset=0,
+                limit=50,
+                window_hours=window_hours,
+            )
+
+    async def test_minimum_valid_boundaries_accepted(
+        self,
+        empty_service: ActivityFeedService,
+    ) -> None:
+        """offset=0, limit=1, window_hours=1 is the tightest valid input."""
+        page, total = await empty_service.get_agent_activity(
+            NotBlankStr(_AGENT_ID),
+            offset=0,
+            limit=1,
+            window_hours=1,
+        )
+        assert page == ()
+        assert total == 0
+
+    async def test_maximum_valid_window_accepted(
+        self,
+        empty_service: ActivityFeedService,
+    ) -> None:
+        """``window_hours=720`` (30d cap) is inclusive on the upper bound."""
+        page, total = await empty_service.get_agent_activity(
+            NotBlankStr(_AGENT_ID),
+            offset=0,
+            limit=50,
+            window_hours=720,
+        )
+        assert page == ()
+        assert total == 0

@@ -91,6 +91,20 @@ class TrainingService:
         training_tags: Default tags for stored items.
     """
 
+    __slots__ = (
+        "_curation",
+        "_executed_plan_ids",
+        "_extractors",
+        "_guards",
+        "_idempotency_lock",
+        "_memory_backend",
+        "_selector",
+        "_session_lock",
+        "_sessions",
+        "_training_namespace",
+        "_training_tags",
+    )
+
     def __init__(  # noqa: PLR0913
         self,
         *,
@@ -712,7 +726,8 @@ class TrainingService:
                 plan_id=str(plan.id),
                 item_id=str(item.id),
                 content_type=ct.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         return True

@@ -24,14 +24,22 @@ from synthorg.hr.activity import ActivityEvent, merge_activity_timeline
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_ACTIVITY_AGENT_FETCHED,
+    HR_ACTIVITY_INVALID_REQUEST,
+    HR_ACTIVITY_LIFECYCLE_CAP_HIT,
     HR_ACTIVITY_SOURCE_FETCH_FAILED,
 )
 
 if TYPE_CHECKING:
+    from synthorg.budget.cost_record import CostRecord
     from synthorg.budget.tracker import CostTracker
-    from synthorg.communication.delegation.record_store import DelegationRecordStore
+    from synthorg.communication.delegation.models import DelegationRecord
+    from synthorg.communication.delegation.record_store import (
+        DelegationRecordStore,
+    )
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.hr.persistence_protocol import LifecycleEventRepository
+    from synthorg.settings.resolver import ConfigResolver
+    from synthorg.tools.invocation_record import ToolInvocationRecord
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 
@@ -39,7 +47,13 @@ logger = get_logger(__name__)
 
 _DEFAULT_WINDOW_HOURS: int = 168  # 7 days -- matches API controller cap.
 _MAX_WINDOW_HOURS: int = 720  # 30 days -- upper cap for pathological queries.
-_LIFECYCLE_CAP: int = 1000
+# Safety rail for the lifecycle-events fetch so a pathological agent
+# (runaway status churn, accidental event replay) cannot swamp the
+# merge step. Set well above any expected production load; when the
+# cap is hit the service emits ``HR_ACTIVITY_LIFECYCLE_CAP_HIT`` so
+# operators know the merged ``total`` is a lower bound for that
+# window, and the caller should tighten the window to see more.
+_LIFECYCLE_CAP: int = 10_000
 
 
 def _collect_result[ResultT](
@@ -74,11 +88,14 @@ class ActivityFeedService:
 
     Constructor dependencies are injected individually so MCP bootstrap
     can wire whichever sources the current deployment has available.
-    The optional sources (cost / tool invocation / delegation) default
-    to ``None``; missing sources are silently skipped.
+    The optional sources (cost / tool invocation / delegation /
+    config resolver) default to ``None``; missing sources either skip
+    (cost / tool / delegation) or fall back to the neutral
+    :data:`DEFAULT_CURRENCY` (config resolver).
     """
 
     __slots__ = (
+        "_config_resolver",
         "_cost_tracker",
         "_delegation_store",
         "_lifecycle_repo",
@@ -86,7 +103,7 @@ class ActivityFeedService:
         "_tool_invocation_tracker",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- one optional arg per injected source
         self,
         *,
         performance_tracker: PerformanceTracker,
@@ -94,13 +111,15 @@ class ActivityFeedService:
         cost_tracker: CostTracker | None = None,
         tool_invocation_tracker: ToolInvocationTracker | None = None,
         delegation_store: DelegationRecordStore | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
-        """Initialise with the required + optional sources."""
+        """Initialize with the required + optional sources."""
         self._performance_tracker = performance_tracker
         self._lifecycle_repo = lifecycle_repo
         self._cost_tracker = cost_tracker
         self._tool_invocation_tracker = tool_invocation_tracker
         self._delegation_store = delegation_store
+        self._config_resolver = config_resolver
 
     async def get_agent_activity(
         self,
@@ -114,8 +133,11 @@ class ActivityFeedService:
 
         Events are newest-first (via
         :func:`merge_activity_timeline`). The total reported is the
-        full merged timeline length for the window, so pagination
-        metadata stays consistent even when the page is short.
+        length of the merged timeline for the window; lifecycle
+        events are capped at :data:`_LIFECYCLE_CAP` for memory
+        safety, and hitting that cap is surfaced via
+        :data:`HR_ACTIVITY_LIFECYCLE_CAP_HIT` so callers know the
+        total is a lower bound for that window.
 
         Args:
             agent_id: Agent whose activity to fetch.
@@ -131,62 +153,27 @@ class ActivityFeedService:
                 strictly positive, or ``window_hours`` is outside
                 ``[1, _MAX_WINDOW_HOURS]``.
         """
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            raise ValueError(msg)
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            raise ValueError(msg)
-        if window_hours < 1 or window_hours > _MAX_WINDOW_HOURS:
-            msg = (
-                f"window_hours must be between 1 and {_MAX_WINDOW_HOURS}, "
-                f"got {window_hours}"
-            )
-            raise ValueError(msg)
+        agent_key = str(agent_id)
+        self._validate_request(
+            agent_id=agent_key,
+            offset=offset,
+            limit=limit,
+            window_hours=window_hours,
+        )
         now = datetime.now(UTC)
         since = now - timedelta(hours=window_hours)
-        agent_key = str(agent_id)
 
-        try:
-            lifecycle_events = await self._lifecycle_repo.list_events(
+        lifecycle_events = await self._fetch_lifecycle(agent_key, since, now)
+        if len(lifecycle_events) >= _LIFECYCLE_CAP:
+            logger.warning(
+                HR_ACTIVITY_LIFECYCLE_CAP_HIT,
                 agent_id=agent_key,
-                since=since,
-                limit=_LIFECYCLE_CAP,
-            )
-        except Exception as exc:
-            # Lifecycle is a required source; re-raise so the
-            # handler surfaces the failure instead of silently
-            # dropping the entire activity window. The log gives
-            # operators enough context to triage without leaking the
-            # error into the caller's response.
-            logger.error(  # noqa: TRY400 -- explicit structured audit event
-                HR_ACTIVITY_SOURCE_FETCH_FAILED,
-                source="lifecycle_repo",
-                agent_id=agent_key,
+                cap=_LIFECYCLE_CAP,
                 since=since.isoformat(),
                 until=now.isoformat(),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                window_hours=window_hours,
             )
-            raise
-
-        try:
-            task_metrics = self._performance_tracker.get_task_metrics(
-                agent_id=agent_key,
-                since=since,
-                until=now,
-            )
-        except Exception as exc:
-            logger.error(  # noqa: TRY400 -- explicit structured audit event
-                HR_ACTIVITY_SOURCE_FETCH_FAILED,
-                source="performance_tracker",
-                agent_id=agent_key,
-                since=since.isoformat(),
-                until=now.isoformat(),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
+        task_metrics = self._fetch_task_metrics(agent_key, since, now)
 
         async with asyncio.TaskGroup() as tg:
             cost_task = tg.create_task(
@@ -199,17 +186,14 @@ class ActivityFeedService:
                 self._fetch_delegations(agent_key, since, now),
             )
 
-        # ``.result()`` would only re-raise for worker exceptions not
-        # caught by the helpers (MemoryError / RecursionError). Those
-        # abort the whole ``TaskGroup`` before we get here, so these
-        # calls are expected to succeed. The ``_collect_result`` helper
-        # preserves the ``source=...`` label in the unlikely corner
-        # case that a subclass / monkeypatch ever surfaces an exception
-        # via ``.result()`` directly.
         cost_records = _collect_result(cost_task, source="cost_tracker")
         tool_invocations = _collect_result(tool_task, source="tool_tracker")
-        sent, received = _collect_result(delegation_task, source="delegation_store")
+        sent, received = _collect_result(
+            delegation_task,
+            source="delegation_store",
+        )
 
+        currency = await self._resolve_currency()
         timeline = merge_activity_timeline(
             lifecycle_events=lifecycle_events,
             task_metrics=task_metrics,
@@ -217,7 +201,7 @@ class ActivityFeedService:
             tool_invocations=tool_invocations,
             delegation_records_sent=sent,
             delegation_records_received=received,
-            currency=DEFAULT_CURRENCY,
+            currency=currency,
         )
         total = len(timeline)
         page = timeline[offset : offset + limit]
@@ -227,15 +211,150 @@ class ActivityFeedService:
             event_count=len(page),
             total=total,
             window_hours=window_hours,
+            currency=currency,
         )
         return page, total
+
+    def _validate_request(
+        self,
+        *,
+        agent_id: str,
+        offset: int,
+        limit: int,
+        window_hours: int,
+    ) -> None:
+        """Validate pagination + window inputs, logging before each raise.
+
+        Service-layer error paths must log at WARNING with context
+        before raising so bad MCP requests are visible in the audit
+        trail (per CLAUDE.md ``## Logging``).
+        """
+        if offset < 0:
+            logger.warning(
+                HR_ACTIVITY_INVALID_REQUEST,
+                agent_id=agent_id,
+                param="offset",
+                value=offset,
+            )
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            logger.warning(
+                HR_ACTIVITY_INVALID_REQUEST,
+                agent_id=agent_id,
+                param="limit",
+                value=limit,
+            )
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
+        if window_hours < 1 or window_hours > _MAX_WINDOW_HOURS:
+            logger.warning(
+                HR_ACTIVITY_INVALID_REQUEST,
+                agent_id=agent_id,
+                param="window_hours",
+                value=window_hours,
+                max_allowed=_MAX_WINDOW_HOURS,
+            )
+            msg = (
+                f"window_hours must be between 1 and {_MAX_WINDOW_HOURS}, "
+                f"got {window_hours}"
+            )
+            raise ValueError(msg)
+
+    async def _resolve_currency(self) -> str:
+        """Resolve the runtime display currency.
+
+        Flows through the operator-configured ``budget.currency`` via
+        :class:`ConfigResolver` (same pattern as
+        ``api/controllers/analytics.py`` and the REST activity
+        controller), falling back to :data:`DEFAULT_CURRENCY` when no
+        resolver was injected or the resolver call fails. A neutral
+        fallback is preferable to a hard error here -- activity feed
+        reads should not become unavailable just because budget
+        config is temporarily unreadable -- but the failure is logged
+        so operators can triage it.
+        """
+        if self._config_resolver is None:
+            return DEFAULT_CURRENCY
+        try:
+            budget = await self._config_resolver.get_budget_config()
+        except Exception as exc:
+            logger.warning(
+                HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                source="config_resolver.budget",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return DEFAULT_CURRENCY
+        return str(budget.currency)
+
+    async def _fetch_lifecycle(
+        self,
+        agent_id: str,
+        since: datetime,
+        now: datetime,
+    ) -> tuple:  # type: ignore[type-arg]  # AgentLifecycleEvent is TYPE_CHECKING-only
+        """Required lifecycle fetch; re-raise with structured context."""
+        try:
+            return await self._lifecycle_repo.list_events(
+                agent_id=agent_id,
+                since=since,
+                limit=_LIFECYCLE_CAP,
+            )
+        except Exception as exc:
+            # Lifecycle is a required source; re-raise so the handler
+            # surfaces the failure instead of silently dropping the
+            # entire activity window. The log gives operators enough
+            # context to triage.
+            logger.error(  # noqa: TRY400 -- explicit structured audit event
+                HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                source="lifecycle_repo",
+                agent_id=agent_id,
+                since=since.isoformat(),
+                until=now.isoformat(),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+
+    def _fetch_task_metrics(
+        self,
+        agent_id: str,
+        since: datetime,
+        now: datetime,
+    ) -> tuple:  # type: ignore[type-arg]  # TaskMetricRecord is TYPE_CHECKING-only
+        """Synchronous task-metrics fetch; re-raise with structured context.
+
+        ``PerformanceTracker.get_task_metrics`` is synchronous (it
+        reads from an in-memory rolling window store), so this helper
+        is also synchronous. Wrapping it in a helper mirrors the
+        structure of the other sources so error handling stays
+        uniform.
+        """
+        try:
+            return self._performance_tracker.get_task_metrics(
+                agent_id=agent_id,
+                since=since,
+                until=now,
+            )
+        except Exception as exc:
+            logger.error(  # noqa: TRY400 -- explicit structured audit event
+                HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                source="performance_tracker",
+                agent_id=agent_id,
+                since=since.isoformat(),
+                until=now.isoformat(),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
 
     async def _fetch_costs(
         self,
         agent_id: str,
         since: datetime,
         now: datetime,
-    ) -> tuple:  # type: ignore[type-arg]
+    ) -> tuple[CostRecord, ...]:
         """Best-effort cost record fetch; empty on any failure.
 
         Wraps the underlying tracker call so a single failing source
@@ -273,7 +392,7 @@ class ActivityFeedService:
         agent_id: str,
         since: datetime,
         now: datetime,
-    ) -> tuple:  # type: ignore[type-arg]
+    ) -> tuple[ToolInvocationRecord, ...]:
         """Best-effort tool invocation fetch; empty on any failure.
 
         Same resilience pattern as :meth:`_fetch_costs`: a single
@@ -306,20 +425,20 @@ class ActivityFeedService:
         agent_id: str,
         since: datetime,
         now: datetime,
-    ) -> tuple:  # type: ignore[type-arg]
+    ) -> tuple[tuple[DelegationRecord, ...], tuple[DelegationRecord, ...]]:
         """Best-effort delegation fetch; returns ``(sent, received)``.
 
         Both fetches are independent best-effort workers -- neither
         direction's failure should abort the sibling. Wraps each task
         body per the CLAUDE.md async convention.
         """
-        if self._delegation_store is None:
+        store = self._delegation_store
+        if store is None:
             return (), ()
 
-        async def _safe_delegator() -> tuple:  # type: ignore[type-arg]
-            assert self._delegation_store is not None  # noqa: S101
+        async def _safe_delegator() -> tuple[DelegationRecord, ...]:
             try:
-                return await self._delegation_store.get_records_as_delegator(
+                return await store.get_records_as_delegator(
                     agent_id,
                     start=since,
                     end=now,
@@ -338,10 +457,9 @@ class ActivityFeedService:
                 )
                 return ()
 
-        async def _safe_delegatee() -> tuple:  # type: ignore[type-arg]
-            assert self._delegation_store is not None  # noqa: S101
+        async def _safe_delegatee() -> tuple[DelegationRecord, ...]:
             try:
-                return await self._delegation_store.get_records_as_delegatee(
+                return await store.get_records_as_delegatee(
                     agent_id,
                     start=since,
                     end=now,

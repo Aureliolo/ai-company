@@ -61,13 +61,22 @@ logger = get_logger(__name__)
 class CheckpointNotFoundError(Exception):
     """Raised when a deploy/rollback/delete targets a missing checkpoint."""
 
+    __slots__ = ()
+    is_retryable: bool = False  # deterministic: the checkpoint is absent
+
 
 class CheckpointRollbackUnavailableError(Exception):
     """Raised when a rollback is requested but no backup config exists."""
 
+    __slots__ = ()
+    is_retryable: bool = False  # deterministic: no backup exists
+
 
 class CheckpointRollbackCorruptError(Exception):
     """Raised when the stored backup config fails JSON parsing."""
+
+    __slots__ = ()
+    is_retryable: bool = False  # deterministic: the stored payload is malformed
 
 
 class MemoryService:
@@ -364,7 +373,7 @@ class MemoryService:
             error=run.error,
         )
 
-    async def cancel_fine_tune(self) -> None:
+    async def cancel_fine_tune(self) -> str | None:
         """Cancel the currently active fine-tune run.
 
         The orchestrator tracks exactly one active run, so this is
@@ -372,13 +381,24 @@ class MemoryService:
         awaits the background task for up to 30s (see
         :meth:`FineTuneOrchestrator.cancel`).
 
+        Returns:
+            The run id of the cancelled run, or ``None`` if no run was
+            active at the time ``cancel`` was issued. Captured **before**
+            ``cancel()`` runs because the orchestrator may clear
+            ``current_run`` during cancellation, and the MCP handler
+            needs the id for the ``MCP_DESTRUCTIVE_OP_EXECUTED`` audit
+            record.
+
         Raises:
             BackendUnsupportedError: When the backend does not support
                 fine-tune runs.
         """
         orchestrator = self._require_orchestrator()
+        active = orchestrator.current_run
+        target_id = str(active.id) if active is not None else None
         await orchestrator.cancel()
-        logger.info(MEMORY_FINE_TUNE_CANCELLED)
+        logger.info(MEMORY_FINE_TUNE_CANCELLED, run_id=target_id)
+        return target_id
 
     async def run_preflight(self, plan: FineTunePlan) -> PreflightResult:
         """Validate *plan* against local-env prerequisites.

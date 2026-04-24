@@ -47,7 +47,7 @@ class TestFineTunePlan:
         )
         plan = FineTunePlan(
             source_dir=NotBlankStr("/data/org-docs"),
-            base_model=NotBlankStr("all-MiniLM-L6-v2"),
+            base_model=NotBlankStr("test-small-001"),
             output_dir=NotBlankStr("/data/fine-tune/v1"),
             resume_run_id=NotBlankStr("run-42"),
             epochs=5,
@@ -118,7 +118,7 @@ class TestFineTunePlan:
     def test_to_request_preserves_overrides(self) -> None:
         plan = FineTunePlan(
             source_dir=NotBlankStr("/data/org-docs"),
-            base_model=NotBlankStr("all-MiniLM-L6-v2"),
+            base_model=NotBlankStr("test-small-001"),
             epochs=5,
             learning_rate=2e-5,
             batch_size=64,
@@ -159,6 +159,27 @@ class TestBackendUnsupportedError:
         msg = "msg"
         with pytest.raises(BackendUnsupportedError):
             raise BackendUnsupportedError(msg)
+
+    def test_is_retryable_is_false(self) -> None:
+        """The error is deterministic; the provider-retry layer must surface it."""
+        exc = BackendUnsupportedError("backend cannot support this")
+        assert exc.is_retryable is False
+
+    @pytest.mark.parametrize(
+        "bad_reason",
+        ["", " ", "\t", "\n", "   \t\n  "],
+        ids=[
+            "empty_string",
+            "single_space",
+            "tab",
+            "newline",
+            "mixed_whitespace",
+        ],
+    )
+    def test_empty_or_whitespace_reason_rejected(self, bad_reason: str) -> None:
+        """Reason must carry operator-actionable text; blank is rejected."""
+        with pytest.raises(ValueError, match="non-empty"):
+            BackendUnsupportedError(bad_reason)
 
 
 class TestActiveEmbedderSnapshot:

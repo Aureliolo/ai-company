@@ -18,6 +18,11 @@
             "type": "command",
             "command": "bash scripts/check_bash_no_write.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_git_c_cwd.sh",
+            "timeout": 5000
           }
         ]
       },

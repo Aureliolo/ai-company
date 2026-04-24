@@ -51,10 +51,13 @@ HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
 HR_ACTIVITY_REDACTION_MISMATCH: Final[str] = "hr.activity.redaction_pattern_mismatch"
 HR_ACTIVITY_AGENT_FETCHED: Final[str] = "hr.activity.agent_fetched"
 HR_ACTIVITY_SOURCE_FETCH_FAILED: Final[str] = "hr.activity.source_fetch_failed"
+HR_ACTIVITY_INVALID_REQUEST: Final[str] = "hr.activity.invalid_request"
+HR_ACTIVITY_LIFECYCLE_CAP_HIT: Final[str] = "hr.activity.lifecycle_cap_hit"
 
 # ── Health aggregation ────────────────────────────────────────
 
 HR_AGENT_HEALTH_COMPUTED: Final[str] = "hr.agent.health_computed"
+HR_AGENT_HEALTH_FAILED: Final[str] = "hr.agent.health_failed"
 
 # ── Training sessions ─────────────────────────────────────────
 

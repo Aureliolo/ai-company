@@ -1,16 +1,19 @@
-"""META-MCP-4 facade accessors for :class:`AppState`.
+"""AppState facade accessors for observability / memory / coordination services.
 
-Extracted from ``state_services_facades.py`` to keep that module under
-the project's 800-line ceiling. Exposes the eight services wired by
-META-MCP-4 (``observability`` / ``memory`` / ``coordination``) as
-properties and setters that mirror the META-MCP-2 pattern:
+Provides accessors for the eight MCP-facing services spanning the
+observability, memory, and coordination domains (activity feed,
+agent health, agent versions, personalities, scaling decisions,
+coordination metrics, ceremony policy, and the memory service).
+Kept in its own module so the parent ``state_services_facades.py``
+stays under the project's 800-line ceiling. Each service follows
+the same triple:
 
 - ``has_<service>`` -- ``bool`` indicating whether the setter has run.
 - ``<service>`` -- the service itself (raises via
   ``_require_service`` when not wired).
 - ``set_<service>`` -- one-shot setter enforced by ``_set_once``.
 
-Each setter also emits an INFO-level audit event
+Each setter emits an INFO-level audit event
 (``API_STATE_SERVICE_ATTACHED``) with the slot name and the service's
 concrete class so ops telemetry can observe bootstrap wiring.
 """

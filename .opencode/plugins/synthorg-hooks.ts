@@ -6,6 +6,7 @@
  *
  * Committed Claude Code hooks (from .claude/settings.json):
  *   PreToolUse (Bash): scripts/check_push_rebased.sh
+ *   PreToolUse (Bash): scripts/check_no_atlas_rehash.sh
  *   PreToolUse (Bash): scripts/check_bash_no_write.sh
  *   PreToolUse (Bash): scripts/check_git_c_cwd.sh
  *   PreToolUse (Edit|Write): scripts/check_no_edit_migration.sh
@@ -24,57 +25,120 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { spawnSync, execSync } from "child_process";
 
+/** Discriminated result of running a hook script.
+ *
+ * Callers MUST treat ``"error"`` exactly like ``"deny"`` (fail closed);
+ * otherwise a hook script crash or timeout silently opens the gate that
+ * the hook is meant to guard. */
+type HookOutcome =
+  | { outcome: "allow" }
+  | { outcome: "deny"; reason: string }
+  | { outcome: "error"; reason: string };
+
+const _DENY_PATTERN = /\b(block(?:ed|s)?|den(?:y|ied|ies))\b/i;
+
+function _stdoutString(value: string | null | undefined): string {
+  return typeof value === "string" ? value : "";
+}
+
+function _parseEnvelope(raw: string): HookOutcome | null {
+  try {
+    const parsed = JSON.parse(raw);
+    const decision = parsed?.hookSpecificOutput?.permissionDecision;
+    if (decision === "deny") {
+      const reason = parsed?.hookSpecificOutput?.permissionDecisionReason
+        || "Hook denied this action";
+      return { outcome: "deny", reason };
+    }
+    if (decision === "allow") {
+      return { outcome: "allow" };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function _parseLegacy(raw: string): HookOutcome {
+  // Pre-structured-envelope hook scripts print free-form text. Match any
+  // inflection of ``block`` / ``deny`` (including the literal
+  // ``"Hook denied this action"`` fallback emitted when the script exits
+  // with status 2 but no stdout) so we never silently treat a denial as
+  // allow. Empty stdout on a zero exit is an allow.
+  if (raw.length === 0) {
+    return { outcome: "allow" };
+  }
+  if (_DENY_PATTERN.test(raw)) {
+    return { outcome: "deny", reason: raw };
+  }
+  return { outcome: "allow" };
+}
+
 function runHookScript(
   scriptPath: string,
   toolInput: Record<string, unknown>,
   timeoutMs: number = 10000,
-): string | null {
+): HookOutcome {
+  let result: ReturnType<typeof spawnSync>;
   try {
     const input = JSON.stringify({ tool_input: toolInput });
-    const result = spawnSync("bash", [scriptPath], {
+    result = spawnSync("bash", [scriptPath], {
       input,
       timeout: timeoutMs,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     });
-    if (result.status === 2) {
-      // Hook denied the action
-      return result.stdout ?? "Hook denied this action";
-    }
-    if (result.status !== 0) {
-      // Fail closed: non-zero, non-2 exit codes are errors
-      return null;
-    }
-    return result.stdout;
   } catch (error: unknown) {
-    const err = error as { status?: number; stdout?: string };
-    if (err.status === 2) {
-      // Hook denied the action
-      return err.stdout ?? "Hook denied this action";
-    }
-    // Fail closed on catch errors too
-    return null;
+    const err = error as { message?: string };
+    return {
+      outcome: "error",
+      reason: `${scriptPath} failed to execute: ${err.message ?? "unknown error"}`,
+    };
   }
+  if (result.error) {
+    // ``result.error`` is set on timeout (ETIMEDOUT) or spawn failures.
+    // Fail closed: the hook is guarding something, and we refuse to
+    // guess at the outcome on infrastructure failure.
+    return {
+      outcome: "error",
+      reason: `${scriptPath} failed: ${result.error.message}`,
+    };
+  }
+  const stdout = _stdoutString(result.stdout as string | null);
+  if (result.status === 2) {
+    return {
+      outcome: "deny",
+      reason: stdout.length > 0 ? stdout : "Hook denied this action",
+    };
+  }
+  if (result.status !== 0) {
+    const stderr = _stdoutString(result.stderr as string | null);
+    return {
+      outcome: "error",
+      reason:
+        `${scriptPath} exited with status ${String(result.status)}`
+        + (stderr.length > 0 ? `: ${stderr}` : ""),
+    };
+  }
+  // Status 0: prefer the structured envelope, fall back to the legacy
+  // free-text regex. Either way we cannot return ``null``; silence on
+  // a zero exit is an allow.
+  const envelope = _parseEnvelope(stdout);
+  return envelope ?? _parseLegacy(stdout);
 }
 
-/** Parse the ``hookSpecificOutput.permissionDecision`` envelope, tolerating legacy
- * ``block`` or ``deny`` plain-text fallbacks. Returns a deny reason (to raise) or
- * ``null`` if the hook allowed the action. */
-function parseHookDecision(raw: string): string | null {
-  try {
-    const parsed = JSON.parse(raw);
-    const decision = parsed?.hookSpecificOutput?.permissionDecision;
-    if (decision === "deny") {
-      return parsed?.hookSpecificOutput?.permissionDecisionReason || "Hook denied this action";
-    }
-    return null;
-  } catch {
-    // Not JSON: treat legacy ``block`` / ``deny`` substring as denial
-    if (/\b(block|deny)\b/i.test(raw)) {
-      return raw;
-    }
+/** Convert a hook outcome into a deny reason or ``null`` for allow.
+ *
+ * Errors are surfaced as denials with a prefix so the failure mode is
+ * visible in the raised error; this is the fail-closed guarantee. */
+function denyReasonFromOutcome(outcome: HookOutcome): string | null {
+  if (outcome.outcome === "allow") {
     return null;
   }
+  if (outcome.outcome === "error") {
+    return `Hook execution failed (fail-closed): ${outcome.reason}`;
+  }
+  return outcome.reason;
 }
 
 export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
@@ -94,12 +158,14 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               "scripts/check_no_edit_baseline.sh",
               "scripts/check_pre_pr_review_triage_gate.sh",
             ]) {
-              const raw = runHookScript(script, payload.tool_input as Record<string, unknown>, 5000);
-              if (raw) {
-                const denyReason = parseHookDecision(raw);
-                if (denyReason) {
-                  throw new Error(denyReason);
-                }
+              const outcome = runHookScript(
+                script,
+                payload.tool_input as Record<string, unknown>,
+                5000,
+              );
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
               }
             }
           }
@@ -144,38 +210,53 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
 
             // check_push_rebased.sh -- block push if branch is behind main
             if (command.includes("git push")) {
-              const result = runHookScript(
+              const outcome = runHookScript(
                 "scripts/check_push_rebased.sh",
                 { command },
                 15000,
               );
-              if (result) {
-                const denyReason = parseHookDecision(result);
-                if (denyReason) {
-                  throw new Error(denyReason);
-                }
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
+              }
+            }
+
+            // check_no_atlas_rehash.sh -- block `atlas migrate hash` rehash
+            // Cheap prefilter: only invoke the script if the command mentions
+            // atlas at all. The script itself does the authoritative check.
+            if (command.includes("atlas")) {
+              const outcome = runHookScript(
+                "scripts/check_no_atlas_rehash.sh",
+                { command },
+                5000,
+              );
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
               }
             }
 
             // check_bash_no_write.sh -- block file writes via Bash
-            const result = runHookScript(
+            const bashWriteOutcome = runHookScript(
               "scripts/check_bash_no_write.sh",
               { command },
               5000,
             );
-            if (result && result.includes("deny")) {
-              throw new Error(result);
+            const bashWriteDeny = denyReasonFromOutcome(bashWriteOutcome);
+            if (bashWriteDeny) {
+              throw new Error(bashWriteDeny);
             }
 
             // check_git_c_cwd.sh -- block unnecessary git -C to cwd
             if (command.includes("git") && command.includes("-C")) {
-              const gitResult = runHookScript(
+              const outcome = runHookScript(
                 "scripts/check_git_c_cwd.sh",
                 { command },
                 5000,
               );
-              if (gitResult && gitResult.includes("deny")) {
-                throw new Error(gitResult);
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
               }
             }
           }

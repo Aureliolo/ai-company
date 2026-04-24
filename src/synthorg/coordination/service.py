@@ -6,14 +6,15 @@ MCP callers cannot realistically build a full context from a tool
 call, so this facade exposes the read-side of coordination -- the
 metrics stored by the engine after each coordination run:
 
-- :meth:`coordinate_task` returns the most recent metrics for
+- :meth:`get_task_metrics` returns the most recent metrics for
   ``task_id`` (or ``None`` if no run has been recorded); handlers map
   ``None`` onto a ``not_found`` envelope.
 - :meth:`list_metrics` returns a newest-first page of the global
   metrics store alongside the total count.
 
 Triggering coordination from MCP is out of scope -- the engine loop
-owns that entry point.
+owns that entry point, exposed over REST via
+``POST /tasks/{task_id}/coordinate``.
 """
 
 from typing import TYPE_CHECKING
@@ -54,7 +55,7 @@ class CoordinationService:
         """Initialise with the metrics store dependency."""
         self._metrics_store = metrics_store
 
-    async def coordinate_task(
+    async def get_task_metrics(
         self,
         task_id: NotBlankStr,
     ) -> CoordinationMetricsRecord | None:
@@ -79,7 +80,7 @@ class CoordinationService:
             task_id=record.task_id,
             agent_id=record.agent_id,
             team_size=record.team_size,
-            surface="mcp.coordinate_task",
+            surface="mcp.get_task_metrics",
         )
         return record
 

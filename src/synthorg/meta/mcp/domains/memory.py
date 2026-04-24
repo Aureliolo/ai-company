@@ -28,14 +28,17 @@ _FINE_TUNE_PLAN_PROPERTIES: dict[str, object] = {
     "base_model": {
         "type": ["string", "null"],
         "description": "Base model to fine-tune (null = active model)",
+        "minLength": 1,
     },
     "output_dir": {
         "type": ["string", "null"],
         "description": "Checkpoint output directory (null = default)",
+        "minLength": 1,
     },
     "resume_run_id": {
         "type": ["string", "null"],
         "description": "Resume a previous failed/cancelled run",
+        "minLength": 1,
     },
     "epochs": {
         "type": ["integer", "null"],
