@@ -149,6 +149,11 @@ jobs:
       - name: Generate Highlights via GitHub Models
         if: steps.release.outputs.pr != '' && steps.pr-body.outputs.skip != 'true'
         id: highlights
+        # Highlights are cosmetic release-note polish; Release Please has
+        # already created / updated the release PR by the time this step
+        # runs. A GitHub Models quota hit, model timeout, or transient
+        # service error must not fail the release pipeline.
+        continue-on-error: true
         uses: actions/ai-inference@af6ad2c4ac4edf01884054fc3a6caa6d2567c13a # v2.0.8
         with:
           model: claude-3-5-haiku
@@ -168,7 +173,11 @@ jobs:
           max-tokens: 400
 
       - name: Prepend Highlights to release PR body
-        if: steps.release.outputs.pr != '' && steps.pr-body.outputs.skip != 'true' && steps.highlights.outputs.response != ''
+        if: steps.release.outputs.pr != '' && steps.pr-body.outputs.skip != 'true' && steps.highlights.outcome == 'success' && steps.highlights.outputs.response != ''
+        # Same non-blocking rationale as the Highlights generation step --
+        # a gh API hiccup while editing the PR body must not block the
+        # release.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}

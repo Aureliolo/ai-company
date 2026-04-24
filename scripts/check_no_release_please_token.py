@@ -51,16 +51,31 @@ def _iter_workflow_files() -> Iterable[Path]:
         yield from sorted(_GITHUB_ROOT.rglob(pattern))
 
 
+class _UnreadableFileError(RuntimeError):
+    """Raised when a ``.github/`` YAML file cannot be decoded as UTF-8.
+
+    Kept distinct from generic ``RuntimeError`` so the caller can treat
+    read failures as a violation (fail-closed) rather than silently
+    dropping the file from the scan. A malformed-encoding YAML file is
+    almost certainly corrupted, not intentional -- flagging it loudly
+    beats letting a ``RELEASE_PLEASE_TOKEN`` reference sneak in via a
+    file that happens to fail the encoding check.
+    """
+
+
 def _scan_file(path: Path) -> list[tuple[int, str]]:
-    """Return ``(lineno, stripped_line)`` for each occurrence of the token."""
+    """Return ``(lineno, stripped_line)`` for each occurrence of the token.
+
+    Raises ``_UnreadableFileError`` when the file cannot be decoded as
+    UTF-8 or the OS refuses the read -- callers promote that to a
+    violation so the gate never fails-open on a file it could not
+    inspect.
+    """
     try:
         source = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError) as exc:
-        print(
-            f"{_rel(path)}: could not read file: {type(exc).__name__}: {exc}",
-            file=sys.stderr,
-        )
-        return []
+        msg = f"{_rel(path)}: could not read file: {type(exc).__name__}: {exc}"
+        raise _UnreadableFileError(msg) from exc
     hits: list[tuple[int, str]] = []
     for lineno, line in enumerate(source.splitlines(), start=1):
         if _FORBIDDEN in line:
@@ -90,7 +105,12 @@ def cmd_scan_all() -> int:
     """Walk every YAML file under ``.github/`` and report every hit."""
     violations: list[str] = []
     for path in _iter_workflow_files():
-        for lineno, line in _scan_file(path):
+        try:
+            hits = _scan_file(path)
+        except _UnreadableFileError as exc:
+            violations.append(str(exc))
+            continue
+        for lineno, line in hits:
             violations.append(f"{_rel(path)}:{lineno}: {line}")
     return _report(violations)
 
@@ -104,7 +124,12 @@ def cmd_scan_paths(paths: Iterable[str]) -> int:
             continue
         if not path.is_relative_to(_GITHUB_ROOT):
             continue
-        for lineno, line in _scan_file(path):
+        try:
+            hits = _scan_file(path)
+        except _UnreadableFileError as exc:
+            violations.append(str(exc))
+            continue
+        for lineno, line in hits:
             violations.append(f"{_rel(path)}:{lineno}: {line}")
     return _report(violations)
 

@@ -597,18 +597,34 @@ jobs:
   # for now so benign drift in the spec's initial capture does not block
   # every push; promote to blocking once the spec has survived 30 days
   # of zero-drift runs (tracked in #1555).
+  #
+  # Authentication: the GitHub rulesets REST API requires a token with
+  # ``administration: read`` scope. GITHUB_TOKEN cannot be granted that
+  # scope via workflow permissions, so the job mints a fresh
+  # ``synthorg-release-bot`` App installation token via the shared
+  # ``release-runner-setup`` composite. The App's scope is already
+  # Contents RW + PRs RW + Metadata R (see docs/reference/github-
+  # environments.md); rulesets are accessible to any installation with
+  # metadata read, which is sufficient for this read-only audit.
   branch-protection-audit:
     name: Branch-protection drift audit
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     continue-on-error: true
+    environment: release
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+      - name: Release runner setup
+        id: setup
+        uses: ./.github/actions/release-runner-setup
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
       - name: Install yq
         run: |
           set -euo pipefail
@@ -618,7 +634,7 @@ jobs:
           yq --version
       - name: Audit
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
         run: bash scripts/audit_branch_protection.sh
 
   # ── Gate: all required checks passed ──

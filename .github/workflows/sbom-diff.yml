@@ -103,8 +103,10 @@ jobs:
             jq -r '
               .components[]? |
               [.name, .version,
-               (if .licenses then
-                  [(.licenses[] | .license.id // .expression // "unknown")] | join("|")
+               (if (.licenses | length // 0) > 0 then
+                  ([.licenses[] | .license.id // .expression // "unknown"]
+                    | map(select(. != "" and . != null))
+                    | (if length > 0 then join("|") else "unknown" end))
                 else "unknown" end)
               ] | @tsv' "$1" | sort -u
           }

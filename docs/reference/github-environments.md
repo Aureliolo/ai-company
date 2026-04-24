@@ -111,8 +111,14 @@ deployment environment as two secrets:
 
 - `RELEASE_BOT_APP_ID` -- the numeric App ID shown on the App's
   settings page.
-- `RELEASE_BOT_APP_PRIVATE_KEY` -- the full `.pem` contents including
-  the `-----BEGIN / END RSA PRIVATE KEY-----` lines.
+- `RELEASE_BOT_APP_PRIVATE_KEY` -- the full `.pem` contents verbatim,
+  including the opening and closing marker lines. Both markers must
+  be present and spelled exactly as emitted by the GitHub App page:
+  - Opening line: `-----BEGIN RSA PRIVATE KEY-----`
+  - Closing line: `-----END RSA PRIVATE KEY-----`
+  Paste the file contents exactly as downloaded -- GitHub's secret
+  store accepts multi-line values but silently strips trailing
+  whitespace, so do not hand-edit the `.pem`.
 
 **Why an App and not a PAT.** The prior implementation used a
 fine-grained PAT (`RELEASE_PLEASE_TOKEN`). PATs produce **unsigned**

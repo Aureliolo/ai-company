@@ -57,10 +57,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Shape: three numeric components, no pre-release suffix. The
-          # regular Release-Please flow handles dev / rc / alpha / beta.
-          if ! [[ "$TARGET" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::target_version must match ^[0-9]+\.[0-9]+\.[0-9]+$ (got: $TARGET)"
+          # Shape: three numeric components, no pre-release suffix, no
+          # leading zeros (SemVer 2.0.0 §2: "Each element MUST ... not
+          # contain leading zeroes"). The regular Release-Please flow
+          # handles dev / rc / alpha / beta; graduate is for full releases.
+          semver_component='(0|[1-9][0-9]*)'
+          if ! [[ "$TARGET" =~ ^${semver_component}\.${semver_component}\.${semver_component}$ ]]; then
+            echo "::error::target_version must be SemVer 2.0 major.minor.patch with no leading zeros (got: $TARGET)"
             exit 1
           fi
 
@@ -89,6 +92,13 @@ jobs:
             exit 1
           fi
           LAST_VERSION="${LAST_STABLE#v}"
+          # Defensive: reject malformed existing tags too. If the repo
+          # has ever been retagged by hand, $LAST_VERSION could violate
+          # SemVer; the arithmetic compare below would misorder it.
+          if ! [[ "$LAST_VERSION" =~ ^${semver_component}\.${semver_component}\.${semver_component}$ ]]; then
+            echo "::error::last stable tag $LAST_STABLE is not valid SemVer -- cannot compare safely"
+            exit 1
+          fi
           echo "Last stable: $LAST_STABLE"
           echo "Target: $TARGET"
 

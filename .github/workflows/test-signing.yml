@@ -127,7 +127,7 @@ jobs:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
           app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
 
-      - name: Create disposable annotated tag
+      - name: Create disposable lightweight tag
         id: tag
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
@@ -137,30 +137,28 @@ jobs:
           TAG_NAME="test-signing/dev-${SHORT_SHA}-${GITHUB_RUN_ID}"
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
 
-          # Annotated tag object carries its own signature. dev-release.yml
-          # creates lightweight tags (POST /git/refs with type=commit), but
-          # the signing contract we care about is "tag creation under an App
-          # token", so we exercise the stronger variant here.
-          TAG_SHA=$(jq -n \
-            --arg tag "$TAG_NAME" \
-            --arg msg "test-signing dev tag dry-run" \
-            --arg obj "$GITHUB_SHA" \
-          '{tag: $tag, message: $msg, object: $obj, type: "commit"}' \
-          | gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" --input - --jq '.sha')
-          echo "tag_sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
-
+          # Match production dev-release.yml exactly: lightweight tag via
+          # POST /git/refs pointing at the current commit SHA. No annotated
+          # tag object (dev-release.yml does not create one). The signing
+          # contract here is that the commit the tag points at verifies
+          # as valid -- a lightweight tag itself has no signature field,
+          # it's just a ref. Exercising any other API path would leave
+          # the actual production code path untested.
           gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
             -f ref="refs/tags/$TAG_NAME" \
-            -f sha="$TAG_SHA"
+            -f sha="$GITHUB_SHA"
 
       - name: Assert verified
         id: assert
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
-          TAG_SHA: ${{ steps.tag.outputs.tag_sha }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          v=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_SHA" --jq '.verification')
+          # Verify the commit the lightweight tag points at -- the
+          # same surface ``gh api commits/<sha> --jq .verification``
+          # that dev-release consumers would inspect post-push.
+          v=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$COMMIT_SHA" --jq '.verification')
           echo "$v" | jq .
           verified=$(jq -r '.verified' <<< "$v")
           reason=$(jq -r '.reason' <<< "$v")
@@ -296,9 +294,23 @@ jobs:
           )
 
           if [ -z "$ISSUE_NUMBER" ]; then
-            gh issue create --title "$TITLE" \
+            ISSUE_NUMBER=$(gh issue create --title "$TITLE" \
               --label 'automation:release-events,type:ci,prio:high' \
-              --body "$BODY"
+              --body "$BODY" --json number --jq '.number')
+            echo "Created tracking issue #$ISSUE_NUMBER"
           else
             gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          fi
+
+          # Pin the tracking issue -- same best-effort pattern as
+          # release-pipeline-health.yml; failure is a ::warning::, not a
+          # hard fail. A repo can hold at most 3 pinned issues; across
+          # the release automation that ceiling covers: release events
+          # log, signing regression tracker, health regression tracker.
+          if ! gh api --method PUT \
+              "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/pin" \
+              --silent 2>/dev/null; then
+            echo "::warning::could not pin tracking issue #$ISSUE_NUMBER (quota / race / permission)"
+          else
+            echo "Pinned tracking issue #$ISSUE_NUMBER"
           fi

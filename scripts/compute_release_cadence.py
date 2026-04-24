@@ -192,10 +192,12 @@ def _render(tags: list[StableTag]) -> str:
     gaps = _days_between(tags)
     feat_deltas = _feat_merge_to_release_deltas(tags)
 
-    latest = tags[-1] if tags else None
-    generated = datetime.now(tz=latest.created_at.tzinfo if latest else None).strftime(
-        "%Y-%m-%dT%H:%M:%S%z"
-    )
+    # Everything the report labels ``UTC`` must be converted to UTC
+    # before formatting. Git's ``creatordate:iso-strict`` is tz-aware but
+    # preserves the tagger's local offset, so a tagger in CET would
+    # otherwise produce timestamps written as ``23:15:15`` in the table
+    # under a ``Created (UTC)`` header -- an hour off.
+    generated = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%S%z")
 
     lines = [
         "---",
@@ -236,7 +238,8 @@ def _render(tags: list[StableTag]) -> str:
         "| --- | --- |",
     ]
     lines.extend(
-        f"| `{tag.name}` | {tag.created_at.strftime('%Y-%m-%d %H:%M:%S')} |"
+        f"| `{tag.name}` | "
+        f"{tag.created_at.astimezone(UTC).strftime('%Y-%m-%d %H:%M:%S')} |"
         for tag in tags
     )
     lines.append("")

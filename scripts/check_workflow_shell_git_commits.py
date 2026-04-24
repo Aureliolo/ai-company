@@ -1,26 +1,38 @@
 #!/usr/bin/env python3
 """Pre-commit gate: block new shell ``git commit + push`` in workflows.
 
-Any workflow that writes a commit to the repository must go through an
-API path authenticated by the ``synthorg-release-bot`` App token (see
-``release-runner-setup`` composite). Shell ``git commit`` + ``git push``
-from the runner uses the ambient ``GITHUB_TOKEN``, which:
+Any workflow that writes a commit to the repository must go through the
+Git Data REST API (``POST /git/commits`` + ``PATCH /git/refs/...``)
+authenticated by the ``synthorg-release-bot`` App installation token.
+Shell ``git commit`` + ``git push`` from the runner never produces a
+GitHub-signed commit, regardless of which token it uses:
 
-1. Produces commits authored by ``github-actions[bot]``. Those commits
-   are signed by GitHub, so they verify as ``{verified: true}`` -- but
-   commits pushed with ``GITHUB_TOKEN`` are suppressed from firing
-   downstream workflow events (GitHub's anti-recursion rule). This is
-   the exact failure mode ``auto-rollover.yml`` was designed to avoid.
-2. More insidiously: a workflow that uses shell ``git commit`` with a
-   custom author and a PAT (or a resurrected ``RELEASE_PLEASE_TOKEN``)
-   produces unsigned commits. ``main`` rejects them via
-   ``required_signatures``, rollovers silently fail.
+1. Locally-built commits + push with ``GITHUB_TOKEN`` are signed by
+   GitHub under ``github-actions[bot]`` -- but those pushes are
+   suppressed from firing downstream workflow events (GitHub's
+   anti-recursion rule). This is the exact failure mode
+   ``auto-rollover.yml`` was designed to avoid.
+2. Locally-built commits + push with **any non-GITHUB_TOKEN credential**
+   (PAT, App installation token, resurrected ``RELEASE_PLEASE_TOKEN``)
+   produce **unsigned** commits. GitHub can only attach a bot signature
+   when a commit is created through the Git Data API; it does not
+   interpose on ``git push``. See
+   https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification
+   ("signature verification for bots ... will only work if the request
+   is verified and authenticated as the GitHub App or bot and contains
+   no custom author information ... and no custom signature information,
+   such as Commits API"). ``main`` rejects unsigned commits via
+   ``required_signatures``, so any shell ``git commit + git push`` on
+   ``main`` silently fails the branch-protection gate.
 
-This gate catches both shapes at commit time. It runs an AST-free regex
-walk across each workflow YAML file, finding ``run:`` blocks that
-contain both ``git commit`` and ``git push`` (in any order), and
-flags them unless the job also calls ``release-runner-setup`` or mints
-a token via ``actions/create-github-app-token`` directly.
+This gate flags every ``run:`` block containing both ``git commit`` and
+``git push``. There is NO whitelist for "job mints an App token
+somewhere" -- that whitelist was the original shape but it is unsound:
+the token mint buys API-path signing, not local-git-push signing, so
+the presence of a mint does not sanitise a local-git write. Workflows
+that need to write to the repo must invoke the Git Data API directly
+(see ``auto-rollover.yml`` / ``graduate.yml`` / ``dev-release.yml`` for
+reference implementations).
 
 Baseline
 --------
@@ -46,7 +58,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -61,11 +73,6 @@ _BASELINE_PATH = (
 
 _GIT_COMMIT_RE = re.compile(r"(?m)^\s*git\s+commit\b")
 _GIT_PUSH_RE = re.compile(r"(?m)^\s*git\s+push\b")
-# S105 false positive: these identify the App-token-mint action and
-# composite path that the gate looks for in `uses:` fields -- not
-# credentials.
-_APP_TOKEN_MINT = "actions/create-github-app-token"  # noqa: S105
-_APP_TOKEN_COMPOSITE = "./.github/actions/release-runner-setup"  # noqa: S105
 
 # Each baseline list entry is ``[job_id, step_key]`` -- a length-2
 # list. Named so the `len(entry) == _BASELINE_ENTRY_LEN` check stays
@@ -73,11 +80,12 @@ _APP_TOKEN_COMPOSITE = "./.github/actions/release-runner-setup"  # noqa: S105
 _BASELINE_ENTRY_LEN = 2
 
 _STEERING_MESSAGE = (
-    "Shell `git commit` + `git push` inside a workflow produces unsigned or "
-    "anti-recursion-suppressed commits. Route writes through the GitHub API "
-    "using an App installation token (see the release-runner-setup composite "
-    "or actions/create-github-app-token directly). Reference implementations: "
-    "auto-rollover.yml, dev-release.yml, release.yml."
+    "Shell `git commit` + `git push` inside a workflow NEVER produces a "
+    "GitHub-signed commit -- GitHub can only attach a bot signature when "
+    "the commit is created through the Git Data API (POST /git/commits). "
+    "Route writes through the API with an App installation token. "
+    "Reference implementations: auto-rollover.yml, graduate.yml, "
+    "dev-release.yml."
 )
 
 _FORCE_REFRESH_FLAG = "--force"
@@ -91,23 +99,17 @@ def _iter_workflow_files() -> Iterable[Path]:
         yield from sorted(_WORKFLOWS_ROOT.rglob(pattern))
 
 
-def _job_mints_app_token(job: dict[str, Any]) -> bool:
-    """Return ``True`` if *job* mints an App token anywhere in its steps."""
-    steps = job.get("steps") or []
-    for step in steps:
-        uses = step.get("uses") or ""
-        if _APP_TOKEN_MINT in uses:
-            return True
-        if _APP_TOKEN_COMPOSITE in uses:
-            return True
-    return False
-
-
 def _scan_file(path: Path) -> list[tuple[str, str]]:
     """Return ``(job_id, step_key)`` tuples for each unsafe step.
 
     ``step_key`` is ``step.name`` if present, else ``step-index-N`` so we
     always have a stable identifier.
+
+    A ``run:`` block is flagged whenever it contains both
+    ``git commit`` and ``git push``. There is no whitelist based on
+    tokens minted elsewhere in the job: a local ``git push`` produces
+    unsigned commits regardless of which credential the push uses,
+    because GitHub only signs commits created through the Git Data API.
 
     Raises on YAML parse errors so callers surface them instead of a
     false-green "no violations".
@@ -121,7 +123,6 @@ def _scan_file(path: Path) -> list[tuple[str, str]]:
     for job_id, job in jobs.items():
         if not isinstance(job, dict):
             continue
-        mints = _job_mints_app_token(job)
         steps = job.get("steps") or []
         for idx, step in enumerate(steps):
             if not isinstance(step, dict):
@@ -132,11 +133,6 @@ def _scan_file(path: Path) -> list[tuple[str, str]]:
             if not (
                 _GIT_COMMIT_RE.search(run_block) and _GIT_PUSH_RE.search(run_block)
             ):
-                continue
-            if mints:
-                # Job mints an App token somewhere. Assume that token is
-                # what the `git commit + push` uses, via ``git remote set-url``
-                # or ``GH_TOKEN``-enabled `gh api`. Do not flag.
                 continue
             step_key = step.get("name") or f"step-index-{idx}"
             hits.append((str(job_id), str(step_key)))

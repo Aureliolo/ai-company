@@ -2,7 +2,29 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, no-new-logger-exception-str-exc, orphan-fixtures, no-release-please-token, workflow-shell-git-commits]
+  # Hooks listed here are skipped ONLY on pre-commit.ci. They still run
+  # on every developer machine and in any CI job that invokes pre-commit
+  # directly. Skip reasons, grouped by category:
+  #   - commitizen / gitleaks / hadolint-docker / caddy-validate:
+  #     covered by dedicated CI jobs; re-running on pre-commit.ci adds
+  #     latency without adding signal.
+  #   - mypy / pytest-unit / go-* / eslint-web:
+  #     too slow / toolchain-heavy for the cloud runner.
+  #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
+  #     persistence-boundary / no-new-logger-exception-str-exc /
+  #     orphan-fixtures:
+  #     scoped gates that need ``uv`` + repo source -- redundant given
+  #     the `Lint` + `Forbidden literals gate` jobs in ci.yml.
+  #   - check-push-rebased / check-single-migration-per-pr /
+  #     check-no-modify-migration:
+  #     rebase / migration state checks meaningful only on the pushing
+  #     developer's clone, not in an ephemeral cloud runner.
+  # ``no-release-please-token`` and ``workflow-shell-git-commits`` are
+  # deliberately NOT skipped: both are pure-Python, zero-dependency
+  # scripts with no CI counterpart, and letting pre-commit.ci enforce
+  # them closes the gap where a PR from a contributor who skipped local
+  # hooks would otherwise introduce a regression unchecked.
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, no-new-logger-exception-str-exc, orphan-fixtures]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -67,7 +89,12 @@ repos:
       - id: debug-statements
         types: [python]
       - id: detect-private-key
-        exclude: ^tests/
+        # - tests/ contains deliberate fixtures with PEM-looking literals.
+        # - docs/reference/github-environments.md documents the exact
+        #   ``-----BEGIN / END RSA PRIVATE KEY-----`` marker lines so
+        #   operators can recognise a correct copy-paste; the file
+        #   obviously contains no real key.
+        exclude: ^(tests/|docs/reference/github-environments\.md$)
       - id: mixed-line-ending
 
   - repo: https://github.com/astral-sh/ruff-pre-commit

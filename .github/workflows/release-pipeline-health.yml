@@ -104,30 +104,45 @@ jobs:
           set -euo pipefail
           ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
 
-          CLI_BINARIES=$(echo "$ASSETS" | grep -E '^synthorg_.+(_Linux|_Darwin|_Windows).*\.(tar\.gz|zip)$' || true)
+          # The CLI release flow signs ``checksums.txt`` with cosign
+          # (cli.yml "Sign checksums with cosign") and attaches both
+          # ``checksums.txt`` and ``checksums.txt.cosign.bundle`` to the
+          # draft release. Per-archive ``.sig`` / ``.sigstore.json``
+          # siblings are NOT published; checking for them would report
+          # every healthy release as broken. Verify the bundle pair
+          # instead, which is the actual signing contract.
           MISSING=()
-          while read -r asset; do
-            [ -z "$asset" ] && continue
-            # GoReleaser emits matching `.sig` or `.sigstore.json` siblings per cosign/sign step.
-            sib_sig=$(echo "$ASSETS" | grep -F "$asset.sig" || true)
-            sib_bundle=$(echo "$ASSETS" | grep -F "$asset.sigstore.json" || true)
-            if [ -z "$sib_sig" ] && [ -z "$sib_bundle" ]; then
-              MISSING+=("$asset")
-            fi
-          done <<< "$CLI_BINARIES"
+          grep -qxF 'checksums.txt' <<< "$ASSETS" \
+            || MISSING+=('checksums.txt')
+          grep -qxF 'checksums.txt.cosign.bundle' <<< "$ASSETS" \
+            || MISSING+=('checksums.txt.cosign.bundle')
+
+          # And confirm at least one CLI binary asset exists -- if the
+          # bundle shipped but no archives did, that is also a failure
+          # mode.
+          CLI_COUNT=$(grep -cE '^synthorg_(Linux|Darwin|Windows)_' <<< "$ASSETS" || true)
+          if [ "$CLI_COUNT" -lt 1 ]; then
+            MISSING+=('no synthorg_<OS>_<ARCH> CLI archives found')
+          fi
 
           if [ "${#MISSING[@]}" -gt 0 ]; then
-            echo "::error::$(printf '%d CLI assets missing cosign signatures: %s' "${#MISSING[@]}" "${MISSING[*]}")"
+            echo "::error::$(printf 'cosign signing contract broken: %s' "${MISSING[*]}")"
             printf 'missing<<EOF\n%s\nEOF\n' "$(printf '%s\n' "${MISSING[@]}")" >> "$GITHUB_OUTPUT"
             echo "ok=false" >> "$GITHUB_OUTPUT"
           else
             echo "ok=true" >> "$GITHUB_OUTPUT"
-            echo "All CLI assets carry cosign signatures."
+            echo "checksums.txt + .cosign.bundle present; $CLI_COUNT CLI archives attached."
           fi
 
-          # Record SBOM presence (CycloneDX JSON per image).
-          SBOM_COUNT=$(echo "$ASSETS" | grep -cE '^sbom-.+\.cdx\.json$' || true)
+          # Assert at least one SBOM asset is attached -- finalize-release
+          # uploads one CycloneDX JSON per container image.
+          SBOM_COUNT=$(grep -cE '^sbom-.+\.cdx\.json$' <<< "$ASSETS" || true)
           echo "sbom_count=$SBOM_COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$SBOM_COUNT" -lt 1 ]; then
+            echo "sbom_ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "sbom_ok=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Check Verification section integrity
         id: body
@@ -153,16 +168,49 @@ jobs:
             echo "Verification section is complete."
           fi
 
+      - name: Verify SLSA provenance attestations
+        id: attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Each container image published during finalize-release carries
+          # a SLSA L3 provenance attestation. List them for the tag's
+          # head ref so a regression in the attestation step shows up
+          # here -- gh attestation list exits non-zero when no matches.
+          HEAD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq '.sha' 2>/dev/null || true)
+          if [ -z "$HEAD_SHA" ]; then
+            echo "::warning::Could not resolve tag $TAG to a commit SHA; skipping attestation check"
+            echo "ok=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/attestations/$HEAD_SHA" \
+              --jq '.attestations | length' 2>/dev/null | grep -qE '^[1-9][0-9]*$'; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "At least one attestation present for $TAG ($HEAD_SHA)."
+          else
+            echo "::error::No SLSA attestations found for $TAG ($HEAD_SHA)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Aggregate + emit conclusion
         id: report
         env:
           COMMITS_OK: ${{ steps.commits.outputs.ok }}
           ASSETS_OK: ${{ steps.assets.outputs.ok }}
+          SBOM_OK: ${{ steps.assets.outputs.sbom_ok }}
+          ATTESTATIONS_OK: ${{ steps.attestations.outputs.ok }}
           BODY_OK: ${{ steps.body.outputs.ok }}
         run: |
           FAILURES=()
           [ "$COMMITS_OK" != "true" ] && FAILURES+=("commit-signatures")
           [ "$ASSETS_OK" != "true" ] && FAILURES+=("asset-signatures")
+          [ "$SBOM_OK" != "true" ] && FAILURES+=("sbom-assets")
+          # ``skipped`` = best-effort (tag pre-dates attestation backfill).
+          if [ "$ATTESTATIONS_OK" != "true" ] && [ "$ATTESTATIONS_OK" != "skipped" ]; then
+            FAILURES+=("provenance-attestations")
+          fi
           [ "$BODY_OK" != "true" ] && FAILURES+=("release-body")
           if [ "${#FAILURES[@]}" -gt 0 ]; then
             echo "conclusion=failure" >> "$GITHUB_OUTPUT"
@@ -203,7 +251,9 @@ jobs:
 
           Categories:
           - \`commit-signatures\`: one or more commits in the release range do not verify as \`{verified: true, reason: "valid"}\`.
-          - \`asset-signatures\`: one or more CLI binary assets are missing cosign \`.sig\` / \`.sigstore.json\` siblings.
+          - \`asset-signatures\`: \`checksums.txt\` or \`checksums.txt.cosign.bundle\` missing from the release assets, or no CLI archives attached.
+          - \`sbom-assets\`: no \`sbom-*.cdx.json\` asset attached to the release.
+          - \`provenance-attestations\`: no SLSA attestations returned from \`repos/.../attestations/<sha>\`.
           - \`release-body\`: the Verification section appended by finalize-release.yml is missing required subsections.
 
           See docs/reference/github-environments.md and docs/reference/claude-reference.md§Releasing.
@@ -211,9 +261,25 @@ jobs:
           )
 
           if [ -z "$ISSUE_NUMBER" ]; then
-            gh issue create --title "$TITLE" \
+            ISSUE_NUMBER=$(gh issue create --title "$TITLE" \
               --label 'automation:release-events,type:ci,prio:high' \
-              --body "$BODY"
+              --body "$BODY" --json number --jq '.number')
+            echo "Created tracking issue #$ISSUE_NUMBER"
           else
             gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          fi
+
+          # Pin the tracking issue so it stays visible at the top of
+          # Issues until the regression is acknowledged + closed. A repo
+          # can pin at most 3 issues; if pinning fails (quota hit, race
+          # on an already-pinned issue, permission revoked), log a
+          # ::warning:: rather than failing the whole workflow -- the
+          # comment / create above is the primary signal, pinning is
+          # best-effort affordance.
+          if ! gh api --method PUT \
+              "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/pin" \
+              --silent 2>/dev/null; then
+            echo "::warning::could not pin tracking issue #$ISSUE_NUMBER (quota / race / permission)"
+          else
+            echo "Pinned tracking issue #$ISSUE_NUMBER"
           fi

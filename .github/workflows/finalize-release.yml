@@ -162,13 +162,15 @@ jobs:
           TMP=$(mktemp -d)
           trap 'rm -rf "$TMP"' EXIT
 
-          # GoReleaser-emitted archive name: synthorg_<ver>_Linux_x86_64.tar.gz.
-          # The companion `checksums.txt` is cosign-signed + SLSA-attested
+          # GoReleaser name_template in cli/.goreleaser.yml is
+          # ``synthorg_{{ .Os }}_{{ .Arch }}`` (OS + Arch only, no version),
+          # so the Linux amd64 archive is ``synthorg_Linux_x86_64.tar.gz``.
+          # The companion ``checksums.txt`` is cosign-signed + SLSA-attested
           # (cli.yml "Sign checksums with cosign" step) so trusting its
           # contents is reasonable for a smoke-test gate. We pull that
           # file alongside the archive and verify SHA-256 before exec.
           VER="${TAG#v}"
-          ASSET="synthorg_${VER}_Linux_x86_64.tar.gz"
+          ASSET="synthorg_Linux_x86_64.tar.gz"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern "$ASSET" --dir "$TMP"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \

@@ -99,14 +99,48 @@ trap 'rm -f "$LIVE_TMP" "$SPEC_TMP"' EXIT
 SPEC_TMP=$(mktemp)
 
 IDS=$(gh api "repos/${REPO}/rulesets" --paginate --jq '.[].id')
+
+# Fetch each ruleset into its own temp file so a partial failure never
+# produces a half-written JSON that the NORMALISE_FILTER would happily
+# consume. Collect failures and abort non-zero if any ID could not be
+# read -- a silent drop would let drift slip past the audit.
+RULESETS_DIR=$(mktemp -d)
+# Extend the existing trap so cleanup runs even when this block aborts
+# early. ``trap ... EXIT`` overwrites prior handlers, so the new handler
+# composes the previous cleanup explicitly.
+trap 'rm -f "$LIVE_TMP" "$SPEC_TMP"; rm -rf "$RULESETS_DIR"' EXIT
+
+FAILED_IDS=()
+while read -r id; do
+  [ -z "$id" ] && continue
+  if ! gh api "repos/${REPO}/rulesets/${id}" > "${RULESETS_DIR}/${id}.json" 2>"${RULESETS_DIR}/${id}.err"; then
+    FAILED_IDS+=("$id")
+  fi
+done <<< "$IDS"
+
+if [ "${#FAILED_IDS[@]}" -gt 0 ]; then
+  echo "error: ${#FAILED_IDS[@]} ruleset(s) could not be fetched:" >&2
+  for id in "${FAILED_IDS[@]}"; do
+    echo "  - id=$id:" >&2
+    sed 's/^/      /' "${RULESETS_DIR}/${id}.err" >&2 || true
+  done
+  echo "" >&2
+  echo "Refusing to diff against a partial live-state snapshot." >&2
+  exit 3
+fi
+
+# Compose the final ``{"rulesets":[...]}`` document from the per-ID
+# files in a deterministic order (sort by numeric id) so diffs stay
+# stable across runs.
 {
   printf '{"rulesets":['
   first=1
-  while read -r id; do
+  # Skipping ``-r`` here is intentional -- ``id`` is a bare integer.
+  while IFS= read -r id; do
     [ -z "$id" ] && continue
     if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
-    gh api "repos/${REPO}/rulesets/${id}"
-  done <<< "$IDS"
+    cat "${RULESETS_DIR}/${id}.json"
+  done < <(printf '%s\n' $IDS | sort -n)
   printf ']}'
 } | jq "$NORMALISE_FILTER" > "$LIVE_TMP"
 
