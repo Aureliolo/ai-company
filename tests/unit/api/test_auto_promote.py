@@ -107,7 +107,7 @@ class TestMaybePromoteFirstOwner:
             msg = "DB connection lost"
             raise RuntimeError(msg)
 
-        backend._users.list_users = _broken_list_users  # type: ignore[method-assign]
+        backend._users.list_users = _broken_list_users
 
         app_state = await _make_app_state(persistence=backend)
         # Should not raise

@@ -102,8 +102,8 @@ class TestEnsureSystemUser:
             msg = "simulated DB failure"
             raise QueryError(msg)
 
-        fake_persistence.users.save = _failing_save  # type: ignore[method-assign]
+        fake_persistence.users.save = _failing_save
         with pytest.raises(QueryError, match="simulated DB failure"):
             await ensure_system_user(fake_persistence, auth_svc)
 
-        fake_persistence.users.save = original_save  # type: ignore[method-assign]
+        fake_persistence.users.save = original_save
