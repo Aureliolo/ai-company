@@ -116,3 +116,32 @@ class TestProjectController:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 400
+
+    def test_delete_project_succeeds(self, test_client: TestClient[Any]) -> None:
+        create_resp = test_client.post(
+            "/api/v1/projects",
+            json={"name": "To be deleted"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert create_resp.status_code == 201
+        project_id = create_resp.json()["data"]["id"]
+
+        delete_resp = test_client.delete(
+            f"/api/v1/projects/{project_id}",
+            headers=make_auth_headers("ceo"),
+        )
+        assert delete_resp.status_code == 204
+
+        # Subsequent fetch must 404.
+        get_resp = test_client.get(f"/api/v1/projects/{project_id}")
+        assert get_resp.status_code == 404
+
+    def test_delete_project_not_found(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.delete(
+            "/api/v1/projects/proj-does-not-exist",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+        assert "not found" in body["error"].lower()

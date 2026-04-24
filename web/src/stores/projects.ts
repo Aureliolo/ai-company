@@ -1,5 +1,10 @@
 import { create } from 'zustand'
-import { listProjects, getProject, createProject as createProjectApi } from '@/api/endpoints/projects'
+import {
+  createProject as createProjectApi,
+  deleteProject as deleteProjectApi,
+  getProject,
+  listProjects,
+} from '@/api/endpoints/projects'
 import { listTasks } from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -36,6 +41,8 @@ interface ProjectsState {
   fetchProjects: () => Promise<void>
   fetchProjectDetail: (id: string) => Promise<void>
   createProject: (data: CreateProjectRequest) => Promise<Project | null>
+  deleteProject: (id: string) => Promise<boolean>
+  batchDeleteProjects: (ids: readonly string[]) => Promise<{ succeeded: number; failed: number; failedReasons: string[] }>
   setSearchQuery: (q: string) => void
   setStatusFilter: (s: ProjectStatus | null) => void
   setLeadFilter: (l: string | null) => void
@@ -137,6 +144,70 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
         description: getErrorMessage(err),
       })
       return null
+    }
+  },
+
+  deleteProject: async (id: string) => {
+    const previous = useProjectsStore.getState()
+    set((state) => {
+      const filtered = state.projects.filter((p) => p.id !== id)
+      return {
+        projects: filtered,
+        totalProjects: state.projects.length !== filtered.length
+          ? Math.max(0, state.totalProjects - 1)
+          : state.totalProjects,
+      }
+    })
+    try {
+      await deleteProjectApi(id)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Project deleted',
+      })
+      return true
+    } catch (err) {
+      log.error('Delete project failed:', sanitizeForLog(err))
+      set({ projects: previous.projects, totalProjects: previous.totalProjects })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to delete project',
+        description: getErrorMessage(err),
+      })
+      return false
+    }
+  },
+
+  batchDeleteProjects: async (ids: readonly string[]) => {
+    const results = await Promise.allSettled(
+      ids.map(async (id) => {
+        await deleteProjectApi(id)
+        return id
+      }),
+    )
+    const succeededIds: string[] = []
+    const failedReasons: string[] = []
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        succeededIds.push(result.value)
+      } else {
+        const id = ids[index] ?? '<unknown>'
+        failedReasons.push(`${id}: ${getErrorMessage(result.reason)}`)
+      }
+    })
+    if (succeededIds.length > 0) {
+      const deletedSet = new Set(succeededIds)
+      set((state) => {
+        const filtered = state.projects.filter((p) => !deletedSet.has(p.id))
+        return {
+          projects: filtered,
+          totalProjects: Math.max(0, state.totalProjects - succeededIds.length),
+        }
+      })
+    }
+    return {
+      succeeded: succeededIds.length,
+      failed: ids.length - succeededIds.length,
+      failedReasons,
     }
   },
 

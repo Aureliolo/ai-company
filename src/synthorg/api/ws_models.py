@@ -80,6 +80,7 @@ class WsEventType(StrEnum):
     ARTIFACT_CONTENT_UPLOADED = "artifact.content_uploaded"
 
     PROJECT_CREATED = "project.created"
+    PROJECT_DELETED = "project.deleted"
     # Reserved for future status-update endpoint (not yet published).
     PROJECT_STATUS_CHANGED = "project.status_changed"
 
