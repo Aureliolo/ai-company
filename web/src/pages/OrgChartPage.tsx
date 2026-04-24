@@ -292,7 +292,6 @@ function OrgChartInner() {
         description:
           'Could not render the chart to PNG. Try again, or use Print for a fallback.',
       })
-      setExporting(false)
       return
     } finally {
       setExporting(false)
@@ -312,7 +311,9 @@ function OrgChartInner() {
     // Fit-to-view before print so the user sees the full chart in the
     // print preview rather than whatever viewport they had zoomed to.
     fitView({ padding: 0.2, duration: 0 })
-    // Delay by a frame so the fit animation settles before print.
+    // fitView runs instantly (duration: 0) -- the single-frame delay is
+    // to let the browser commit the resulting layout/repaint before
+    // window.print() freezes the page.
     requestAnimationFrame(() => {
       window.print()
     })
