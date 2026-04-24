@@ -106,6 +106,16 @@ function runHookScript(
   }
   const stdout = _stdoutString(result.stdout as string | null);
   if (result.status === 2) {
+    // Status 2 is the hook-contract "deny" exit code. Still try to parse
+    // a structured ``hookSpecificOutput`` envelope so we surface the
+    // operator-authored ``permissionDecisionReason`` (or equivalent
+    // authored text) instead of dumping the raw JSON blob into the
+    // raised error. Fall back to legacy free-text / the synthetic
+    // "Hook denied this action" string when no envelope is present.
+    const envelope = _parseEnvelope(stdout);
+    if (envelope && envelope.outcome !== "allow") {
+      return envelope;
+    }
     return {
       outcome: "deny",
       reason: stdout.length > 0 ? stdout : "Hook denied this action",
@@ -221,10 +231,14 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               }
             }
 
-            // check_no_atlas_rehash.sh -- block `atlas migrate hash` rehash
-            // Cheap prefilter: only invoke the script if the command mentions
-            // atlas at all. The script itself does the authoritative check.
-            if (command.includes("atlas")) {
+            // check_no_atlas_rehash.sh -- block `atlas migrate hash` rehash.
+            // We invoke the hook for every bash command: a ``command.includes("atlas")``
+            // prefilter would let wrapper invocations (``migrate_hash``,
+            // ``migrate.hash``, shell aliases, subprocess wrappers) bypass the
+            // gate because those strings never contain the literal token
+            // ``atlas``. The script itself is the authoritative filter and
+            // exits 0 quickly for unrelated commands.
+            {
               const outcome = runHookScript(
                 "scripts/check_no_atlas_rehash.sh",
                 { command },

@@ -294,21 +294,41 @@ class TestCancelFineTune:
 
         assert orch.cancel_calls == 1
 
-    async def test_emits_cancelled_event_on_success(self) -> None:
-        import structlog.testing
+    async def test_returns_active_run_id_captured_before_cancel(self) -> None:
+        """``cancel_fine_tune`` returns the active run id captured pre-cancel.
 
-        from synthorg.observability.events.memory import (
-            MEMORY_FINE_TUNE_CANCELLED,
-        )
-
+        The event emission contract lives on the orchestrator
+        (:meth:`FineTuneOrchestrator.cancel` already emits
+        :data:`MEMORY_FINE_TUNE_CANCELLED`), so the service no longer
+        double-emits it. Instead, the service's contract is to return
+        the cancelled run id so MCP handlers can attribute the
+        ``MCP_DESTRUCTIVE_OP_EXECUTED`` audit event to the right run.
+        """
         orch = _FakeOrchestrator()
+        run = _run(run_id="run-42")
+        orch.current_run = run
         service = _service(orchestrator=orch)
 
-        with structlog.testing.capture_logs() as events:
-            await service.cancel_fine_tune()
+        result = await service.cancel_fine_tune()
 
-        cancelled = [e for e in events if e.get("event") == MEMORY_FINE_TUNE_CANCELLED]
-        assert cancelled, "cancel_fine_tune must emit MEMORY_FINE_TUNE_CANCELLED"
+        assert result == "run-42"
+        assert orch.cancel_calls == 1
+
+    async def test_returns_none_when_no_active_run(self) -> None:
+        """Returns ``None`` when the orchestrator has no active run.
+
+        This branch must NOT synthesise a false MCP audit event: the
+        handler checks the returned id and omits ``target_id`` when
+        there was nothing to cancel.
+        """
+        orch = _FakeOrchestrator()
+        orch.current_run = None
+        service = _service(orchestrator=orch)
+
+        result = await service.cancel_fine_tune()
+
+        assert result is None
+        assert orch.cancel_calls == 1
 
 
 class TestRunPreflight:

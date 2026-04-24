@@ -32,6 +32,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
 from synthorg.memory.fine_tune_plan import (
     BackendUnsupportedError,
     FineTunePlan,
@@ -40,6 +41,8 @@ from synthorg.memory.service import (
     CheckpointNotFoundError,
     CheckpointRollbackCorruptError,
     CheckpointRollbackUnavailableError,
+    FineTuneRunNotFoundError,
+    FineTuneRunNotResumableError,
     MemoryService,
 )
 from synthorg.meta.mcp.errors import (
@@ -188,7 +191,7 @@ async def _memory_start_fine_tune(
     return ok(data=run.model_dump(mode="json"))
 
 
-async def _memory_resume_fine_tune(  # noqa: PLR0911 -- branching by ex type
+async def _memory_resume_fine_tune(
     *,
     app_state: Any,
     arguments: dict[str, Any],
@@ -210,17 +213,14 @@ async def _memory_resume_fine_tune(  # noqa: PLR0911 -- branching by ex type
         # as :func:`_memory_start_fine_tune`.
         _log_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except ValueError as exc:
-        # ``MemoryService.resume_fine_tune`` raises ``ValueError``
-        # for both "unknown run id" and "run exists but is not in a
-        # resumable state" -- map the non-resumable variant to a
-        # ``conflict`` domain code so callers can distinguish the
-        # two without string matching on the exception message.
+    except (FineTuneRunNotFoundError, FineTuneRunNotResumableError) as exc:
+        # Typed exceptions carry their own ``domain_code`` class
+        # attribute (``not_found`` / ``conflict``), so ``err(exc)``
+        # picks up the right wire contract without regex-matching
+        # the message -- any future wording change in the
+        # orchestrator won't reclassify the failure.
         _log_failed(tool, exc)
-        message = str(exc).lower()
-        if "not resumable" in message or "cannot resume" in message:
-            return err(exc, domain_code="conflict")
-        return err(exc, domain_code="not_found")
+        return err(exc)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
@@ -553,6 +553,9 @@ _OPTIONAL_FLOAT_KEYS: tuple[str, ...] = (
     "temperature",
     "validation_split",
 )
+_ARG_EXECUTION = "execution"
+_TY_EXECUTION_OR_NULL = "object or null"
+_TY_EXECUTION_SHAPE = "valid FineTuneExecutionConfig shape"
 
 
 def _collect_optional_strings(
@@ -600,6 +603,30 @@ def _collect_optional_floats(
         payload[key] = float(raw)
 
 
+def _collect_optional_execution(
+    arguments: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    """Translate the optional ``execution`` object into a typed sub-model.
+
+    Silently dropping the field would let callers send runner / backend
+    overrides and still get ``"status": "ok"`` back while the service
+    runs with defaults -- a hard-to-debug contract hole. Instead, any
+    present-but-not-null value must be a JSON object that validates
+    against :class:`FineTuneExecutionConfig`, else we return an
+    ``invalid_argument`` envelope with the nested field name.
+    """
+    raw = arguments.get(_ARG_EXECUTION)
+    if raw is None:
+        return
+    if not isinstance(raw, dict):
+        raise invalid_argument(_ARG_EXECUTION, _TY_EXECUTION_OR_NULL)
+    try:
+        payload[_ARG_EXECUTION] = FineTuneExecutionConfig(**raw)
+    except Exception as exc:
+        raise invalid_argument(_ARG_EXECUTION, _TY_EXECUTION_SHAPE) from exc
+
+
 def _parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
     """Build a :class:`FineTunePlan` from MCP arguments with typed errors."""
     source_dir = _require_non_blank(arguments, "source_dir")
@@ -607,6 +634,7 @@ def _parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
     _collect_optional_strings(arguments, payload)
     _collect_optional_ints(arguments, payload)
     _collect_optional_floats(arguments, payload)
+    _collect_optional_execution(arguments, payload)
     try:
         return FineTunePlan(**payload)
     except Exception as exc:

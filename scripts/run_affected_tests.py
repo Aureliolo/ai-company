@@ -231,9 +231,18 @@ def _load_baseline_snapshot() -> _BaselineSnapshot | None:
         return None
     try:
         baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError, OSError:
+        return None
+    # ``json.loads`` happily returns a bare list/str/number for any
+    # syntactically-valid JSON, so guard the shape before indexing --
+    # otherwise a malformed baseline crashes the hook instead of
+    # cleanly disabling the regression check.
+    if not isinstance(baseline, dict):
+        return None
+    try:
         baseline_secs = float(baseline["unit_suite_seconds"])
         threshold_secs = float(baseline.get("regression_threshold_secs", 10))
-    except json.JSONDecodeError, KeyError, ValueError, OSError:
+    except KeyError, TypeError, ValueError:
         return None
     if (
         not math.isfinite(baseline_secs)

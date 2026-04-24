@@ -19,26 +19,38 @@ if TYPE_CHECKING:
 # with the Pydantic model in ``synthorg.memory.fine_tune_plan.FineTunePlan``
 # so MCP clients receive schema-level validation errors instead of opaque
 # "config" object rejections from the handler.
+#
+# ``pattern: r".*\S.*"`` + ``minLength: 1`` together reject empty and
+# whitespace-only strings -- ``minLength`` alone would still accept
+# ``"   "``, which ``NotBlankStr`` validation rejects downstream, and
+# mirroring that rule here surfaces the error at the wire boundary
+# where the MCP caller can correct its input.
+_NON_BLANK_STRING_PATTERN: str = r".*\S.*"
+
 _FINE_TUNE_PLAN_PROPERTIES: dict[str, object] = {
     "source_dir": {
         "type": "string",
         "description": "Directory containing org documents for training",
         "minLength": 1,
+        "pattern": _NON_BLANK_STRING_PATTERN,
     },
     "base_model": {
         "type": ["string", "null"],
         "description": "Base model to fine-tune (null = active model)",
         "minLength": 1,
+        "pattern": _NON_BLANK_STRING_PATTERN,
     },
     "output_dir": {
         "type": ["string", "null"],
         "description": "Checkpoint output directory (null = default)",
         "minLength": 1,
+        "pattern": _NON_BLANK_STRING_PATTERN,
     },
     "resume_run_id": {
         "type": ["string", "null"],
         "description": "Resume a previous failed/cancelled run",
         "minLength": 1,
+        "pattern": _NON_BLANK_STRING_PATTERN,
     },
     "epochs": {
         "type": ["integer", "null"],

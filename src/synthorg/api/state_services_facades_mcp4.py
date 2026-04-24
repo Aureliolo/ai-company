@@ -114,7 +114,7 @@ class _MetaMcp4FacadesMixin:
         """
         return self._require_service(
             self._activity_feed_service,
-            "ActivityFeedService",
+            "activity_feed_service",
         )
 
     def set_activity_feed_service(
@@ -134,7 +134,7 @@ class _MetaMcp4FacadesMixin:
         self._attach_service(
             slot="_activity_feed_service",
             service=service,
-            name="ActivityFeedService",
+            name="activity_feed_service",
         )
 
     # ── AgentHealthService ───────────────────────────────────────
@@ -153,7 +153,7 @@ class _MetaMcp4FacadesMixin:
         """
         return self._require_service(
             self._agent_health_service,
-            "AgentHealthService",
+            "agent_health_service",
         )
 
     def set_agent_health_service(
@@ -171,7 +171,7 @@ class _MetaMcp4FacadesMixin:
         self._attach_service(
             slot="_agent_health_service",
             service=service,
-            name="AgentHealthService",
+            name="agent_health_service",
         )
 
     # ── AgentVersionService ──────────────────────────────────────
@@ -190,7 +190,7 @@ class _MetaMcp4FacadesMixin:
         """
         return self._require_service(
             self._agent_version_service,
-            "AgentVersionService",
+            "agent_version_service",
         )
 
     def set_agent_version_service(
@@ -208,7 +208,7 @@ class _MetaMcp4FacadesMixin:
         self._attach_service(
             slot="_agent_version_service",
             service=service,
-            name="AgentVersionService",
+            name="agent_version_service",
         )
 
     # ── CeremonyPolicyService ────────────────────────────────────
@@ -227,7 +227,7 @@ class _MetaMcp4FacadesMixin:
         """
         return self._require_service(
             self._ceremony_policy_service,
-            "CeremonyPolicyService",
+            "ceremony_policy_service",
         )
 
     def set_ceremony_policy_service(
@@ -245,7 +245,7 @@ class _MetaMcp4FacadesMixin:
         self._attach_service(
             slot="_ceremony_policy_service",
             service=service,
-            name="CeremonyPolicyService",
+            name="ceremony_policy_service",
         )
 
     # ── CoordinationService ──────────────────────────────────────
@@ -264,7 +264,7 @@ class _MetaMcp4FacadesMixin:
         """
         return self._require_service(
             self._coordination_service,
-            "CoordinationService",
+            "coordination_service",
         )
 
     def set_coordination_service(
@@ -282,7 +282,7 @@ class _MetaMcp4FacadesMixin:
         self._attach_service(
             slot="_coordination_service",
             service=service,
-            name="CoordinationService",
+            name="coordination_service",
         )
 
     # ── MemoryService ────────────────────────────────────────────
@@ -301,7 +301,7 @@ class _MetaMcp4FacadesMixin:
         """
         return self._require_service(
             self._memory_service,
-            "MemoryService",
+            "memory_service",
         )
 
     def set_memory_service(
@@ -319,7 +319,7 @@ class _MetaMcp4FacadesMixin:
         self._attach_service(
             slot="_memory_service",
             service=service,
-            name="MemoryService",
+            name="memory_service",
         )
 
     # ── PersonalityService ───────────────────────────────────────
@@ -338,7 +338,7 @@ class _MetaMcp4FacadesMixin:
         """
         return self._require_service(
             self._personality_service,
-            "PersonalityService",
+            "personality_service",
         )
 
     def set_personality_service(
@@ -356,7 +356,7 @@ class _MetaMcp4FacadesMixin:
         self._attach_service(
             slot="_personality_service",
             service=service,
-            name="PersonalityService",
+            name="personality_service",
         )
 
     # ── ScalingDecisionService ───────────────────────────────────
@@ -375,7 +375,7 @@ class _MetaMcp4FacadesMixin:
         """
         return self._require_service(
             self._scaling_decision_service,
-            "ScalingDecisionService",
+            "scaling_decision_service",
         )
 
     def set_scaling_decision_service(
@@ -393,7 +393,7 @@ class _MetaMcp4FacadesMixin:
         self._attach_service(
             slot="_scaling_decision_service",
             service=service,
-            name="ScalingDecisionService",
+            name="scaling_decision_service",
         )
 
 

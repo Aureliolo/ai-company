@@ -64,6 +64,7 @@ HR_AGENT_HEALTH_FAILED: Final[str] = "hr.agent.health_failed"
 HR_TRAINING_SESSION_RECORDED: Final[str] = "hr.training.session_recorded"
 HR_TRAINING_SESSION_LISTED: Final[str] = "hr.training.session_listed"
 HR_TRAINING_SESSION_RECORD_FAILED: Final[str] = "hr.training.session_record_failed"
+HR_TRAINING_SESSION_INVALID_REQUEST: Final[str] = "hr.training.session_invalid_request"
 
 # ── Pruning ────────────────────────────────────────────────────
 

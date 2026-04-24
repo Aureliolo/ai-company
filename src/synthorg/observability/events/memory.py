@@ -90,6 +90,7 @@ MEMORY_FINE_TUNE_CANCELLED: Final[str] = "memory.fine_tune.cancelled"
 MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED: Final[str] = (
     "memory.fine_tune.backend_unsupported"
 )
+MEMORY_FINE_TUNE_INVALID_REQUEST: Final[str] = "memory.fine_tune.invalid_request"
 MEMORY_FINE_TUNE_INTERRUPTED: Final[str] = "memory.fine_tune.interrupted"
 MEMORY_FINE_TUNE_DEPENDENCY_MISSING: Final[str] = "memory.fine_tune.dependency_missing"
 MEMORY_FINE_TUNE_CHECKPOINT_SAVED: Final[str] = "memory.fine_tune.checkpoint_saved"

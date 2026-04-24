@@ -11,6 +11,7 @@ not expose ``fine_tune_runs`` / ``fine_tune_checkpoints`` raise a typed
 through the standard ``not_supported()`` envelope.
 """
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -38,7 +39,7 @@ from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
-    MEMORY_FINE_TUNE_CANCELLED,
+    MEMORY_FINE_TUNE_INVALID_REQUEST,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
     MEMORY_FINE_TUNE_STARTED,
@@ -79,6 +80,26 @@ class CheckpointRollbackCorruptError(Exception):
     is_retryable: bool = False  # deterministic: the stored payload is malformed
 
 
+class FineTuneRunNotFoundError(Exception):
+    """Raised when a referenced fine-tune run id does not exist."""
+
+    __slots__ = ()
+    is_retryable: bool = False  # deterministic: the run is absent
+    # Wire-level ``domain_code`` so MCP handlers can route via the
+    # shared ``err(exc)`` helper instead of regex-matching the
+    # exception message -- that was the pre-existing anti-pattern
+    # this class replaces.
+    domain_code: str = "not_found"
+
+
+class FineTuneRunNotResumableError(Exception):
+    """Raised when a fine-tune run exists but is not in a resumable stage."""
+
+    __slots__ = ()
+    is_retryable: bool = False  # deterministic: stage is terminal or running
+    domain_code: str = "conflict"
+
+
 class MemoryService:
     """Service layer for memory admin operations.
 
@@ -87,7 +108,13 @@ class MemoryService:
     directly.
     """
 
-    __slots__ = ("_checkpoints", "_orchestrator", "_runs", "_settings")
+    __slots__ = (
+        "_checkpoints",
+        "_embedder_state_lock",
+        "_orchestrator",
+        "_runs",
+        "_settings",
+    )
 
     def __init__(
         self,
@@ -97,7 +124,7 @@ class MemoryService:
         settings_service: SettingsService | None,
         orchestrator: FineTuneOrchestrator | None = None,
     ) -> None:
-        """Initialise with repository + settings + orchestrator deps.
+        """Initialize with repository + settings + orchestrator deps.
 
         Args:
             checkpoint_repo: Fine-tune checkpoint persistence.
@@ -114,6 +141,15 @@ class MemoryService:
         self._runs = run_repo
         self._settings = settings_service
         self._orchestrator = orchestrator
+        # Serializes the three-step reads in ``get_active_embedder`` and
+        # the multi-repo writes in ``deploy_checkpoint`` /
+        # ``rollback_checkpoint`` / ``delete_checkpoint`` so a
+        # concurrent deploy-then-read cannot observe ``checkpoint_id``
+        # from one state and ``provider`` / ``model`` settings from
+        # another. The lock is fine-grained to embedder-state paths
+        # only; read-mostly endpoints (``list_checkpoints``,
+        # ``list_runs``, ``get_checkpoint``) are not gated through it.
+        self._embedder_state_lock = asyncio.Lock()
 
     async def list_checkpoints(
         self,
@@ -157,31 +193,35 @@ class MemoryService:
         Captures the prior active checkpoint + settings, activates the
         target, and writes ``memory.embedder_model`` /
         ``memory.embedder_provider``. On any settings-side failure the
-        prior state is restored atomically.
+        prior state is restored atomically. Held under
+        ``_embedder_state_lock`` so a concurrent
+        :meth:`get_active_embedder` cannot observe a partially-updated
+        checkpoint / settings pair.
 
         Raises:
             CheckpointNotFoundError: If the id does not exist.
             QueryError: On unrecoverable persistence faults.
         """
-        cp = await self._checkpoints.get_checkpoint(checkpoint_id)
-        if cp is None:
-            msg = f"Checkpoint {checkpoint_id} not found"
-            raise CheckpointNotFoundError(msg)
+        async with self._embedder_state_lock:
+            cp = await self._checkpoints.get_checkpoint(checkpoint_id)
+            if cp is None:
+                msg = f"Checkpoint {checkpoint_id} not found"
+                raise CheckpointNotFoundError(msg)
 
-        prior = await self._checkpoints.get_active_checkpoint()
-        await self._checkpoints.set_active(checkpoint_id)
+            prior = await self._checkpoints.get_active_checkpoint()
+            await self._checkpoints.set_active(checkpoint_id)
 
-        if self._settings is not None:
-            await self._apply_deploy_settings(
-                checkpoint_id=checkpoint_id,
-                model_path=cp.model_path,
-                prior=prior,
-            )
+            if self._settings is not None:
+                await self._apply_deploy_settings(
+                    checkpoint_id=checkpoint_id,
+                    model_path=cp.model_path,
+                    prior=prior,
+                )
 
-        updated = await self._checkpoints.get_checkpoint(checkpoint_id)
-        if updated is None:
-            msg = "Checkpoint activated but not found on re-read"
-            raise QueryError(msg)
+            updated = await self._checkpoints.get_checkpoint(checkpoint_id)
+            if updated is None:
+                msg = "Checkpoint activated but not found on re-read"
+                raise QueryError(msg)
         logger.info(
             MEMORY_CHECKPOINT_DEPLOYED,
             checkpoint_id=checkpoint_id,
@@ -195,55 +235,62 @@ class MemoryService:
     ) -> CheckpointRecord:
         """Restore the backup config stored with *checkpoint_id*.
 
+        Held under ``_embedder_state_lock`` so a concurrent
+        :meth:`get_active_embedder` cannot observe a mid-rollback
+        settings state.
+
         Raises:
             CheckpointNotFoundError: If the id does not exist.
             CheckpointRollbackUnavailableError: If no backup was stored.
             CheckpointRollbackCorruptError: If the backup JSON cannot
                 be parsed.
         """
-        cp = await self._checkpoints.get_checkpoint(checkpoint_id)
-        if cp is None:
-            msg = f"Checkpoint {checkpoint_id} not found"
-            raise CheckpointNotFoundError(msg)
-        if cp.backup_config_json is None:
-            msg = "No backup config available for this checkpoint"
-            raise CheckpointRollbackUnavailableError(msg)
+        async with self._embedder_state_lock:
+            cp = await self._checkpoints.get_checkpoint(checkpoint_id)
+            if cp is None:
+                msg = f"Checkpoint {checkpoint_id} not found"
+                raise CheckpointNotFoundError(msg)
+            if cp.backup_config_json is None:
+                msg = "No backup config available for this checkpoint"
+                raise CheckpointRollbackUnavailableError(msg)
 
-        if self._settings is not None:
-            try:
-                parsed: Any = json.loads(cp.backup_config_json)
-            except (json.JSONDecodeError, TypeError) as exc:
-                logger.warning(
-                    MEMORY_CHECKPOINT_ROLLBACK_FAILED,
-                    checkpoint_id=checkpoint_id,
-                    error_type=type(exc).__name__,
-                )
-                msg = "Backup config is corrupt and cannot be restored"
-                raise CheckpointRollbackCorruptError(msg) from exc
-            if not isinstance(parsed, dict):
-                # ``json.loads`` happily returns ``list``, ``None``, ``str``,
-                # etc.; the rollback loop assumes a mapping and would crash
-                # with ``AttributeError`` on ``backup.items()``. Fail closed
-                # with the dedicated corruption error instead.
-                logger.warning(
-                    MEMORY_CHECKPOINT_ROLLBACK_FAILED,
-                    checkpoint_id=checkpoint_id,
-                    error_type="BackupConfigNotMapping",
-                    parsed_type=type(parsed).__name__,
-                )
-                msg = (
-                    f"Backup config must be a JSON object; got {type(parsed).__name__}"
-                )
-                raise CheckpointRollbackCorruptError(msg)
-            backup: dict[str, Any] = parsed
-            for key, value in backup.items():
-                await self._settings.set("memory", key, str(value))
+            if self._settings is not None:
+                try:
+                    parsed: Any = json.loads(cp.backup_config_json)
+                except (json.JSONDecodeError, TypeError) as exc:
+                    logger.warning(
+                        MEMORY_CHECKPOINT_ROLLBACK_FAILED,
+                        checkpoint_id=checkpoint_id,
+                        error_type=type(exc).__name__,
+                    )
+                    msg = "Backup config is corrupt and cannot be restored"
+                    raise CheckpointRollbackCorruptError(msg) from exc
+                if not isinstance(parsed, dict):
+                    # ``json.loads`` happily returns ``list``, ``None``,
+                    # ``str``, etc.; the rollback loop assumes a mapping
+                    # and would crash with ``AttributeError`` on
+                    # ``backup.items()``. Fail closed with the dedicated
+                    # corruption error instead.
+                    logger.warning(
+                        MEMORY_CHECKPOINT_ROLLBACK_FAILED,
+                        checkpoint_id=checkpoint_id,
+                        error_type="BackupConfigNotMapping",
+                        parsed_type=type(parsed).__name__,
+                    )
+                    msg = (
+                        "Backup config must be a JSON object; got "
+                        f"{type(parsed).__name__}"
+                    )
+                    raise CheckpointRollbackCorruptError(msg)
+                backup: dict[str, Any] = parsed
+                for key, value in backup.items():
+                    await self._settings.set("memory", key, str(value))
 
-        await self._checkpoints.deactivate_all()
-        updated = await self._checkpoints.get_checkpoint(checkpoint_id)
-        if updated is None:
-            msg = "Checkpoint not found after rollback"
-            raise QueryError(msg)
+            await self._checkpoints.deactivate_all()
+            updated = await self._checkpoints.get_checkpoint(checkpoint_id)
+            if updated is None:
+                msg = "Checkpoint not found after rollback"
+                raise QueryError(msg)
         logger.info(
             MEMORY_CHECKPOINT_ROLLBACK,
             checkpoint_id=checkpoint_id,
@@ -259,18 +306,23 @@ class MemoryService:
         to HTTP 404, keeping the contract identical across
         deploy / rollback / delete endpoints (all three surface 404 for
         missing checkpoints and 409 for a ``QueryError`` such as
-        attempting to delete the currently-active checkpoint).
+        attempting to delete the currently-active checkpoint). Held
+        under ``_embedder_state_lock`` so the repo-side "cannot delete
+        the active checkpoint" rule is evaluated against the same
+        active-checkpoint snapshot that a concurrent
+        :meth:`get_active_embedder` would observe.
 
         Raises:
             CheckpointNotFoundError: If the id does not exist.
             QueryError: On unrecoverable persistence faults (including
                 the domain rule "cannot delete the active checkpoint").
         """
-        existing = await self._checkpoints.get_checkpoint(checkpoint_id)
-        if existing is None:
-            msg = f"Checkpoint {checkpoint_id} not found"
-            raise CheckpointNotFoundError(msg)
-        await self._checkpoints.delete_checkpoint(checkpoint_id)
+        async with self._embedder_state_lock:
+            existing = await self._checkpoints.get_checkpoint(checkpoint_id)
+            if existing is None:
+                msg = f"Checkpoint {checkpoint_id} not found"
+                raise CheckpointNotFoundError(msg)
+            await self._checkpoints.delete_checkpoint(checkpoint_id)
 
     async def list_runs(
         self,
@@ -290,9 +342,21 @@ class MemoryService:
                 where the error mode is backend-specific.
         """
         if offset < 0:
+            logger.warning(
+                MEMORY_FINE_TUNE_INVALID_REQUEST,
+                surface="list_runs",
+                param="offset",
+                value=offset,
+            )
             msg = f"offset must be >= 0, got {offset}"
             raise ValueError(msg)
         if limit < 1:
+            logger.warning(
+                MEMORY_FINE_TUNE_INVALID_REQUEST,
+                surface="list_runs",
+                param="limit",
+                value=limit,
+            )
             msg = f"limit must be >= 1, got {limit}"
             raise ValueError(msg)
         return await self._runs.list_runs(limit=limit, offset=offset)
@@ -332,14 +396,28 @@ class MemoryService:
     async def resume_fine_tune(self, run_id: NotBlankStr) -> FineTuneRun:
         """Resume a failed / cancelled fine-tune run.
 
+        Translates the orchestrator's ``ValueError`` (which packs both
+        "run not found" and "stage not resumable" into the same
+        exception type) into typed variants so MCP handlers can map
+        them to ``not_found`` / ``conflict`` domain codes via
+        ``exc.domain_code`` instead of regex-matching the message.
+
         Raises:
             BackendUnsupportedError: When the active backend does not
                 expose fine-tune support.
-            ValueError: If the run is unknown or not resumable.
+            FineTuneRunNotFoundError: If *run_id* does not exist.
+            FineTuneRunNotResumableError: If the run exists but is not
+                in a resumable stage (running, already completed, etc.).
             RuntimeError: If another run is already active.
         """
         orchestrator = self._require_orchestrator()
-        return await orchestrator.resume(str(run_id))
+        try:
+            return await orchestrator.resume(str(run_id))
+        except ValueError as exc:
+            message = str(exc).lower()
+            if "not resumable" in message or "cannot resume" in message:
+                raise FineTuneRunNotResumableError(str(exc)) from exc
+            raise FineTuneRunNotFoundError(str(exc)) from exc
 
     async def get_fine_tune_status(
         self,
@@ -364,6 +442,13 @@ class MemoryService:
             return await orchestrator.get_status()
         run = await self._runs.get_run(str(run_id))
         if run is None:
+            logger.warning(
+                MEMORY_FINE_TUNE_INVALID_REQUEST,
+                surface="get_fine_tune_status",
+                param="run_id",
+                value=str(run_id),
+                reason="run_not_found",
+            )
             msg = f"Fine-tune run {run_id!r} not found"
             raise ValueError(msg)
         return FineTuneStatus(
@@ -396,8 +481,14 @@ class MemoryService:
         orchestrator = self._require_orchestrator()
         active = orchestrator.current_run
         target_id = str(active.id) if active is not None else None
+        # ``FineTuneOrchestrator.cancel`` already emits
+        # ``MEMORY_FINE_TUNE_CANCELLED`` on a successful cancel (and
+        # nothing on the no-active-run branch). Emitting a second
+        # event here would (a) double-count real cancellations in
+        # dashboards keyed on the event name and (b) produce a false
+        # "cancelled" event when ``target_id is None``. Return the
+        # captured id for the MCP audit path without re-emitting.
         await orchestrator.cancel()
-        logger.info(MEMORY_FINE_TUNE_CANCELLED, run_id=target_id)
         return target_id
 
     async def run_preflight(self, plan: FineTunePlan) -> PreflightResult:
@@ -434,18 +525,23 @@ class MemoryService:
         Combines the active checkpoint id (from
         :meth:`get_active_checkpoint`) with the
         ``memory.embedder_model`` / ``memory.embedder_provider``
-        settings so MCP callers get a single atomic read.
+        settings so MCP callers get a single atomic read. The
+        ``_embedder_state_lock`` is held across all three reads so a
+        concurrent deploy / rollback cannot interleave between them
+        and leave the caller observing ``checkpoint_id`` from one
+        state and ``provider`` / ``model`` from another.
         """
-        active_checkpoint = await self._checkpoints.get_active_checkpoint()
-        if self._settings is None:
-            return ActiveEmbedderSnapshot(
-                checkpoint_id=(
-                    active_checkpoint.id if active_checkpoint is not None else None
-                ),
-                read_from_settings=False,
-            )
-        provider_value, _ = await self._read_setting("embedder_provider")
-        model_value, _ = await self._read_setting("embedder_model")
+        async with self._embedder_state_lock:
+            active_checkpoint = await self._checkpoints.get_active_checkpoint()
+            if self._settings is None:
+                return ActiveEmbedderSnapshot(
+                    checkpoint_id=(
+                        active_checkpoint.id if active_checkpoint is not None else None
+                    ),
+                    read_from_settings=False,
+                )
+            provider_value, _ = await self._read_setting("embedder_provider")
+            model_value, _ = await self._read_setting("embedder_model")
         return ActiveEmbedderSnapshot(
             provider=(
                 NotBlankStr(provider_value)

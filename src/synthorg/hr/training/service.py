@@ -22,6 +22,7 @@ from synthorg.memory.errors import MemoryError as _MemoryError
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
+    HR_TRAINING_SESSION_INVALID_REQUEST,
     HR_TRAINING_SESSION_LISTED,
     HR_TRAINING_SESSION_RECORD_FAILED,
     HR_TRAINING_SESSION_RECORDED,
@@ -240,16 +241,25 @@ class TrainingService:
         # here must not leave the pipeline un-run; log + continue so
         # the execute path still attempts the work and terminal status
         # (FAILED/EXECUTED) gets recorded via the branches below.
-        try:
-            await self._record_session(plan)
-        except Exception as exc:
-            logger.warning(
-                HR_TRAINING_SESSION_RECORD_FAILED,
-                plan_id=str(plan.id),
-                stage="entry",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+        #
+        # Skip the entry write when ``plan.id`` already has a terminal
+        # record (EXECUTED / FAILED). A retry with a PENDING plan
+        # carrying the same id would otherwise overwrite that
+        # terminal record with its pre-execution state, and the
+        # ``if not ran_pipeline: return`` branch below would then
+        # leave ``list_sessions`` / ``get_session`` observing a
+        # downgraded status for an already-finished session.
+        if not await self._has_terminal_session(str(plan.id)):
+            try:
+                await self._record_session(plan)
+            except Exception as exc:
+                logger.warning(
+                    HR_TRAINING_SESSION_RECORD_FAILED,
+                    plan_id=str(plan.id),
+                    stage="entry",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
         try:
             result, ran_pipeline = await self._execute_locked(plan)
         except Exception:
@@ -313,9 +323,19 @@ class TrainingService:
                 strictly positive.
         """
         if offset < 0:
+            logger.warning(
+                HR_TRAINING_SESSION_INVALID_REQUEST,
+                param="offset",
+                value=offset,
+            )
             msg = f"offset must be >= 0, got {offset}"
             raise ValueError(msg)
         if limit < 1:
+            logger.warning(
+                HR_TRAINING_SESSION_INVALID_REQUEST,
+                param="limit",
+                value=limit,
+            )
             msg = f"limit must be >= 1, got {limit}"
             raise ValueError(msg)
         async with self._session_lock:
@@ -338,6 +358,24 @@ class TrainingService:
         """Fetch a single session by plan id or ``None`` if absent."""
         async with self._session_lock:
             return self._sessions.get(str(plan_id))
+
+    async def _has_terminal_session(self, plan_id: str) -> bool:
+        """Return ``True`` when a session for *plan_id* is already terminal.
+
+        "Terminal" here is any status that should not be downgraded by
+        an idempotent re-entry of :meth:`start_session` -- currently
+        ``EXECUTED`` and ``FAILED``. A session whose status is still
+        ``PENDING`` or ``SKIPPED`` is not terminal; re-entry is
+        allowed to overwrite those states.
+        """
+        async with self._session_lock:
+            existing = self._sessions.get(plan_id)
+        if existing is None:
+            return False
+        return existing.status in (
+            TrainingPlanStatus.EXECUTED,
+            TrainingPlanStatus.FAILED,
+        )
 
     async def _record_session(self, plan: TrainingPlan) -> None:
         """Record *plan* at its current state into the session store.
