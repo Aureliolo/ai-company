@@ -135,12 +135,16 @@ fi
 {
   printf '{"rulesets":['
   first=1
-  # Skipping ``-r`` here is intentional -- ``id`` is a bare integer.
+  # Quote "$IDS" so the here-string / pipe input retains its embedded
+  # newlines exactly as gh api emitted them -- an unquoted expansion
+  # would rely on IFS word-splitting and could mangle or reorder ids
+  # if IFS has been altered upstream. ``sort -n`` orders numerically so
+  # diff output stays stable across runs.
   while IFS= read -r id; do
     [ -z "$id" ] && continue
     if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
     cat "${RULESETS_DIR}/${id}.json"
-  done < <(printf '%s\n' $IDS | sort -n)
+  done < <(sort -n <<< "$IDS")
   printf ']}'
 } | jq "$NORMALISE_FILTER" > "$LIVE_TMP"
 

@@ -69,10 +69,16 @@ jobs:
           PREV: ${{ steps.latest.outputs.prev }}
         run: |
           set -euo pipefail
+          # Enumerate commits via local git rev-list (we have
+          # fetch-depth: 0). The prior ``gh api commits?sha=$TAG&per_page=100``
+          # path silently capped at 100 commits, which would mask a
+          # signature regression on any release range longer than that
+          # -- a very real case for a minor bump off v0.X.9. rev-list
+          # walks the full history up to the bound without pagination.
           if [ -n "$PREV" ]; then
-            COMMITS=$(gh api "repos/$GITHUB_REPOSITORY/compare/$PREV...$TAG" --jq '.commits[].sha')
+            COMMITS=$(git rev-list "$PREV..$TAG")
           else
-            COMMITS=$(gh api "repos/$GITHUB_REPOSITORY/commits?sha=$TAG&per_page=100" --jq '.[].sha')
+            COMMITS=$(git rev-list "$TAG")
           fi
 
           FAILED=()

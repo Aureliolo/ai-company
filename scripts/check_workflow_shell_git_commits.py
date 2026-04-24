@@ -71,8 +71,23 @@ _BASELINE_PATH = (
     Path(__file__).resolve().parent / "_workflow_shell_git_commits_baseline.json"
 )
 
-_GIT_COMMIT_RE = re.compile(r"(?m)^\s*git\s+commit\b")
-_GIT_PUSH_RE = re.compile(r"(?m)^\s*git\s+push\b")
+# Match ``git commit`` / ``git push`` anywhere the shell would execute
+# them -- not just at the start of a line. A ``foo && git commit``
+# chain writes an unsigned commit the same way a standalone invocation
+# does, and a shared-job subshell trick like ``(cd tmp && git commit
+# -am .)`` would slip past a line-start anchor. The word boundary
+# guards against false positives on strings like ``git-commitlint`` or
+# a YAML key named ``git_commit``.
+_GIT_COMMIT_RE = re.compile(r"\bgit\s+commit\b")
+_GIT_PUSH_RE = re.compile(r"\bgit\s+push\b")
+# Strip shell line comments before scanning so a documented ``# git
+# commit`` example in a ``run:`` block does not trip the gate. Match
+# from ``#`` after the first non-space character (or at column 0)
+# through end-of-line; leave quoted ``#`` alone -- the cost of a
+# false-positive inside a quoted string is vastly preferable to
+# missing a real violation, and the run: idiom rarely quotes the git
+# CLI name.
+_SHELL_COMMENT_RE = re.compile(r"(?m)(?<!\\)#[^\n]*$")
 
 # Each baseline list entry is ``[job_id, step_key]`` -- a length-2
 # list. Named so the `len(entry) == _BASELINE_ENTRY_LEN` check stays
@@ -130,9 +145,10 @@ def _scan_file(path: Path) -> list[tuple[str, str]]:
             run_block = step.get("run")
             if not isinstance(run_block, str):
                 continue
-            if not (
-                _GIT_COMMIT_RE.search(run_block) and _GIT_PUSH_RE.search(run_block)
-            ):
+            # Strip shell line-comments before the regex so documented
+            # examples (``# see: git commit ...``) do not trip the gate.
+            scrubbed = _SHELL_COMMENT_RE.sub("", run_block)
+            if not (_GIT_COMMIT_RE.search(scrubbed) and _GIT_PUSH_RE.search(scrubbed)):
                 continue
             step_key = step.get("name") or f"step-index-{idx}"
             hits.append((str(job_id), str(step_key)))
