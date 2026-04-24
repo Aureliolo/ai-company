@@ -41,7 +41,10 @@ from synthorg.notifications.dispatcher import (
     NotificationDispatcher,  # noqa: TC001
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.api import (
+    API_APP_STARTUP,
+    API_BRIDGE_CONFIG_REJECTED,
+)
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
 from synthorg.ontology.drift.store import DriftReportStore  # noqa: TC001
@@ -324,9 +327,23 @@ class AppStateServicesMixin(_FacadesMixin):
         )
 
         if not math.isfinite(value):
+            logger.warning(
+                API_BRIDGE_CONFIG_REJECTED,
+                field="ws_auth_timeout_seconds",
+                reason="non_finite",
+                provided_value=repr(value),
+            )
             msg = f"ws_auth_timeout_seconds must be finite, got {value!r}"
             raise ValueError(msg)
         if value < WS_AUTH_TIMEOUT_MIN_SECONDS or value > WS_AUTH_TIMEOUT_MAX_SECONDS:
+            logger.warning(
+                API_BRIDGE_CONFIG_REJECTED,
+                field="ws_auth_timeout_seconds",
+                reason="out_of_range",
+                provided_value=value,
+                min_value=WS_AUTH_TIMEOUT_MIN_SECONDS,
+                max_value=WS_AUTH_TIMEOUT_MAX_SECONDS,
+            )
             msg = (
                 "ws_auth_timeout_seconds must be between"
                 f" {WS_AUTH_TIMEOUT_MIN_SECONDS} and"

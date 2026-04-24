@@ -189,6 +189,9 @@ API_AGENTS_REORDERED: Final[str] = "api.agents.reordered"
 API_CURSOR_SECRET_EPHEMERAL: Final[str] = "api.cursor.secret.ephemeral"  # noqa: S105 -- event name, not a secret
 API_CURSOR_INVALID: Final[str] = "api.cursor.invalid"
 
+# Bridge-config validation
+API_BRIDGE_CONFIG_REJECTED: Final[str] = "api.bridge_config.rejected"
+
 # Shutdown
 API_APP_SHUTDOWN_TIMEOUT: Final[str] = "api.app.shutdown.timeout"
 API_SHUTDOWN_SIGNAL_RECEIVED: Final[str] = "api.shutdown.signal.received"
