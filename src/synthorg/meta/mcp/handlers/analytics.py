@@ -1,87 +1,449 @@
-"""Analytics domain MCP handlers.
+"""Analytics + Reports domain MCP handlers.
 
-8 tools covering org analytics overview/trends/forecast, current +
-historical metrics snapshots, and reports.  The analytics stack is
-aggregator-based (``meta/signals/*.py`` + scattered controller logic)
-with no single service facade on ``app_state``; every handler returns
-``service_fallback`` via the shared :func:`_mk` factory until a dedicated
-analytics service lands.  Reports list/get/generate are similarly
-behind the ``reports`` controller.
+8 tools backing the operator dashboards:
+
+* ``synthorg_analytics_get_overview`` -- headline numbers for ``[since, until)``
+* ``synthorg_analytics_get_trends`` -- per-metric trend directions
+* ``synthorg_analytics_get_forecast`` -- budget/runway projection
+* ``synthorg_metrics_get_current`` -- flat current-value map
+* ``synthorg_metrics_get_history`` -- evenly-spaced sampled points
+* ``synthorg_reports_list`` / ``_get`` / ``_generate`` -- report lifecycle
+
+All analytics handlers shim through ``app_state.analytics_service``
+(read-only view over :class:`SignalsService`); report handlers shim
+through ``app_state.reports_service``.  Both services are wired once
+at app startup.
 """
 
-import copy
-from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
+from pydantic import TypeAdapter, ValidationError
+
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
-from synthorg.meta.mcp.handlers.common import service_fallback
-from synthorg.observability import get_logger
+from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
+    coerce_pagination,
+    dump_many,
+    err,
+    ok,
+    require_arg,
+)
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_FAILED
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 
-_WHY_ANALYTICS = (
-    "analytics aggregation is orchestrated inside the engine + meta "
-    "signals pipeline; no AnalyticsService facade is on app_state"
-)
-_WHY_METRICS = (
-    "metrics snapshots are computed on demand in controller code; no "
-    "MetricsService facade on app_state"
-)
-_WHY_REPORTS = (
-    "report generation lives in the reports controller; no "
-    "ReportsService facade on app_state"
-)
+_ARG_SINCE = "since"
+_ARG_UNTIL = "until"
+_ARG_METRIC_NAMES = "metric_names"
+_ARG_HORIZON_DAYS = "horizon_days"
+_ARG_SAMPLE_COUNT = "sample_count"
+_MAX_SAMPLE_COUNT = 100
+_TY_POSITIVE_INT_CAP = f"positive int <= {_MAX_SAMPLE_COUNT}"
 
 
-def _mk(tool: str, why: str) -> ToolHandler:
-    """Build a ``service_fallback`` handler with ToolHandler-conformant typing."""
+def _reject_oversized_sample_count(value: int) -> None:
+    """Raise ``ArgumentValidationError`` when ``value`` exceeds the cap."""
+    if value > _MAX_SAMPLE_COUNT:
+        raise invalid_argument(_ARG_SAMPLE_COUNT, _TY_POSITIVE_INT_CAP)
 
-    async def handler(
-        *,
-        app_state: Any,  # noqa: ARG001
-        arguments: dict[str, Any],  # noqa: ARG001
-        actor: AgentIdentity | None = None,  # noqa: ARG001
-    ) -> str:
-        return service_fallback(tool, why)
 
-    return handler
+_ARG_TEMPLATE = "template"
+_ARG_OPTIONS = "options"
+_ARG_REPORT_ID = "report_id"
+
+_TY_ISO_DT = "ISO 8601 datetime string"
+_TY_TZ_AWARE = "timezone-aware ISO 8601"
+_TY_WINDOW_ORDER = "earlier than until"
+_TY_POS_INT = "positive int"
+_TY_STR_SEQ = "sequence of strings"
+_TY_REPORT_ID = "UUID string"
+_TY_NON_BLANK = "non-blank string"
+
+_NOT_BLANK_STR_ADAPTER = TypeAdapter(NotBlankStr)
+
+
+def _parse_window(
+    arguments: dict[str, Any],
+    *,
+    until_required: bool = True,
+) -> tuple[datetime, datetime]:
+    """Parse ``since`` / ``until`` from arguments."""
+    raw_since = arguments.get(_ARG_SINCE)
+    if not isinstance(raw_since, str) or not raw_since.strip():
+        raise invalid_argument(_ARG_SINCE, _TY_ISO_DT)
+    try:
+        since = datetime.fromisoformat(raw_since)
+    except ValueError as exc:
+        raise invalid_argument(_ARG_SINCE, _TY_ISO_DT) from exc
+    if since.tzinfo is None:
+        raise invalid_argument(_ARG_SINCE, _TY_TZ_AWARE)
+    raw_until = arguments.get(_ARG_UNTIL)
+    if raw_until in (None, ""):
+        if until_required:
+            raise invalid_argument(_ARG_UNTIL, _TY_ISO_DT)
+        until = datetime.now(UTC)
+    else:
+        if not isinstance(raw_until, str):
+            raise invalid_argument(_ARG_UNTIL, _TY_ISO_DT)
+        try:
+            until = datetime.fromisoformat(raw_until)
+        except ValueError as exc:
+            raise invalid_argument(_ARG_UNTIL, _TY_ISO_DT) from exc
+        if until.tzinfo is None:
+            raise invalid_argument(_ARG_UNTIL, _TY_TZ_AWARE)
+    if since >= until:
+        raise invalid_argument(_ARG_SINCE, _TY_WINDOW_ORDER)
+    return since, until
+
+
+def _parse_str_sequence(
+    arguments: dict[str, Any],
+    key: str,
+) -> tuple[str, ...] | None:
+    """Parse a ``Sequence[str]`` argument; ``None`` when absent."""
+    raw = arguments.get(key)
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, (list, tuple)):
+        raise invalid_argument(key, _TY_STR_SEQ)
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise invalid_argument(key, _TY_STR_SEQ)
+    return tuple(raw)
+
+
+def _parse_required_str_sequence(
+    arguments: dict[str, Any],
+    key: str,
+) -> tuple[str, ...]:
+    """Parse a required ``Sequence[str]`` argument."""
+    result = _parse_str_sequence(arguments, key)
+    if result is None or len(result) == 0:
+        raise invalid_argument(key, _TY_STR_SEQ)
+    return result
+
+
+def _parse_positive_int(
+    arguments: dict[str, Any],
+    key: str,
+    *,
+    default: int,
+) -> int:
+    raw = arguments.get(key)
+    if raw in (None, ""):
+        return default
+    if isinstance(raw, bool):
+        raise invalid_argument(key, _TY_POS_INT)
+    if not isinstance(raw, (int, str)):
+        raise invalid_argument(key, _TY_POS_INT)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise invalid_argument(key, _TY_POS_INT) from exc
+    if value < 1:
+        raise invalid_argument(key, _TY_POS_INT)
+    return value
+
+
+def _parse_str_dict(
+    arguments: dict[str, Any],
+    key: str,
+) -> dict[str, str] | None:
+    raw = arguments.get(key)
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, dict):
+        raise invalid_argument(key, "mapping of str -> str")
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        if not isinstance(k, str) or not isinstance(v, str):
+            raise invalid_argument(key, "mapping of str -> str")
+        out[k] = v
+    return out
+
+
+def _parse_report_id(arguments: dict[str, Any]) -> UUID:
+    raw = require_arg(arguments, _ARG_REPORT_ID, str)
+    try:
+        return UUID(raw)
+    except ValueError as exc:
+        raise invalid_argument(_ARG_REPORT_ID, _TY_REPORT_ID) from exc
+
+
+def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
+    """Return a stable audit identifier, preferring ``actor.id`` over ``name``."""
+    if actor is None:
+        return NotBlankStr("mcp-anonymous")
+    actor_id = getattr(actor, "id", None)
+    if actor_id is not None:
+        return NotBlankStr(str(actor_id))
+    name = getattr(actor, "name", None)
+    if isinstance(name, str) and name.strip():
+        return NotBlankStr(name)
+    return NotBlankStr("mcp-anonymous")
+
+
+def _tool(name: str) -> dict[str, str]:
+    return {"tool": name}
+
+
+# ── Analytics handlers ────────────────────────────────────────────────
+
+
+async def _analytics_overview(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    try:
+        since, until = _parse_window(arguments, until_required=False)
+        result = await app_state.analytics_service.get_overview(
+            since=since,
+            until=until,
+        )
+        return ok(result.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
+    except Exception as exc:
+        logger.warning(
+            MCP_HANDLER_INVOKE_FAILED,
+            **_tool("synthorg_analytics_get_overview"),
+            error=safe_error_description(exc),
+        )
+        return err(exc)
+
+
+async def _analytics_trends(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    try:
+        since, until = _parse_window(arguments)
+        metric_names = _parse_str_sequence(arguments, _ARG_METRIC_NAMES)
+        result = await app_state.analytics_service.get_trends(
+            since=since,
+            until=until,
+            metric_names=metric_names,
+        )
+        return ok(result.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
+    except Exception as exc:
+        logger.warning(
+            MCP_HANDLER_INVOKE_FAILED,
+            **_tool("synthorg_analytics_get_trends"),
+            error=safe_error_description(exc),
+        )
+        return err(exc)
+
+
+async def _analytics_forecast(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    try:
+        since, until = _parse_window(arguments)
+        horizon_days = _parse_positive_int(
+            arguments,
+            _ARG_HORIZON_DAYS,
+            default=30,
+        )
+        result = await app_state.analytics_service.get_forecast(
+            since=since,
+            until=until,
+            horizon_days=horizon_days,
+        )
+        return ok(result.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
+    except Exception as exc:
+        logger.warning(
+            MCP_HANDLER_INVOKE_FAILED,
+            **_tool("synthorg_analytics_get_forecast"),
+            error=safe_error_description(exc),
+        )
+        return err(exc)
+
+
+async def _metrics_current(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    try:
+        since, until = _parse_window(arguments, until_required=False)
+        metric_names = _parse_str_sequence(arguments, _ARG_METRIC_NAMES)
+        result = await app_state.analytics_service.get_current_metrics(
+            since=since,
+            until=until,
+            metric_names=metric_names,
+        )
+        return ok(result.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
+    except Exception as exc:
+        logger.warning(
+            MCP_HANDLER_INVOKE_FAILED,
+            **_tool("synthorg_metrics_get_current"),
+            error=safe_error_description(exc),
+        )
+        return err(exc)
+
+
+async def _metrics_history(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    try:
+        since, until = _parse_window(arguments)
+        metric_names = _parse_required_str_sequence(arguments, _ARG_METRIC_NAMES)
+        sample_count = _parse_positive_int(
+            arguments,
+            _ARG_SAMPLE_COUNT,
+            default=8,
+        )
+        # Cap sample_count so a single MCP call cannot fan out an
+        # arbitrary number of concurrent sub-window queries against the
+        # analytics service and its underlying aggregators.
+        _reject_oversized_sample_count(sample_count)
+        result = await app_state.analytics_service.get_metric_history(
+            since=since,
+            until=until,
+            metric_names=metric_names,
+            sample_count=sample_count,
+        )
+        return ok(result.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
+    except Exception as exc:
+        logger.warning(
+            MCP_HANDLER_INVOKE_FAILED,
+            **_tool("synthorg_metrics_get_history"),
+            error=safe_error_description(exc),
+        )
+        return err(exc)
+
+
+# ── Reports handlers ────────────────────────────────────────────────
+
+
+async def _reports_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    try:
+        offset, limit = coerce_pagination(arguments)
+        reports, total = await app_state.reports_service.list_reports(
+            offset=offset,
+            limit=limit,
+        )
+        # ``reports_service.list_reports`` already returns the requested
+        # page (offset/limit applied service-side) plus the unfiltered
+        # ``total`` count.  Build the pagination envelope directly from
+        # that slice -- do NOT re-slice with ``paginate_sequence`` or
+        # page 2+ requests will apply the offset a second time and come
+        # back empty.
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+        return ok(dump_many(reports), pagination=pagination)
+    except ArgumentValidationError as exc:
+        return err(exc)
+    except Exception as exc:
+        logger.warning(
+            MCP_HANDLER_INVOKE_FAILED,
+            **_tool("synthorg_reports_list"),
+            error=safe_error_description(exc),
+        )
+        return err(exc)
+
+
+async def _reports_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    try:
+        report_id = _parse_report_id(arguments)
+        report = await app_state.reports_service.get_report(report_id)
+        if report is None:
+            missing = LookupError(f"Report {report_id} not found")
+            return err(missing, domain_code="not_found")
+        return ok(report.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
+    except Exception as exc:
+        logger.warning(
+            MCP_HANDLER_INVOKE_FAILED,
+            **_tool("synthorg_reports_get"),
+            error=safe_error_description(exc),
+        )
+        return err(exc)
+
+
+async def _reports_generate(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    try:
+        template_raw = require_arg(arguments, _ARG_TEMPLATE, str)
+        try:
+            template = _NOT_BLANK_STR_ADAPTER.validate_python(template_raw)
+        except ValidationError as exc:
+            raise invalid_argument(_ARG_TEMPLATE, _TY_NON_BLANK) from exc
+        options = _parse_str_dict(arguments, _ARG_OPTIONS)
+        report = await app_state.reports_service.generate_report(
+            template=template,
+            author_id=_actor_name(actor),
+            options=options,
+        )
+        return ok(report.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
+    except ValueError as exc:
+        return err(exc, domain_code="invalid_argument")
+    except Exception as exc:
+        logger.warning(
+            MCP_HANDLER_INVOKE_FAILED,
+            **_tool("synthorg_reports_generate"),
+            error=safe_error_description(exc),
+        )
+        return err(exc)
 
 
 ANALYTICS_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_analytics_get_overview": _mk(
-                "synthorg_analytics_get_overview",
-                _WHY_ANALYTICS,
-            ),
-            "synthorg_analytics_get_trends": _mk(
-                "synthorg_analytics_get_trends",
-                _WHY_ANALYTICS,
-            ),
-            "synthorg_analytics_get_forecast": _mk(
-                "synthorg_analytics_get_forecast",
-                _WHY_ANALYTICS,
-            ),
-            "synthorg_metrics_get_current": _mk(
-                "synthorg_metrics_get_current",
-                _WHY_METRICS,
-            ),
-            "synthorg_metrics_get_history": _mk(
-                "synthorg_metrics_get_history",
-                _WHY_METRICS,
-            ),
-            "synthorg_reports_list": _mk("synthorg_reports_list", _WHY_REPORTS),
-            "synthorg_reports_get": _mk("synthorg_reports_get", _WHY_REPORTS),
-            "synthorg_reports_generate": _mk(
-                "synthorg_reports_generate",
-                _WHY_REPORTS,
-            ),
-        },
-    ),
+    {
+        "synthorg_analytics_get_overview": _analytics_overview,
+        "synthorg_analytics_get_trends": _analytics_trends,
+        "synthorg_analytics_get_forecast": _analytics_forecast,
+        "synthorg_metrics_get_current": _metrics_current,
+        "synthorg_metrics_get_history": _metrics_history,
+        "synthorg_reports_list": _reports_list,
+        "synthorg_reports_get": _reports_get,
+        "synthorg_reports_generate": _reports_generate,
+    },
 )

@@ -82,9 +82,10 @@ class TestCustomRulesServiceCRUD:
         service = CustomRulesService(repo=_FakeCustomRuleRepository())
         rule = _rule(name="quality-watch")
         await service.create(rule)
-        listed = await service.list_rules()
-        assert len(listed) == 1
-        assert listed[0].name == "quality-watch"
+        page, total = await service.list_rules()
+        assert total == 1
+        assert len(page) == 1
+        assert page[0].name == "quality-watch"
 
     async def test_delete_missing_raises(self) -> None:
         service = CustomRulesService(repo=_FakeCustomRuleRepository())

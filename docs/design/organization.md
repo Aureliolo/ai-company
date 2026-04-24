@@ -493,3 +493,20 @@ wipes all data, and optionally restarts the stack to re-open the wizard).
     - Workflow configurations
     - Rating and review system
     - Import/export in standard format
+
+## MCP Service Facades
+
+The organization domain exposes four service facades on `AppState` for
+MCP handler shims:
+
+| Facade | Module | Tools shimmed |
+|---|---|---|
+| `CompanyReadService` | `synthorg.organization.services` | `synthorg_company_get`/`_update`/`_list_departments`/`_reorder_departments`/`_versions_list`/`_versions_get` |
+| `DepartmentService` | `synthorg.organization.services` | `synthorg_departments_list`/`_get`/`_create`/`_update`/`_delete`/`_get_health` |
+| `TeamService` | `synthorg.organization.services` | `synthorg_teams_list`/`_get`/`_create`/`_update`/`_delete` |
+| `RoleVersionService` | `synthorg.organization.services` | `synthorg_role_versions_list`/`_get` |
+
+`CompanyReadService` and `RoleVersionService` wrap the existing
+`OrgMutationService` read surface; `DepartmentService` and `TeamService`
+use in-memory stores pending durable repositories. Writes emit
+`organization.*_via_mcp` audit events from the facade layer.

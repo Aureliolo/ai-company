@@ -1,4 +1,4 @@
-"""Smoke + destructive-op tests for tasks/workflows/quality handlers."""
+"""Smoke + destructive-op tests for tasks and workflows handlers."""
 
 import json
 from types import SimpleNamespace
@@ -9,7 +9,6 @@ import pytest
 import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.meta.mcp.handlers.quality import QUALITY_HANDLERS
 from synthorg.meta.mcp.handlers.tasks import TASK_HANDLERS
 from synthorg.meta.mcp.handlers.workflows import WORKFLOW_HANDLERS
 from synthorg.observability.events.mcp import (
@@ -191,6 +190,8 @@ def workflow_def() -> SimpleNamespace:
 
 @pytest.fixture
 def workflow_app_state(workflow_def: SimpleNamespace) -> SimpleNamespace:
+    from synthorg.engine.workflow.service import WorkflowService
+
     def_repo = AsyncMock()
     def_repo.list_definitions.return_value = (workflow_def,)
     def_repo.get.return_value = workflow_def
@@ -203,7 +204,14 @@ def workflow_app_state(workflow_def: SimpleNamespace) -> SimpleNamespace:
         workflow_definitions=def_repo,
         workflow_versions=version_repo,
     )
-    return SimpleNamespace(persistence=persistence)
+    workflow_service = WorkflowService(
+        definition_repo=def_repo,
+        version_repo=version_repo,
+    )
+    return SimpleNamespace(
+        persistence=persistence,
+        workflow_service=workflow_service,
+    )
 
 
 class TestWorkflowsSmoke:
@@ -265,22 +273,6 @@ class TestWorkflowsDelete:
 
 
 # --- quality --------------------------------------------------------------
-
-
-class TestQualitySmoke:
-    """All quality tools currently return ``not_supported``."""
-
-    @pytest.mark.parametrize("tool_name", list(QUALITY_HANDLERS.keys()))
-    async def test_all_return_not_supported(
-        self,
-        tool_name: str,
-    ) -> None:
-        body = _parse(
-            await QUALITY_HANDLERS[tool_name](
-                app_state=None,
-                arguments={},
-                actor=None,
-            ),
-        )
-        assert body["status"] == "error"
-        assert body["domain_code"] == "not_supported"
+# Phase 9 of META-MCP-2 flipped all quality handlers to live shims backed by
+# QualityFacadeService / ReviewFacadeService / EvaluationVersionService;
+# per-tool tests live in test_handlers_quality.py.

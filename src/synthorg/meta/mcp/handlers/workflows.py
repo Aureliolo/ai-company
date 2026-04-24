@@ -5,14 +5,14 @@ versions.  Reads on the core definitions shim to
 :class:`synthorg.engine.workflow.service.WorkflowService` via the
 persistence repos on ``app_state.persistence``.  Subworkflows,
 executions, and versions do not currently have an orchestration
-service exposed on ``app_state``; they return ``service_fallback`` so the
+service exposed on ``app_state``; they return ``capability_gap`` so the
 tool stays registered and visible to ops until a dedicated service
 lands.
 
 Destructive ops: ``workflows_delete``, ``subworkflows_delete``, and
 ``workflow_executions_cancel`` all require the full destructive-op
-guardrail.  ``workflows_delete`` is live; the other two are
-``service_fallback`` for now but still enforce the guardrail at the
+guardrail.  ``workflows_delete`` is live; the other two return
+``capability_gap`` for now but still enforce the guardrail at the
 schema layer.
 """
 
@@ -34,13 +34,13 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    capability_gap,
     coerce_pagination,
     dump_many,
     err,
     ok,
     paginate_sequence,
     require_destructive_guardrails,
-    service_fallback,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -49,7 +49,6 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
-    MCP_HANDLER_SERVICE_FALLBACK,
 )
 
 if TYPE_CHECKING:
@@ -124,26 +123,28 @@ def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
 def _service(app_state: Any) -> WorkflowService:
     """Return the workflow service facade.
 
-    Prefers ``app_state.workflow_service`` when bootstrap has wired one
-    (keeps handlers off ``persistence.*``).  Falls back to per-call
-    construction from the persistence backend for app_states that have
-    not adopted the cached-service pattern yet; the fallback path emits
-    a DEBUG log so deployments using the legacy wiring are observable
-    in telemetry.
+    Handlers must route through the injected ``workflow_service`` slot
+    so hot-swap / lifecycle behavior flows through one canonical path.
+    Callers that have not wired the service on ``AppState`` get a loud
+    runtime error instead of a silent per-call construction that would
+    bypass the facade.
     """
     cached: WorkflowService | None = getattr(app_state, "workflow_service", None)
-    if cached is not None:
-        return cached
-    logger.debug(
-        MCP_HANDLER_SERVICE_FALLBACK,
-        tool_name="workflows._service",
-        fallback="persistence",
-        reason="app_state.workflow_service not wired -- building per-call",
-    )
-    return WorkflowService(
-        definition_repo=app_state.persistence.workflow_definitions,
-        version_repo=app_state.persistence.workflow_versions,
-    )
+    if cached is None:
+        # ``MCP_HANDLER_LAZY_SERVICE_INIT`` is a DEBUG-level telemetry
+        # event for lazy-init paths.  This branch is a hard runtime
+        # misconfiguration (the service is never expected to be
+        # ``None`` post-bootstrap), so emit the generic invoke-failed
+        # event at WARNING and then raise.
+        logger.warning(
+            MCP_HANDLER_INVOKE_FAILED,
+            tool_name="workflows._service",
+            service="workflow_service",
+            reason="app_state.workflow_service not wired",
+        )
+        msg = "workflow_service not wired on app_state"
+        raise RuntimeError(msg)
+    return cached
 
 
 # --- workflow definition CRUD ---------------------------------------------
@@ -208,7 +209,7 @@ async def _workflows_create(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback(
+    return capability_gap(
         "synthorg_workflows_create",
         "workflow definition creation requires the full "
         "WorkflowDefinition schema; use the REST API",
@@ -221,7 +222,7 @@ async def _workflows_update(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback(
+    return capability_gap(
         "synthorg_workflows_update",
         "workflow definition updates need the full WorkflowDefinition "
         "with optimistic-concurrency revision; use the REST API",
@@ -277,7 +278,7 @@ async def _workflows_validate(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback(
+    return capability_gap(
         "synthorg_workflows_validate",
         "workflow validation runs inside the validation middleware; "
         "no standalone validator is exposed on app_state",
@@ -288,7 +289,7 @@ async def _workflows_validate(
 
 
 async def _subworkflow_placeholder(tool_name: str) -> str:
-    return service_fallback(tool_name, _WHY_SUBWORKFLOWS)
+    return capability_gap(tool_name, _WHY_SUBWORKFLOWS)
 
 
 async def _subworkflows_list(
@@ -330,14 +331,14 @@ async def _subworkflows_delete(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return service_fallback(tool, _WHY_SUBWORKFLOWS)
+    return capability_gap(tool, _WHY_SUBWORKFLOWS)
 
 
 # --- workflow executions --------------------------------------------------
 
 
 async def _executions_placeholder(tool_name: str) -> str:
-    return service_fallback(tool_name, _WHY_EXECUTIONS)
+    return capability_gap(tool_name, _WHY_EXECUTIONS)
 
 
 async def _workflow_executions_list(
@@ -379,7 +380,7 @@ async def _workflow_executions_cancel(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return service_fallback(tool, _WHY_EXECUTIONS)
+    return capability_gap(tool, _WHY_EXECUTIONS)
 
 
 # --- workflow version history --------------------------------------------
@@ -391,7 +392,7 @@ async def _workflow_versions_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_workflow_versions_list", _WHY_VERSIONS_LIST)
+    return capability_gap("synthorg_workflow_versions_list", _WHY_VERSIONS_LIST)
 
 
 async def _workflow_versions_get(
@@ -400,7 +401,7 @@ async def _workflow_versions_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_workflow_versions_get", _WHY_VERSIONS_LIST)
+    return capability_gap("synthorg_workflow_versions_get", _WHY_VERSIONS_LIST)
 
 
 WORKFLOW_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

@@ -291,6 +291,9 @@ class TestEventConstants:
             "audit_chain",
             # Trace handler lifecycle + config validation events.
             "tracing",
+            # Added in META-MCP-2 for infrastructure facade audit events
+            # (projects + operator-request ledger).
+            "infrastructure",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

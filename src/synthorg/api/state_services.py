@@ -15,6 +15,7 @@ from synthorg.api.rate_limits.inflight_config import (
     PerOpConcurrencyConfig,  # noqa: TC001
 )
 from synthorg.api.services.org_mutations import OrgMutationService  # noqa: TC001
+from synthorg.api.state_services_facades import _FacadesMixin
 from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.communication.conflict_resolution.escalation.notify import (
     EscalationNotifySubscriber,  # noqa: TC001
@@ -82,13 +83,18 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class AppStateServicesMixin:
+class AppStateServicesMixin(_FacadesMixin):
     """Service accessor mixin for ``AppState``.
 
     Every property and setter in this mixin relies on private
     ``_*`` attributes allocated in ``AppState.__slots__`` and
     the ``_require_service`` / ``_set_once`` / ``_init_derived_services``
     helpers declared on the concrete class.
+
+    The facade-service accessors (signals / analytics / reports /
+    communication / META-MCP-2 phase 5-9) live in
+    :class:`~synthorg.api.state_services_facades._FacadesMixin` to keep
+    this module under the 800-line size limit.
     """
 
     _set_once: Any
@@ -141,8 +147,6 @@ class AppStateServicesMixin:
     _a2a_peer_registry: PeerRegistry | None
     _mcp_catalog_service: CatalogService | None
     _mcp_installations_repo: McpInstallationRepository | None
-    _per_op_rate_limit_config: PerOpRateLimitConfig | None
-    _per_op_concurrency_config: PerOpConcurrencyConfig | None
     _persistence: Any
 
     @property
@@ -801,6 +805,10 @@ class AppStateServicesMixin:
             repo,
             "MCP installations repository",
         )
+
+    # Facade-service accessors (signals / analytics / reports /
+    # communication / META-MCP-2 phases 5-9) live on
+    # :class:`~synthorg.api.state_services_facades._FacadesMixin`.
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and rebuild derived services."""

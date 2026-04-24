@@ -42,3 +42,7 @@ BACKUP_RESTORE_ROLLBACK: Final[str] = "backup.restore.rollback"
 BACKUP_DELETED: Final[str] = "backup.backup.deleted"
 BACKUP_LISTED: Final[str] = "backup.backup.listed"
 BACKUP_NOT_FOUND: Final[str] = "backup.backup.not_found"
+
+# MCP audit events
+BACKUP_DELETED_VIA_MCP: Final[str] = "backup.backup.deleted_via_mcp"
+BACKUP_RESTORE_TRIGGERED_VIA_MCP: Final[str] = "backup.restore.triggered_via_mcp"

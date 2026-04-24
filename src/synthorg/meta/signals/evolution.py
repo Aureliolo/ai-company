@@ -1,13 +1,15 @@
 """Evolution outcomes signal aggregator.
 
-Wraps the EvolutionService to produce an OrgEvolutionSummary
-with recent proposals, approval rates, and axis distributions.
+Queries the :class:`EvolutionOutcomeStore` for proposal outcomes within
+the observation window and returns a populated
+:class:`OrgEvolutionSummary`.  A missing store (dev/test mode) yields
+an empty summary via the safe-default path rather than raising.
 """
 
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.models import OrgEvolutionSummary
+from synthorg.meta.signal_models import OrgEvolutionSummary
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
@@ -17,13 +19,26 @@ from synthorg.observability.events.meta import (
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from synthorg.meta.evolution.outcome_store_protocol import (
+        EvolutionOutcomeStore,
+    )
+
 logger = get_logger(__name__)
 
 _EMPTY = OrgEvolutionSummary()
 
 
 class EvolutionSignalAggregator:
-    """Aggregates evolution outcomes into org-wide summaries."""
+    """Aggregates evolution outcomes into org-wide summaries.
+
+    Args:
+        store: Optional outcome store to query.  When ``None`` (dev/
+            test mode without a self-improvement cycle), aggregation
+            yields an empty summary rather than failing.
+    """
+
+    def __init__(self, store: EvolutionOutcomeStore | None = None) -> None:
+        self._store = store
 
     @property
     def domain(self) -> NotBlankStr:
@@ -43,17 +58,22 @@ class EvolutionSignalAggregator:
             until: End of observation window.
 
         Returns:
-            Org-wide evolution summary.
+            Org-wide evolution summary; empty when no store is wired
+            or the window contains no recorded outcomes.
         """
-        _ = since, until  # Will be used by real implementation.
+        if self._store is None:
+            return _EMPTY
         try:
+            summary = await self._store.summarize(since=since, until=until)
             logger.info(
                 META_SIGNAL_AGGREGATION_COMPLETED,
                 domain="evolution",
+                total_proposals=summary.total_proposals,
             )
         except Exception:
             logger.exception(
                 META_SIGNAL_AGGREGATION_FAILED,
                 domain="evolution",
             )
-        return _EMPTY
+            return _EMPTY
+        return summary

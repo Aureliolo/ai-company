@@ -691,6 +691,25 @@ This forces operators to surface wiring gaps instead of producing
 meaningless participation, and prevents the schedulers from spamming
 logs with avoidable failures during degraded startup.
 
+## MCP Service Facades
+
+The communication domain exposes five service facades on `AppState` for
+MCP handler shims. Each is a thin wrapper; audit logging lives in the
+facade, not the handler or the repository.
+
+| Facade | Module | Tools shimmed |
+|---|---|---|
+| `MessageService` | `synthorg.communication.messages.service` | `synthorg_messages_list`/`_get`/`_send`/`_delete` |
+| `MeetingService` | `synthorg.communication.meetings.service` | `synthorg_meetings_list`/`_get`/`_create`/`_update`/`_delete` |
+| `ConnectionService` | `synthorg.integrations.connections.mcp_service` | `synthorg_connections_list`/`_get`/`_create`/`_delete`/`_check_health` |
+| `WebhookService` | `synthorg.integrations.webhooks.service` | `synthorg_webhooks_list`/`_get`/`_create`/`_update`/`_delete` |
+| `TunnelService` | `synthorg.integrations.tunnel.mcp_service` | `synthorg_tunnel_get_status`/`_connect` |
+
+See `docs/design/tools.md` §"SynthOrg MCP Tool Surface" for the handler
+envelope contract. Deep-schema writes (create / update) use the Pydantic
+pass-through pattern: the MCP tool's `inputSchema` is generated from the
+same model the REST controller uses, so the wire contracts cannot drift.
+
 ---
 
 ## Multi-Agent Failure Pattern Guardrails

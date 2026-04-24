@@ -1,13 +1,15 @@
 """Error taxonomy signal aggregator.
 
-Wraps the classification pipeline to produce an OrgErrorSummary
-with category distributions and severity trends.
+Queries the :class:`ErrorTaxonomyStore` for findings within the
+observation window and returns a populated :class:`OrgErrorSummary`.
+A missing store (e.g. in dev/test mode) yields an empty summary via
+the safe-default path rather than raising.
 """
 
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.models import OrgErrorSummary
+from synthorg.meta.signal_models import OrgErrorSummary
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
@@ -17,13 +19,26 @@ from synthorg.observability.events.meta import (
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from synthorg.engine.classification.taxonomy_store_protocol import (
+        ErrorTaxonomyStore,
+    )
+
 logger = get_logger(__name__)
 
 _EMPTY = OrgErrorSummary()
 
 
 class ErrorSignalAggregator:
-    """Aggregates error taxonomy findings into org-wide summaries."""
+    """Aggregates error taxonomy findings into org-wide summaries.
+
+    Args:
+        store: Optional store to query.  When ``None`` (dev/test mode
+            with no classification pipeline wired), aggregation yields
+            an empty summary rather than failing.
+    """
+
+    def __init__(self, store: ErrorTaxonomyStore | None = None) -> None:
+        self._store = store
 
     @property
     def domain(self) -> NotBlankStr:
@@ -43,17 +58,22 @@ class ErrorSignalAggregator:
             until: End of observation window.
 
         Returns:
-            Org-wide error summary.
+            Org-wide error summary; empty when no store is wired or
+            the window contains no classifications.
         """
-        _ = since, until  # Will be used by real implementation.
+        if self._store is None:
+            return _EMPTY
         try:
+            summary = await self._store.summarize(since=since, until=until)
             logger.info(
                 META_SIGNAL_AGGREGATION_COMPLETED,
                 domain="errors",
+                total_findings=summary.total_findings,
             )
         except Exception:
             logger.exception(
                 META_SIGNAL_AGGREGATION_FAILED,
                 domain="errors",
             )
-        return _EMPTY
+            return _EMPTY
+        return summary

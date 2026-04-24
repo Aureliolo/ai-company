@@ -8,6 +8,11 @@ LLM calls (retry + rate limiting handled by the provider).
 from typing import TYPE_CHECKING
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.engine.prompt_safety import (
+    TAG_CONFIG_VALUE,
+    TAG_TASK_DATA,
+    wrap_untrusted,
+)
 from synthorg.meta.chief_of_staff.models import (
     Alert,
     ChatQuery,
@@ -93,15 +98,28 @@ class ChiefOfStaffChat:
                     f"proposals approved)"
                 )
         prompt = PROPOSAL_EXPLANATION_PROMPT.format(
-            proposal_title=proposal.title,
-            proposal_description=proposal.description,
-            proposal_rationale=proposal.rationale.signal_summary,
+            proposal_title=wrap_untrusted(TAG_CONFIG_VALUE, proposal.title),
+            proposal_description=wrap_untrusted(
+                TAG_CONFIG_VALUE,
+                proposal.description,
+            ),
+            proposal_rationale=wrap_untrusted(
+                TAG_CONFIG_VALUE,
+                proposal.rationale.signal_summary,
+            ),
+            # Confidence is a model-produced float; trusted numeric field.
             proposal_confidence=f"{proposal.confidence:.2f}",
-            rule_name=proposal.source_rule or "manual",
+            rule_name=wrap_untrusted(
+                TAG_CONFIG_VALUE,
+                proposal.source_rule or "manual",
+            ),
             # Severity is a rule match property, not carried on proposals.
             rule_severity="N/A",
-            signal_context=_format_snapshot(snapshot),
-            approval_context=approval_ctx,
+            signal_context=wrap_untrusted(
+                TAG_TASK_DATA,
+                _format_snapshot(snapshot),
+            ),
+            approval_context=wrap_untrusted(TAG_TASK_DATA, approval_ctx),
         )
         return await self._call_llm(prompt, sources=("performance", "budget"))
 
@@ -127,10 +145,17 @@ class ChiefOfStaffChat:
             alert_id=str(alert.id),
         )
         prompt = ALERT_EXPLANATION_PROMPT.format(
-            alert_type=alert.alert_type,
+            alert_type=wrap_untrusted(TAG_CONFIG_VALUE, alert.alert_type),
+            # severity is a typed enum -- trusted.
             alert_severity=alert.severity.value,
-            affected_domains=", ".join(alert.affected_domains),
-            signal_context=_format_signal_context(alert.signal_context),
+            affected_domains=wrap_untrusted(
+                TAG_CONFIG_VALUE,
+                ", ".join(alert.affected_domains),
+            ),
+            signal_context=wrap_untrusted(
+                TAG_TASK_DATA,
+                _format_signal_context(alert.signal_context),
+            ),
         )
         sources = tuple(alert.affected_domains)
         return await self._call_llm(prompt, sources=sources)
@@ -173,9 +198,12 @@ class ChiefOfStaffChat:
                 ]
                 recent_context = "Recent outcomes:\n" + "\n".join(lines)
         prompt = CHAT_QUERY_PROMPT.format(
-            snapshot_summary=_format_snapshot(snapshot),
-            recent_context=recent_context,
-            user_question=query.question,
+            snapshot_summary=wrap_untrusted(
+                TAG_TASK_DATA,
+                _format_snapshot(snapshot),
+            ),
+            recent_context=wrap_untrusted(TAG_TASK_DATA, recent_context),
+            user_question=wrap_untrusted(TAG_TASK_DATA, query.question),
         )
         return await self._call_llm(prompt, sources=())
 

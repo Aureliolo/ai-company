@@ -270,6 +270,25 @@ self_improvement:
 - **Scope enforcement**: Proposals outside enabled altitudes are rejected.
 - **Disabled by default**: The entire system is opt-in.
 
+## MCP Service Facades and Signal Stores
+
+Following META-MCP-2 (#1524), the signal aggregation surface is backed
+by three pluggable in-memory stores (each follows the protocol + strategy +
+factory pattern; durable backends ship behind the same protocol later):
+
+| Store | Module | Role |
+|---|---|---|
+| `ErrorTaxonomyStore` | `synthorg.engine.classification.taxonomy_store` | Ring-buffered classification results feeding `ErrorSignalAggregator`; subscribes to the `ClassificationSink` protocol. |
+| `EvolutionOutcomeStore` | `synthorg.meta.evolution.outcome_store` | Ring-buffered applied/rolled-back proposal outcomes feeding `EvolutionSignalAggregator`. |
+| `TelemetryEventCounter` | `synthorg.telemetry.event_counter` | Rolling event counts by type feeding `TelemetrySignalAggregator`; registered as a `TelemetryCollector.subscribe(...)` consumer. |
+
+The facade layer composes the seven aggregators, `SnapshotBuilder`, and
+the proposal approval store into a single `SignalsService` that shims
+the `synthorg_signals_*` tools. `AnalyticsService` and `ReportsService`
+layer on top: analytics is a stateless view over `SignalsService`
+snapshots (single source of truth -- no independent cache), and
+reports owns async job lifecycle + artifact storage.
+
 ## Follow-up Issues
 
 1. ~~Full API-as-MCP server~~ -- completed via #1353 (issue #1339; 204 tools, 15 domains, capability-based scoping)
@@ -277,3 +296,4 @@ self_improvement:
 3. ~~Cross-deployment analytics~~ -- completed via #1341 (opt-in anonymized telemetry, pattern aggregation, threshold recommendations; see `docs/cross-deployment-privacy.md`)
 4. ~~Chief of Staff advanced capabilities~~ -- completed via #1342 (outcome learning, proactive alerts, NL chat)
 5. ~~Custom rule authoring UI (visual rule builder)~~ -- shipped (#1343 / PR #1355)
+6. MCP handler remaining gaps -- tracked in #1528 (CRUD writes) and #1529 (observability + memory + coordination), scoped as parallel-safe followups from META-MCP-2.
