@@ -13,7 +13,7 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | Environment | Branch policy | Triggered by |
 |---|---|---|
 | `github-pages` | `main` | `pages.yml` push to main |
-| `release` | `main` | `release.yml` + `dev-release.yml` (main pushes), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main). Holds `RELEASE_PLEASE_TOKEN`. |
+| `release` | `main` | `release.yml` + `dev-release.yml` + `auto-rollover.yml` (main pushes), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main). Holds `RELEASE_PLEASE_TOKEN`. |
 | `release-tags` | `v*` | `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes). Structural ref gate only; no privileged secrets. |
 | `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
 | `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch |
@@ -110,16 +110,22 @@ under the `release` deployment environment.
 
 **Purpose**:
 
-- `release.yml` uses it for the pre-tag creation step, the
-  `googleapis/release-please-action` step, the Release PR branch checkout,
-  and the BSL Change Date `git push`. Each of those steps writes to the
-  repository state (tags, release PR, commits) on behalf of the release
-  bot.
+- `release.yml` uses it for the `googleapis/release-please-action` step
+  and the BSL Change Date Contents API update (`PUT
+  /repos/.../contents/LICENSE`) against the release-please PR branch.
+  Both writes flow through the GitHub REST API, which signs the
+  resulting commits on behalf of the PAT owner.
 - `dev-release.yml` uses it to create dev pre-release tags (e.g.
   `v0.7.2-dev.3`). Unlike the default `GITHUB_TOKEN`, a PAT-authored tag
   push triggers downstream workflows (docker.yml, cli.yml, etc.), which is
   the intended behavior -- dev tags must run through the same build-sign-
   attest pipeline as stable releases.
+- `auto-rollover.yml` uses it to create an empty `Release-As:` commit
+  on `main` via the Git Data API (`POST /git/commits` + `PATCH
+  /git/refs/heads/main`) when the last stable tag's patch is >= 9.
+  The PAT is required so the resulting commit triggers the downstream
+  `release.yml` + `dev-release.yml` workflows, and the API path gives
+  the commit a verified signature.
 
 **Required PAT scopes** (fine-grained is strongly preferred):
 
