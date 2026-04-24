@@ -197,11 +197,11 @@ class TestSetInflectionSinkAtomic:
             await barrier.wait()
             await original_set_inflection_sink(value)  # type: ignore[arg-type]
 
-        tracker.set_inflection_sink = set_with_inner_barrier  # type: ignore[method-assign,assignment]
+        tracker.set_inflection_sink = set_with_inner_barrier  # type: ignore[method-assign]
 
         results = await asyncio.gather(
-            tracker.set_inflection_sink(sink_a),  # type: ignore[arg-type]
-            tracker.set_inflection_sink(sink_b),  # type: ignore[arg-type]
+            tracker.set_inflection_sink(sink_a),
+            tracker.set_inflection_sink(sink_b),
             return_exceptions=True,
         )
 
