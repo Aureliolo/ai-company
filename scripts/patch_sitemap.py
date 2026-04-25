@@ -1,12 +1,15 @@
-"""Append static OpenAPI artifact URLs to the built docs sitemap.
+"""Append non-Markdown URLs to the built docs sitemap.
 
-Zensical generates ``_site/docs/sitemap.xml`` from Markdown pages only.
-The interactive Scalar viewer (``reference.html``) and the raw OpenAPI
-schema (``openapi.json``) are copied into the output as static assets
-and therefore don't appear in the generated sitemap.
+Zensical generates ``_site/docs/sitemap.xml`` from Markdown pages only,
+so any non-Markdown asset that should appear as a search result must be
+added here.
 
-This script patches the built sitemap to add explicit ``<url>`` entries
-for those two artifacts so search engines can discover them.
+The interactive Scalar viewer (``reference.html``) is included so it is
+discoverable by search engines as a landing page for "SynthOrg REST API"
+queries. The raw OpenAPI schema (``openapi.json``) is intentionally
+excluded because Google does not render raw JSON in search results --
+including it produced permanent "Discovered, currently not indexed"
+noise in Search Console without any discoverability benefit.
 
 Run after ``zensical build``:
 
@@ -33,15 +36,11 @@ URLSET_TAG = f"{{{SITEMAP_NS}}}urlset"
 URL_TAG = f"{{{SITEMAP_NS}}}url"
 LOC_TAG = f"{{{SITEMAP_NS}}}loc"
 
-# Static artifacts that should be discoverable but live outside the
-# Markdown-driven nav tree. Paths are relative to the docs root URL,
-# which is derived at runtime from the existing sitemap entries so the
-# script stays in sync with whatever `site_url` mkdocs.yml resolves to
-# (production, staging, PR previews).
-EXTRA_PATHS: tuple[str, ...] = (
-    "openapi/reference.html",
-    "openapi/openapi.json",
-)
+# Non-Markdown assets to append to the sitemap. Paths are relative to
+# the docs root URL, which is derived at runtime from the existing
+# sitemap entries so the script stays in sync with whatever `site_url`
+# mkdocs.yml resolves to (production, staging, PR previews).
+EXTRA_PATHS: tuple[str, ...] = ("openapi/reference.html",)
 
 
 def _parse_sitemap() -> ET.ElementTree | None:
@@ -66,9 +65,8 @@ def _parse_sitemap() -> ET.ElementTree | None:
         # defusedxml guards against billion-laughs, XXE, and DTD abuse.
         # The sitemap is produced by our own zensical build step, but
         # using the hardened parser costs nothing and removes the
-        # supply-chain assumption from the code. defusedxml has no
-        # py.typed, so mypy sees this as Any -- silence the warning.
-        return DefusedET.parse(SITEMAP_FILE)  # type: ignore[no-any-return]
+        # supply-chain assumption from the code.
+        return DefusedET.parse(SITEMAP_FILE)
     except (ET.ParseError, DefusedXmlException) as exc:
         print(
             f"Failed to parse sitemap at {SITEMAP_FILE.relative_to(REPO_ROOT)}: {exc}",

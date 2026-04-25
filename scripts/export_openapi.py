@@ -50,11 +50,24 @@ STANDALONE_HTML = """\
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>REST API Reference -- SynthOrg</title>
+  <title>SynthOrg REST API Reference -- Interactive OpenAPI Schema</title>
+  <meta name="description" content="Interactive reference for every SynthOrg REST API endpoint, request body, and response schema. Rendered from the OpenAPI 3.1 spec via Scalar.">
+  <link rel="canonical" href="https://synthorg.io/docs/openapi/reference.html">
   <link rel="icon" href="../assets/images/favicon.png">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
     .banner {
       padding: 0.6rem 1.5rem;
       font-size: 0.85rem;
@@ -83,6 +96,7 @@ STANDALONE_HTML = """\
   </style>
 </head>
 <body>
+  <h1 class="sr-only">SynthOrg REST API Reference</h1>
   <div class="banner">
     Static snapshot of the OpenAPI schema --
     when running locally, use the live docs at <code>/docs/api</code> instead.
