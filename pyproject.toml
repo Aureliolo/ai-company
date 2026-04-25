@@ -108,6 +108,7 @@ dev = [
     "pre-commit-uv==4.2.1",
     "ruff==0.15.12",
     "types-pyyaml==6.0.12.20260408",
+    "types-defusedxml==0.7.0.20260408",
     "bandit==1.9.4",
     "pytest-randomly==4.1.0",
     {include-group = "test"},
