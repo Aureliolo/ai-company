@@ -151,7 +151,15 @@ func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate
 	apiBase := effectiveBaseRef(base, currentBuildCommit())
 	commitRange, err := commitsBetween(ctx, apiBase, head)
 	if err != nil {
-		out.Warn(fmt.Sprintf("Could not fetch commit list for %s..%s: %v", base, head, err))
+		// commitsBetween wraps its underlying error as
+		// "comparing <apiBase>...<head>: <inner>" -- when apiBase is the
+		// embedded build SHA that wrapper would leak the SHA into the
+		// warn line. Substitute it back to the user-facing version
+		// label before formatting. The inner cause (rate-limit, 404,
+		// etc.) is preserved because it is genuinely useful for
+		// self-diagnosis and contains no secret data.
+		errMsg := scrubAPIBase(err.Error(), apiBase, base)
+		out.Warn(fmt.Sprintf("Could not fetch commit list for %s..%s: %s", base, head, errMsg))
 		out.HintError(devCommitWalkErrorHint(apiBase != base))
 		printOfflineNotice(cmd, result)
 		return
@@ -220,6 +228,19 @@ func isStableCommitSHA(s string) bool {
 		}
 	}
 	return true
+}
+
+// scrubAPIBase replaces every occurrence of apiBase in errMsg with the
+// user-facing tagRef. Used to substitute the embedded build SHA back to
+// its version label in error strings sourced from the GitHub compare
+// path -- both the wrapper from commitsBetween and any inner error that
+// happens to include the request URL embed apiBase verbatim. No-op when
+// apiBase == tagRef (we never used the SHA on this call).
+func scrubAPIBase(errMsg, apiBase, tagRef string) string {
+	if apiBase == tagRef {
+		return errMsg
+	}
+	return strings.ReplaceAll(errMsg, apiBase, tagRef)
 }
 
 // devCommitWalkErrorHint returns the HintError body shown when the dev

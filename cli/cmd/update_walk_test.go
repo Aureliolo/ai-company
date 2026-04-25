@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -351,13 +352,20 @@ func TestRunDevCommitWalk_normalisesVersionRefs(t *testing.T) {
 // keeps working even after the installed tag has been auto-rolled off the
 // remote. The user-facing warn / offline-notice text must still show the
 // human-readable version label, not the raw SHA.
+//
+// The test stub wraps the simulated inner cause with the same prefix
+// production uses (selfupdate.commitsBetweenFromURL: "comparing
+// %s...%s: %w"), so err.Error() actually contains the SHA -- this is
+// what runDevCommitWalk has to scrub before formatting the warn line.
+// A plain errors.New() would never embed the SHA and the no-SHA-leak
+// assertion below would be vacuously true.
 func TestRunDevCommitWalk_usesEmbeddedCommitSHA(t *testing.T) {
 	const buildSHA = "deadbeefcafebabe1234567890abcdef12345678"
 	withCurrentBuildCommit(t, buildSHA)
 	var seenBase, seenHead string
 	withCommitsBetween(t, func(_ context.Context, base, head string) (selfupdate.CommitRange, error) {
 		seenBase, seenHead = base, head
-		return selfupdate.CommitRange{}, errors.New("simulated rate limit")
+		return selfupdate.CommitRange{}, fmt.Errorf("comparing %s...%s: %w", base, head, errors.New("simulated rate limit"))
 	})
 	cmd, buf := newWalkTestCmd(t)
 	result := selfupdate.CheckResult{CurrentVersion: "0.7.3-dev.20", LatestVersion: "0.7.3-dev.24"}
@@ -372,14 +380,19 @@ func TestRunDevCommitWalk_usesEmbeddedCommitSHA(t *testing.T) {
 	}
 
 	got := buf.String()
-	// Warn label uses the version refs, not the SHA.
+	// Warn label uses the version refs (with the production wrapper's
+	// SHA scrubbed back to the version label), and the inner cause is
+	// preserved so the user can self-diagnose rate-limit vs 404 vs
+	// network errors.
 	requireContains(t, got,
 		"Could not fetch commit list for v0.7.3-dev.20..v0.7.3-dev.24",
+		"comparing v0.7.3-dev.20...v0.7.3-dev.24", // wrapper rewritten back to tag form
 		"simulated rate limit",
 		"transient network error or GitHub rate limit",
 		"New version available: v0.7.3-dev.24",
 	)
-	// And critically, the SHA must NOT leak into the user-facing warn line.
+	// And critically, the SHA must NOT leak into the user-facing warn line --
+	// either as the bare SHA or as a substring of any wrapped error message.
 	if strings.Contains(got, buildSHA) {
 		t.Errorf("user-facing output should not contain raw build SHA\n--- got ---\n%s", got)
 	}
@@ -387,6 +400,54 @@ func TestRunDevCommitWalk_usesEmbeddedCommitSHA(t *testing.T) {
 	// it would misdirect the user about the actual cause.
 	if strings.Contains(got, "tag was pruned") {
 		t.Errorf("tag-pruned hint should not appear on the SHA-base path\n--- got ---\n%s", got)
+	}
+}
+
+func TestScrubAPIBase(t *testing.T) {
+	const sha = "deadbeefcafebabe1234567890abcdef12345678"
+	const tag = "v0.7.3-dev.20"
+	tests := []struct {
+		name    string
+		errMsg  string
+		apiBase string
+		tagRef  string
+		want    string
+	}{
+		{
+			name:    "rewrites compare wrapper containing the SHA",
+			errMsg:  fmt.Sprintf("comparing %s...v0.7.3-dev.24: github API returned 404", sha),
+			apiBase: sha,
+			tagRef:  tag,
+			want:    "comparing v0.7.3-dev.20...v0.7.3-dev.24: github API returned 404",
+		},
+		{
+			name:    "rewrites SHA inside an embedded compare URL",
+			errMsg:  fmt.Sprintf("querying GitHub releases: Get \"https://api.github.com/repos/x/y/compare/%s...v0.7.3-dev.24\": dial tcp: timeout", sha),
+			apiBase: sha,
+			tagRef:  tag,
+			want:    "querying GitHub releases: Get \"https://api.github.com/repos/x/y/compare/v0.7.3-dev.20...v0.7.3-dev.24\": dial tcp: timeout",
+		},
+		{
+			name:    "no-op when apiBase equals tagRef (tag-fallback path)",
+			errMsg:  "comparing v0.7.3-dev.20...v0.7.3-dev.24: github API returned 404",
+			apiBase: tag,
+			tagRef:  tag,
+			want:    "comparing v0.7.3-dev.20...v0.7.3-dev.24: github API returned 404",
+		},
+		{
+			name:    "leaves messages without the SHA untouched",
+			errMsg:  "github API rate-limited (HTTP 429) -- try again later",
+			apiBase: sha,
+			tagRef:  tag,
+			want:    "github API rate-limited (HTTP 429) -- try again later",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := scrubAPIBase(tt.errMsg, tt.apiBase, tt.tagRef); got != tt.want {
+				t.Errorf("scrubAPIBase()\n got: %q\nwant: %q", got, tt.want)
+			}
+		})
 	}
 }
 
