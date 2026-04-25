@@ -11,8 +11,91 @@ from synthorg.security.autonomy.models import (
     AutonomyConfig,
     AutonomyOverride,
     AutonomyPreset,
+    AutonomyUpdate,
+    AutonomyUpdateResult,
     EffectiveAutonomy,
 )
+
+
+class TestAutonomyUpdate:
+    """AutonomyUpdate validation tests."""
+
+    @pytest.mark.unit
+    def test_valid_update(self) -> None:
+        update = AutonomyUpdate(
+            requested_level=AutonomyLevel.SEMI,
+            reason="agent has earned trust",
+            requested_by="alice",
+        )
+        assert update.requested_level == AutonomyLevel.SEMI
+        assert update.reason == "agent has earned trust"
+        assert update.requested_by == "alice"
+
+    @pytest.mark.unit
+    def test_requested_by_optional(self) -> None:
+        update = AutonomyUpdate(
+            requested_level=AutonomyLevel.LOCKED,
+            reason="incident response",
+        )
+        assert update.requested_by is None
+
+    @pytest.mark.unit
+    def test_blank_reason_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            AutonomyUpdate(
+                requested_level=AutonomyLevel.FULL,
+                reason="",
+            )
+
+    @pytest.mark.unit
+    def test_short_reason_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            AutonomyUpdate(
+                requested_level=AutonomyLevel.FULL,
+                reason="ok",
+            )
+
+    @pytest.mark.unit
+    def test_frozen(self) -> None:
+        update = AutonomyUpdate(
+            requested_level=AutonomyLevel.SEMI,
+            reason="thawing",
+        )
+        with pytest.raises(ValidationError):
+            update.reason = "mutated"  # type: ignore[misc]
+
+
+class TestAutonomyUpdateResult:
+    """AutonomyUpdateResult validation tests."""
+
+    @pytest.mark.unit
+    def test_pending_default(self) -> None:
+        result = AutonomyUpdateResult(
+            agent_id="agent-1",
+            current_level=AutonomyLevel.SUPERVISED,
+            requested_level=AutonomyLevel.SEMI,
+        )
+        assert result.promotion_pending is True
+        assert result.approval_id is None
+
+    @pytest.mark.unit
+    def test_with_approval_id(self) -> None:
+        result = AutonomyUpdateResult(
+            agent_id="agent-1",
+            current_level=AutonomyLevel.SUPERVISED,
+            requested_level=AutonomyLevel.SEMI,
+            approval_id="approval-42",
+        )
+        assert result.approval_id == "approval-42"
+
+    @pytest.mark.unit
+    def test_blank_agent_id_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            AutonomyUpdateResult(
+                agent_id="",
+                current_level=AutonomyLevel.SUPERVISED,
+                requested_level=AutonomyLevel.SEMI,
+            )
 
 
 class TestAutonomyPreset:

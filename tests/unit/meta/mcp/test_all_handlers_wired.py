@@ -25,9 +25,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.hr.performance.models import CollaborationScoreResult
+from synthorg.core.enums import AutonomyLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import (
+    CollaborationCalibration,
+    CollaborationScoreResult,
+)
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
+from synthorg.security.autonomy.models import AutonomyUpdateResult
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -108,6 +114,15 @@ def fake_app_state() -> SimpleNamespace:
     registry.list_active.return_value = ()
     registry.get_by_name.return_value = None
     registry.get.return_value = None
+    # META-MCP-3 write methods need Pydantic-shaped returns so the
+    # handler's ``.model_dump()`` does not blow up on AsyncMock returns.
+    dummy_identity = make_test_actor(name="alpha")
+    registry.apply_identity_update.return_value = dummy_identity
+    registry.update_autonomy.return_value = AutonomyUpdateResult(
+        agent_id=NotBlankStr("agent-1"),
+        current_level=AutonomyLevel.SUPERVISED,
+        requested_level=AutonomyLevel.FULL,
+    )
     ns.agent_registry = registry
 
     ns.performance_tracker = AsyncMock()
@@ -117,6 +132,13 @@ def fake_app_state() -> SimpleNamespace:
             score=0.0,
             strategy_name="test-strategy",
             confidence=0.5,
+        )
+    )
+    ns.performance_tracker.get_collaboration_calibration.return_value = (
+        CollaborationCalibration(
+            agent_id=NotBlankStr("agent-1"),
+            strategy_name=NotBlankStr("test-strategy"),
+            sample_size=0,
         )
     )
 

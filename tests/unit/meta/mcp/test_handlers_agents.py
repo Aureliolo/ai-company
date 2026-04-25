@@ -24,7 +24,11 @@ import pytest
 import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.hr.performance.models import CollaborationScoreResult
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import (
+    CollaborationCalibration,
+    CollaborationScoreResult,
+)
 from synthorg.meta.mcp.handlers.agents import AGENT_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
@@ -62,6 +66,11 @@ def fake_app_state(identity: AgentIdentity) -> SimpleNamespace:
         score=0.75,
         strategy_name="test-strategy",
         confidence=0.9,
+    )
+    tracker.get_collaboration_calibration.return_value = CollaborationCalibration(
+        agent_id=NotBlankStr(str(identity.id)),
+        strategy_name=NotBlankStr("test-strategy"),
+        sample_size=0,
     )
 
     return SimpleNamespace(
@@ -239,21 +248,19 @@ class TestAgentsDelete:
         assert body["domain_code"] == "not_found"
 
 
-class TestNotSupportedHandlers:
-    """Tools whose service surface isn't exposed return a clean error."""
+class TestWriteHandlersValidateInputs:
+    """The META-MCP-3 write handlers reject empty/malformed input."""
 
     @pytest.mark.parametrize(
         "tool_name",
         [
-            # Write-path handlers still owned by META-MCP-3 (#1528).
             "synthorg_agents_create",
             "synthorg_agents_update",
             "synthorg_autonomy_update",
-            # Read-only handlers not yet reclaimed by META-MCP-4.
             "synthorg_collaboration_get_calibration",
         ],
     )
-    async def test_returns_not_supported(
+    async def test_empty_args_returns_invalid_argument(
         self,
         tool_name: str,
         fake_app_state: SimpleNamespace,
@@ -263,4 +270,4 @@ class TestNotSupportedHandlers:
             await handler(app_state=fake_app_state, arguments={}, actor=None),
         )
         assert body["status"] == "error"
-        assert body["domain_code"] == "not_supported"
+        assert body["domain_code"] == "invalid_argument"

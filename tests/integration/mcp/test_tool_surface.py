@@ -35,7 +35,12 @@ import pytest
 import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.hr.performance.models import CollaborationScoreResult
+from synthorg.core.enums import AutonomyLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import (
+    CollaborationCalibration,
+    CollaborationScoreResult,
+)
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.observability.events.mcp import (
@@ -43,6 +48,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_NOT_IMPLEMENTED,
     MCP_HANDLER_SERVICE_FALLBACK,
 )
+from synthorg.security.autonomy.models import AutonomyUpdateResult
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.integration
@@ -96,6 +102,15 @@ def fake_app_state() -> SimpleNamespace:
     registry.list_active.return_value = ()
     registry.get_by_name.return_value = None
     registry.get.return_value = None
+    # META-MCP-3 write facades return Pydantic shapes; AsyncMock returns
+    # would JSON-serialise as coroutines and crash the envelope.
+    dummy_identity = make_test_actor(name="alpha")
+    registry.apply_identity_update.return_value = dummy_identity
+    registry.update_autonomy.return_value = AutonomyUpdateResult(
+        agent_id=NotBlankStr("agent-1"),
+        current_level=AutonomyLevel.SUPERVISED,
+        requested_level=AutonomyLevel.FULL,
+    )
     ns.agent_registry = registry
 
     ns.performance_tracker = AsyncMock()
@@ -105,6 +120,13 @@ def fake_app_state() -> SimpleNamespace:
             score=0.0,
             strategy_name="test-strategy",
             confidence=0.5,
+        )
+    )
+    ns.performance_tracker.get_collaboration_calibration.return_value = (
+        CollaborationCalibration(
+            agent_id=NotBlankStr("agent-1"),
+            strategy_name=NotBlankStr("test-strategy"),
+            sample_size=0,
         )
     )
 
@@ -150,13 +172,15 @@ _BLAST_ARGS: dict[str, Any] = {
     "subworkflow_id": "sw-1",
     "execution_id": "ex-1",
     "checkpoint_id": "cp-1",
+    "version": "1.0.0",
     "version_num": 1,
+    "revision": 1,
     "title": "x",
     "description": "y",
     "action_type": "deploy",
     "risk_level": "medium",
     "confirm": True,
-    "reason": "test",
+    "reason": "test reason for guardrail",
     "name": "alpha",
     "role": "engineer",
     "department": "Engineering",
@@ -166,6 +190,15 @@ _BLAST_ARGS: dict[str, Any] = {
     "target_status": "in_progress",
     "steps": [],
     "status": "pending",
+    # META-MCP-3 write-handler inputs.  ``identity`` and ``definition``
+    # need to satisfy the live Pydantic validators; the values here are
+    # minimal-but-valid so the handlers fall through to the service mocks
+    # rather than failing the validation step.
+    "identity": {},  # invalid -> handler returns ``invalid_argument`` (ok)
+    "definition": {},  # invalid -> handler returns ``invalid_argument`` (ok)
+    "task_data": {},  # invalid -> handler returns ``invalid_argument`` (ok)
+    "project": "default",
+    "context": {},
 }
 
 

@@ -160,7 +160,7 @@ class TestTasksDelete:
 
 
 class TestTasksCreate:
-    async def test_returns_not_supported(
+    async def test_invalid_task_data_returns_invalid_argument(
         self,
         task_app_state: SimpleNamespace,
         actor: AgentIdentity,
@@ -168,12 +168,12 @@ class TestTasksCreate:
         body = _parse(
             await TASK_HANDLERS["synthorg_tasks_create"](
                 app_state=task_app_state,
-                arguments={"title": "x"},
+                arguments={"title": "x"},  # missing task_data dict
                 actor=actor,
             ),
         )
         assert body["status"] == "error"
-        assert body["domain_code"] == "not_supported"
+        assert body["domain_code"] == "invalid_argument"
 
 
 # --- workflows ------------------------------------------------------------
