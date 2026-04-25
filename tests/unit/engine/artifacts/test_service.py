@@ -160,6 +160,10 @@ async def test_delete_returns_true_and_emits_api_artifact_deleted() -> None:
         deleted = await service.delete(artifact.id)
 
     assert deleted is True
+    # Persistence side-effect: the row really must be gone, not just
+    # logged.  Catches a log-only impl that returns ``True`` without
+    # touching the repo.
+    assert await repo.get(artifact.id) is None
     assert any(log["event"] == API_ARTIFACT_DELETED for log in logs)
     assert not any(log["event"] == "persistence.artifact.deleted" for log in logs)
 

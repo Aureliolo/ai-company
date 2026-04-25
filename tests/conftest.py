@@ -164,7 +164,26 @@ _start_key = pytest.StashKey[float]()
 # below to compare per-unit-test cost against the baseline without
 # polluting the math with non-unit (integration / e2e / conformance)
 # test elapsed time.
+#
+# Under pytest-xdist (the default ``-n 8`` configuration mandated by
+# CLAUDE.md), each worker is its own subprocess with its own copy of
+# this module.  Worker-local mutations are NOT visible on the
+# controller process where ``pytest_sessionfinish`` runs the
+# regression check.  The two hooks below close the gap:
+#
+#  - ``pytest_sessionfinish`` on each worker copies the worker-local
+#    accumulator into ``config.workeroutput`` (which xdist serialises
+#    back to the controller).
+#  - ``pytest_testnodedown`` on the controller sums the per-worker
+#    contributions back into the module-level accumulator, so when
+#    the controller's own ``pytest_sessionfinish`` runs the rail it
+#    sees the full unit-only elapsed time.
+#
+# The non-xdist case (single-process pytest) needs neither hook: the
+# accumulator is set in teardown and read in sessionfinish in the
+# same process.
 _unit_elapsed_secs: float = 0.0
+_WORKEROUTPUT_KEY = "_unit_elapsed_secs"
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -268,6 +287,25 @@ def _emit_regression_banner(
     print(msg, file=sys.stderr)  # noqa: T201
 
 
+def pytest_testnodedown(node: pytest.Item, error: object) -> None:
+    """xdist controller hook: aggregate per-worker accumulators.
+
+    Each worker writes its local ``_unit_elapsed_secs`` to
+    ``workeroutput`` in its own ``pytest_sessionfinish``; the
+    controller then sums those values back into the module-level
+    accumulator here, so when the controller's
+    ``pytest_sessionfinish`` runs the regression rail it sees the
+    full unit-only elapsed time across all workers.
+
+    The non-xdist case never reaches this hook -- pytest-xdist only
+    invokes it when running with ``-n``.
+    """
+    global _unit_elapsed_secs  # noqa: PLW0603
+    workeroutput = getattr(node, "workeroutput", {})
+    if _WORKEROUTPUT_KEY in workeroutput:
+        _unit_elapsed_secs += float(workeroutput[_WORKEROUTPUT_KEY])
+
+
 @pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(
     session: pytest.Session,
@@ -282,6 +320,15 @@ def pytest_sessionfinish(
     metric, so the baseline stays valid until per-test cost actually
     drifts.  See ``tests/baselines/README.md`` for schema.
     """
+    # Worker path (pytest-xdist): publish the accumulator to
+    # ``workeroutput`` so the controller can sum it in
+    # ``pytest_testnodedown``, then return -- workers do not run the
+    # regression rail (they only see their own slice of the suite,
+    # so per-test math on the worker is meaningless).
+    workeroutput = getattr(session.config, "workeroutput", None)
+    if workeroutput is not None:
+        workeroutput[_WORKEROUTPUT_KEY] = _unit_elapsed_secs
+        return
     if _suite_start is None or _FUZZ_PROFILE_ACTIVE:
         return
     if not any(item.get_closest_marker("unit") for item in session.items):

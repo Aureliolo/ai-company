@@ -136,66 +136,65 @@ async def test_update_persists_and_emits_api_project_updated() -> None:
     assert event["status"] == updated.status.value
 
 
-async def test_create_raises_when_project_already_exists() -> None:
-    """``create`` rejects existing ids; one WARNING audit fires.
+@pytest.mark.parametrize(
+    ("mode", "event_name", "expected_exc", "expected_error_type"),
+    [
+        (
+            "create-duplicate",
+            API_PROJECT_CREATED,
+            DuplicateRecordError,
+            "DuplicateRecordError",
+        ),
+        (
+            "update-missing",
+            API_PROJECT_UPDATED,
+            RecordNotFoundError,
+            "RecordNotFoundError",
+        ),
+    ],
+    ids=["create-duplicate", "update-missing"],
+)
+async def test_mutation_failures_emit_single_warning_audit(
+    mode: str,
+    event_name: str,
+    expected_exc: type[Exception],
+    expected_error_type: str,
+) -> None:
+    """Failure paths fire exactly one WARNING audit; INFO success must not fire.
 
-    Pins the atomic-create contract: ``API_PROJECT_CREATED`` at INFO
-    must NOT fire when the row already exists, AND a single WARNING
-    must fire with ``error_type`` + ``project_id`` so incident triage
-    can correlate the failure (CLAUDE.md `## Logging`).
+    Pins both atomic-mutation contracts (``create`` rejecting an
+    existing id, ``update`` rejecting a missing id) -- the success
+    INFO event must NOT fire, AND a single WARNING with
+    ``error_type`` + ``project_id`` must fire so incident triage can
+    correlate the failure (CLAUDE.md `## Logging`).
     """
     repo = _FakeProjectRepo()
     service = ProjectService(repo=repo)
-    project = _make_project()
-    await service.create(project)
 
-    with (
-        structlog.testing.capture_logs() as logs,
-        pytest.raises(DuplicateRecordError),
-    ):
+    if mode == "create-duplicate":
+        project = _make_project()
         await service.create(project)
-
-    audits = [log for log in logs if log["event"] == API_PROJECT_CREATED]
-    info_audits = [log for log in audits if log.get("log_level") == "info"]
-    warning_audits = [log for log in audits if log.get("log_level") == "warning"]
-    assert info_audits == [], (
-        f"no INFO success audit may fire on duplicate create -- got {info_audits}"
-    )
-    assert len(warning_audits) == 1, (
-        f"expected one WARNING audit on duplicate create -- got {warning_audits}"
-    )
-    assert warning_audits[0]["error_type"] == "DuplicateRecordError"
-    assert warning_audits[0]["project_id"] == project.id
-
-
-async def test_update_raises_when_project_missing() -> None:
-    """``update`` rejects missing ids; one WARNING audit fires.
-
-    Pins the atomic-update contract: ``API_PROJECT_UPDATED`` at INFO
-    must NOT fire when the row does not exist, AND a single WARNING
-    must fire with ``error_type`` + ``project_id`` so incident triage
-    can correlate the failure.
-    """
-    repo = _FakeProjectRepo()
-    service = ProjectService(repo=repo)
-    project = _make_project(project_id="proj-ghost")
+        call = service.create(project)
+    else:  # "update-missing"
+        project = _make_project(project_id="proj-ghost")
+        call = service.update(project)
 
     with (
         structlog.testing.capture_logs() as logs,
-        pytest.raises(RecordNotFoundError),
+        pytest.raises(expected_exc),
     ):
-        await service.update(project)
+        await call
 
-    audits = [log for log in logs if log["event"] == API_PROJECT_UPDATED]
+    audits = [log for log in logs if log["event"] == event_name]
     info_audits = [log for log in audits if log.get("log_level") == "info"]
     warning_audits = [log for log in audits if log.get("log_level") == "warning"]
     assert info_audits == [], (
-        f"no INFO success audit may fire on update of missing row -- got {info_audits}"
+        f"no INFO success audit may fire on {mode} -- got {info_audits}"
     )
     assert len(warning_audits) == 1, (
-        f"expected one WARNING audit on missing-row update -- got {warning_audits}"
+        f"expected one WARNING audit on {mode} -- got {warning_audits}"
     )
-    assert warning_audits[0]["error_type"] == "RecordNotFoundError"
+    assert warning_audits[0]["error_type"] == expected_error_type
     assert warning_audits[0]["project_id"] == project.id
 
 
