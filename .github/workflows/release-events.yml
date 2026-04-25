@@ -87,6 +87,16 @@ jobs:
       - name: Compose + post event
         env:
           GH_TOKEN: ${{ github.token }}
+          # ``gh issue list`` / ``gh issue create`` infer the target
+          # repo from the current git remote when neither ``--repo``
+          # nor ``GH_REPO`` is set, falling back to a hard ``fatal:
+          # not a git repository`` error in workflows that do not
+          # check out the source. This job intentionally does not
+          # check out (it only manipulates issues), so we set
+          # ``GH_REPO`` explicitly to skip the git probe. Without it,
+          # every Auto Rollover / Test Signing completion that
+          # triggers this fan-in fails at the first gh call.
+          GH_REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           SERVER_URL: ${{ github.server_url }}
           REPO: ${{ github.repository }}
