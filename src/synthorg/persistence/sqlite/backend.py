@@ -338,8 +338,14 @@ class SQLitePersistenceBackend:
     def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active connection."""
         assert self._db is not None  # noqa: S101
-        self._artifacts = SQLiteArtifactRepository(self._db)
-        self._projects = SQLiteProjectRepository(self._db)
+        self._artifacts = SQLiteArtifactRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._projects = SQLiteProjectRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
         self._tasks = SQLiteTaskRepository(self._db)
         self._cost_records = SQLiteCostRecordRepository(self._db)
         self._messages = SQLiteMessageRepository(self._db)

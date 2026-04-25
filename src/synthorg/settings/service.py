@@ -17,6 +17,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
     SETTINGS_CACHE_INVALIDATED,
+    SETTINGS_DELETE_FAILED,
     SETTINGS_ENCRYPTION_ERROR,
     SETTINGS_NOT_FOUND,
     SETTINGS_NOTIFICATION_FAILED,
@@ -832,7 +833,7 @@ class SettingsService:
             removed_keys = await self._repository.delete_namespace_returning_keys(ns)
         except Exception as exc:
             logger.warning(
-                SETTINGS_VALUE_DELETED,
+                SETTINGS_DELETE_FAILED,
                 namespace=namespace,
                 phase="delete_namespace_returning_keys",
                 error_type=type(exc).__name__,

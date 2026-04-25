@@ -109,7 +109,7 @@ def positive_int(raw: object) -> int | None:
     return candidate if candidate > 0 else None
 
 
-def load_baseline_snapshot(path: Path) -> BaselineSnapshot | None:
+def load_baseline_snapshot(path: Path) -> BaselineSnapshot | None:  # noqa: PLR0911
     """Parse and validate the baseline file at *path*.
 
     Returns ``None`` when the file is missing, malformed, or missing
@@ -152,10 +152,19 @@ def load_baseline_snapshot(path: Path) -> BaselineSnapshot | None:
             return None
         per_test_ms = baseline_secs * 1000.0 / test_count
 
-    threshold_ratio = positive_finite_float(
-        baseline.get("regression_threshold_ratio"),
-    )
-    if threshold_ratio is None:
+    if "regression_threshold_ratio" in baseline:
+        # Present-but-invalid is a typo we want surfaced, not silently
+        # masked by the default.  A baseline that says
+        # ``"regression_threshold_ratio": "fast"`` should reject the
+        # baseline outright (caller treats ``None`` as "skip the
+        # regression check"), not coerce to 1.3 and trip the rail on
+        # the next slow run.
+        threshold_ratio = positive_finite_float(
+            baseline.get("regression_threshold_ratio"),
+        )
+        if threshold_ratio is None:
+            return None
+    else:
         threshold_ratio = _DEFAULT_THRESHOLD_RATIO
 
     return BaselineSnapshot(

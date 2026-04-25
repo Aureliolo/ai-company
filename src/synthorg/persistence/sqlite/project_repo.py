@@ -58,7 +58,12 @@ class SQLiteProjectRepository:
             set to ``aiosqlite.Row``.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
         # ``aiosqlite.Connection`` runs every command on a dedicated
         # worker thread, but transactions are connection-scoped: two
@@ -67,12 +72,17 @@ class SQLiteProjectRepository:
         # ``execute`` + ``commit`` can interleave with coroutine B's
         # statements -- B's writes get committed by A's
         # ``commit`` (or rolled back by A's ``rollback``), breaking
-        # transaction atomicity.  This lock serialises every write
-        # transaction (create / update / save / delete) on this repo
-        # so each one runs ``execute`` -> ``commit``/``rollback`` as
-        # an atomic unit.  Reads are not gated -- they don't open
-        # transactions in autocommit mode.
-        self._write_lock = asyncio.Lock()
+        # transaction atomicity.  Inject the shared
+        # ``SQLitePersistenceBackend._shared_write_lock`` so that every
+        # repo using the same connection serialises through one lock;
+        # writes from a sibling repository (e.g. artifact + project
+        # under the same connection) cannot interleave their
+        # ``execute`` -> ``commit``/``rollback`` sequence.  Reads stay
+        # un-gated -- they don't open transactions in autocommit mode.
+        # Fall back to a private lock when constructed standalone (e.g.
+        # in unit tests that build a single repo against an in-memory
+        # connection).
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     @staticmethod
     def _row_params(project: Project) -> tuple[object, ...]:

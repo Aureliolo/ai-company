@@ -372,7 +372,7 @@ class _FakeSettingsRepository:
     async def delete_namespace_returning_keys(
         self,
         namespace: str,
-    ) -> tuple[str, ...]:
+    ) -> tuple[NotBlankStr, ...]:
         return ()
 
 

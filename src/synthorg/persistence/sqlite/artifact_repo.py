@@ -59,16 +59,53 @@ class SQLiteArtifactRepository:
             set to ``aiosqlite.Row``.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
         # Serialise write transactions on the shared
         # ``aiosqlite.Connection`` -- without this lock, concurrent
-        # ``save``/``delete`` coroutines can interleave their
-        # ``execute`` + ``commit`` calls within the same connection-
-        # scoped transaction, breaking atomicity (one commit / rollback
-        # affects the other's writes).  See the matching note in
-        # ``project_repo.py``.
-        self._write_lock = asyncio.Lock()
+        # writes from this repo or any *sibling* repo that shares the
+        # same connection can interleave their ``execute`` + ``commit``
+        # calls inside the same connection-scoped transaction context,
+        # breaking atomicity (one commit / rollback affects the other's
+        # writes).  Inject the shared
+        # ``SQLitePersistenceBackend._shared_write_lock`` so every repo
+        # talking to the same connection serialises through one lock;
+        # fall back to a private lock when constructed standalone (e.g.
+        # in unit tests that build a single repo against an in-memory
+        # connection).
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+
+    async def _safe_rollback(self) -> None:
+        """Best-effort rollback on the shared connection.
+
+        ``SQLiteArtifactRepository`` shares a single
+        :class:`aiosqlite.Connection` across requests.  When
+        ``execute()`` / ``commit()`` raises mid-write, leaving the
+        transaction open lets later calls inherit the failed state or
+        keep the DB locked.  Rolling back here clears the per-write
+        transaction without disturbing successful sibling repositories
+        that share the same connection.
+
+        The rollback itself is wrapped: a secondary failure (e.g. the
+        connection is already closed) must not mask the original error
+        the caller is propagating.  We DO log the rollback failure so
+        a tainted shared connection leaves a trail in observability
+        instead of silently degrading later writes.
+        """
+        try:
+            await self._db.rollback()
+        except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_SAVE_FAILED,
+                error_type=type(rollback_exc).__name__,
+                error=safe_error_description(rollback_exc),
+                rollback_failed=True,
+            )
 
     async def save(self, artifact: Artifact) -> bool:
         """Persist an artifact atomically; return whether it was inserted.
@@ -147,6 +184,7 @@ WHERE id=?""",
                     )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback()
                 msg = f"Failed to save artifact {artifact.id!r}"
                 logger.warning(
                     PERSISTENCE_ARTIFACT_SAVE_FAILED,
@@ -283,6 +321,7 @@ WHERE id=?""",
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback()
                 msg = f"Failed to delete artifact {artifact_id!r}"
                 logger.warning(
                     PERSISTENCE_ARTIFACT_DELETE_FAILED,
