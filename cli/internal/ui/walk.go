@@ -347,12 +347,17 @@ func (m walkModel) advance() (tea.Model, tea.Cmd) {
 }
 
 // toggleView flips between highlights and commits, or sets a flash message
-// when the current version has no Highlights block.
+// when the current version has no Highlights block. The flash message is
+// transient guidance that pairs with the keymap footer's `[c] disabled`
+// indicator, so we treat it like a HintTip and suppress it under
+// `hints=never` -- the footer already conveys the state for that mode.
 func (m walkModel) toggleView() walkModel {
 	if !m.toggleable[m.idx] {
-		m.flashMsg = "No AI highlights for this version -- showing commit log."
-		// flashMsg gained a line: shrink the viewport so the layout still fits.
-		m.viewport.SetHeight(m.viewportHeight())
+		if m.opts.Hints != "never" {
+			m.flashMsg = "No AI highlights for this version -- showing commit log."
+			// flashMsg gained a line: shrink the viewport so the layout still fits.
+			m.viewport.SetHeight(m.viewportHeight())
+		}
 		return m
 	}
 	if m.view == viewHighlights {
