@@ -33,6 +33,7 @@ from synthorg.persistence.preset_repository import (
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.persistence.ssrf_violation_repo import SsrfViolationRepository
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.persistence.training_repos import (
     TrainingPlanRepository,
@@ -405,6 +406,32 @@ class _FakeProjectRepository:
         return ()
 
     async def delete(self, project_id: NotBlankStr) -> bool:
+        return False
+
+
+class _FakeSsrfViolationRepository:
+    async def save(self, violation: Any) -> None:
+        pass
+
+    async def get(self, violation_id: NotBlankStr) -> Any | None:
+        return None
+
+    async def list_violations(
+        self,
+        *,
+        status: Any | None = None,
+        limit: int = 100,
+    ) -> tuple[Any, ...]:
+        return ()
+
+    async def update_status(
+        self,
+        violation_id: NotBlankStr,
+        *,
+        status: Any,
+        resolved_by: NotBlankStr,
+        resolved_at: AwareDatetime,
+    ) -> bool:
         return False
 
 
@@ -800,6 +827,12 @@ class TestProtocolCompliance:
 
     def test_fake_project_repo_is_project_repository(self) -> None:
         assert isinstance(_FakeProjectRepository(), ProjectRepository)
+
+    def test_fake_ssrf_violation_repo_is_ssrf_violation_repository(self) -> None:
+        assert isinstance(
+            _FakeSsrfViolationRepository(),
+            SsrfViolationRepository,
+        )
 
     def test_fake_preset_repo_is_personality_preset_repository(self) -> None:
         assert isinstance(

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.enums import ProjectStatus  # noqa: TC001
 from synthorg.core.project import Project  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_PROJECT_CREATED,
     API_PROJECT_DELETED,
@@ -54,9 +54,21 @@ class ProjectService:
             The project, or ``None`` when no row matches.
 
         Raises:
-            QueryError: Repository read failure.
+            QueryError: Repository read failure (logged at WARNING
+                before propagating).
         """
-        return await self._repo.get(project_id)
+        try:
+            return await self._repo.get(project_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_PROJECT_LISTED,
+                project_id=project_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
 
     async def list_projects(
         self,
@@ -77,12 +89,25 @@ class ProjectService:
             Tuple of matching projects in repository order.
 
         Raises:
-            QueryError: Repository read failure.
+            QueryError: Repository read failure (logged at WARNING
+                before propagating).
         """
-        projects = await self._repo.list_projects(
-            status=status,
-            lead=lead,
-        )
+        try:
+            projects = await self._repo.list_projects(
+                status=status,
+                lead=lead,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_PROJECT_LISTED,
+                status=status.value if status is not None else None,
+                lead=lead,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.debug(API_PROJECT_LISTED, count=len(projects))
         return projects
 
@@ -97,10 +122,22 @@ class ProjectService:
 
         Raises:
             ConstraintViolationError: Duplicate id or invalid foreign
-                reference.
-            QueryError: Repository write failure.
+                reference (logged at WARNING before propagating).
+            QueryError: Repository write failure (logged at WARNING
+                before propagating).
         """
-        await self._repo.save(project)
+        try:
+            await self._repo.save(project)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_PROJECT_CREATED,
+                project_id=project.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.info(
             API_PROJECT_CREATED,
             project_id=project.id,
@@ -119,10 +156,23 @@ class ProjectService:
             The same project (identity preserved for caller chaining).
 
         Raises:
-            ConstraintViolationError: Invalid foreign reference.
-            QueryError: Repository write failure.
+            ConstraintViolationError: Invalid foreign reference (logged
+                at WARNING before propagating).
+            QueryError: Repository write failure (logged at WARNING
+                before propagating).
         """
-        await self._repo.save(project)
+        try:
+            await self._repo.save(project)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_PROJECT_UPDATED,
+                project_id=project.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.info(
             API_PROJECT_UPDATED,
             project_id=project.id,
@@ -144,9 +194,21 @@ class ProjectService:
             ``True`` when a row was removed, ``False`` when no row matched.
 
         Raises:
-            QueryError: Repository write failure.
+            QueryError: Repository write failure (logged at WARNING
+                before propagating).
         """
-        deleted = await self._repo.delete(project_id)
+        try:
+            deleted = await self._repo.delete(project_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_PROJECT_DELETED,
+                project_id=project_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         if deleted:
             logger.info(
                 API_PROJECT_DELETED,

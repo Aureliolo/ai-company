@@ -247,15 +247,29 @@ def pytest_sessionfinish(
     baseline_secs, baseline_count, threshold_ratio = loaded
     unit_count = sum(1 for item in session.items if item.get_closest_marker("unit"))
     non_unit_count = len(session.items) - unit_count
-    # Only compare against baseline when the session is (roughly) the
-    # full unit suite and nothing else.  The baseline measures unit-
-    # test time only; ``elapsed`` is total wall-clock including
-    # integration/conformance/e2e tests when mixed in.
+    # Only compare against baseline when the session contains
+    # (roughly) the full unit suite.  ``non_unit_count`` is logged for
+    # diagnostics but does NOT disable the check -- mixed CI runs
+    # (``pytest tests/`` with ``RUN_INTEGRATION_TESTS=1``) still need
+    # regression detection.  ``elapsed`` includes the non-unit time so
+    # the per-test math here is conservative for the unit slice; that
+    # is intentional: when a unit test's per-test cost truly regresses,
+    # the rail still trips.  Pure non-unit runs (``unit_count == 0``)
+    # fall through to ``cannot_compute``.
     partial_run = bool(baseline_count) and unit_count < baseline_count * 0.8
     cannot_compute = baseline_count <= 0 or unit_count <= 0
-    if partial_run or non_unit_count > 0 or cannot_compute:
+    if partial_run or cannot_compute:
         return
     elapsed = time.monotonic() - _suite_start
+    # When the session is mixed (unit + integration), subtract a
+    # conservative per-non-unit budget so we are comparing per-unit-ms
+    # like-for-like with the baseline.  Use the baseline's own per-test
+    # cost as the budget -- non-unit tests are typically slower, so
+    # this errs on the side of *not* tripping the rail.
+    if non_unit_count > 0:
+        baseline_per_test_ms = baseline_secs * 1000.0 / baseline_count
+        non_unit_budget_secs = non_unit_count * baseline_per_test_ms / 1000.0
+        elapsed = max(0.0, elapsed - non_unit_budget_secs)
     baseline_per_test_ms = baseline_secs * 1000.0 / baseline_count
     current_per_test_ms = elapsed * 1000.0 / unit_count
     if current_per_test_ms <= baseline_per_test_ms * threshold_ratio:
@@ -270,7 +284,11 @@ def pytest_sessionfinish(
     # Hard fail: exit status 3 signals test-level failure to CI
     # and pre-push hooks.  This is intentional; regressions
     # beyond the tolerance must block the change, not just warn.
-    session.exitstatus = 3
+    # Never overwrite an already-failing exit status -- doing so
+    # would mask the primary failure mode (test failures, collection
+    # errors, fixture errors) and make CI diagnostics noisier.
+    if session.exitstatus == 0:
+        session.exitstatus = 3
 
 
 def clear_logging_state() -> None:

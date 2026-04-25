@@ -204,11 +204,16 @@ class ProviderController(Controller):
                 caps_by_id = await driver.batch_get_capabilities(
                     tuple(m.id for m in provider.models),
                 )
-            except RetryExhaustedError as exc:
-                # Retry exhaustion signals provider unhealthiness, not a
-                # per-model classification issue.  Degrade to "no
-                # capability data" rather than 500 -- the response still
-                # carries the static catalog from `provider.models`.
+            except* RetryExhaustedError as exc_group:
+                # ``BaseCompletionProvider.batch_get_capabilities``
+                # fans out via ``asyncio.TaskGroup``, which wraps any
+                # raised exception in an ``ExceptionGroup``.  ``except*``
+                # unpacks that wrapper so we still catch retry
+                # exhaustion regardless of how many sub-exceptions the
+                # group carries.  Retry exhaustion signals provider
+                # unhealthiness, not a per-model classification issue --
+                # degrade to "no capability data" rather than 500.
+                exc = exc_group.exceptions[0]
                 logger.warning(
                     API_PROVIDER_USAGE_ENRICHMENT_FAILED,
                     provider=name,

@@ -57,6 +57,12 @@ class CostRecordRepository(Protocol):
             Total cost in the configured currency.
 
         Raises:
+            MixedCurrencyAggregationError: If the matched cost records
+                span more than one currency.  Aggregation is rejected
+                rather than silently summing across currencies; the
+                controller maps this to HTTP 409.  Filter by
+                ``agent_id``/``task_id`` (or by date window in caller
+                code) to scope the aggregation to a single currency.
             PersistenceError: If the operation fails.
         """
         ...

@@ -15,7 +15,7 @@ this layer via :data:`API_SSRF_VIOLATION_STATUS_UPDATED`.
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SSRF_VIOLATION_LISTED,
     API_SSRF_VIOLATION_RECORDED,
@@ -64,10 +64,22 @@ class SsrfViolationService:
 
         Raises:
             DuplicateRecordError: A violation with the same id already
-                exists.
-            QueryError: Repository write failure.
+                exists (logged at WARNING before propagating).
+            QueryError: Repository write failure (logged at WARNING
+                before propagating).
         """
-        await self._repo.save(violation)
+        try:
+            await self._repo.save(violation)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_SSRF_VIOLATION_RECORDED,
+                violation_id=violation.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.info(
             API_SSRF_VIOLATION_RECORDED,
             violation_id=violation.id,
@@ -90,9 +102,21 @@ class SsrfViolationService:
             The violation, or ``None`` when no row matches.
 
         Raises:
-            QueryError: Repository read failure.
+            QueryError: Repository read failure (logged at WARNING
+                before propagating).
         """
-        return await self._repo.get(violation_id)
+        try:
+            return await self._repo.get(violation_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_SSRF_VIOLATION_LISTED,
+                violation_id=violation_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
 
     async def list_violations(
         self,
@@ -114,9 +138,22 @@ class SsrfViolationService:
 
         Raises:
             ValueError: If *limit* is not positive.
-            QueryError: Repository read failure.
+            QueryError: Repository read failure (logged at WARNING
+                before propagating).
         """
-        rows = await self._repo.list_violations(status=status, limit=limit)
+        try:
+            rows = await self._repo.list_violations(status=status, limit=limit)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_SSRF_VIOLATION_LISTED,
+                status_filter=status.value if status is not None else None,
+                limit=limit,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.debug(
             API_SSRF_VIOLATION_LISTED,
             count=len(rows),
@@ -154,19 +191,35 @@ class SsrfViolationService:
 
         Raises:
             ValueError: If *status* is :data:`SsrfViolationStatus.PENDING`.
-            QueryError: Repository write failure.
+            QueryError: Repository write failure (logged at WARNING
+                before propagating).
         """
-        updated = await self._repo.update_status(
-            violation_id,
-            status=status,
-            resolved_by=resolved_by,
-            resolved_at=resolved_at,
-        )
+        try:
+            updated = await self._repo.update_status(
+                violation_id,
+                status=status,
+                resolved_by=resolved_by,
+                resolved_at=resolved_at,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except ValueError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_SSRF_VIOLATION_STATUS_UPDATED,
+                violation_id=violation_id,
+                status=status.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         if updated:
             logger.info(
                 API_SSRF_VIOLATION_STATUS_UPDATED,
                 violation_id=violation_id,
                 status=status.value,
                 resolved_by=resolved_by,
+                resolved_at=resolved_at.isoformat(),
             )
         return updated

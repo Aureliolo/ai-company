@@ -19,6 +19,7 @@ Usage:
 """
 
 import argparse
+import ast
 import io
 import os
 import re
@@ -62,19 +63,31 @@ _RAW_SQL_RE: Final[re.Pattern[str]] = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
-# Mutation audit log calls inside the persistence boundary.  Captures the
-# event constant on the same line as ``logger.info(``/``logger.debug(``/
-# ``logger.warning(`` OR on the immediately following line (the latter
-# is the canonical multi-line shape used across the codebase).  Repos
-# must not log mutations themselves -- the service layer is the audit
-# point.  Per-line opt-out via the existing ``# lint-allow: persistence-
-# boundary -- <reason>`` marker.
-_MUTATION_LOG_RE: Final[re.Pattern[str]] = re.compile(
-    r"""logger\.(?:info|debug|warning)\s*\(\s*
-        (?:\#[^\n]*\n\s*)?                     # optional inline comment
-        (?P<constant>[A-Z][A-Z0-9_]*?_(?:SAVED|CREATED|UPDATED|DELETED|PERSISTED))\b
-    """,
-    re.VERBOSE | re.MULTILINE | re.DOTALL,
+# Mutation audit log calls inside the persistence boundary.  Repos must
+# not log mutations themselves -- the service layer is the audit point.
+# Per-line opt-out via the existing
+# ``# lint-allow: persistence-boundary -- <reason>`` marker.
+#
+# Detection lives in :func:`_scan_persistence_mutation_logs` and uses
+# the AST so it catches the full surface: ``logger.info``,
+# ``self._logger.warning``, renamed loggers, *every* logging level, and
+# events passed by keyword.  Comments and docstrings are ignored by
+# construction (they are not ``Call`` nodes).
+
+# Logging methods whose first positional / ``event`` keyword argument is
+# inspected for a mutation-suffix constant.  ``exception`` / ``critical``
+# are included so the gate cannot be bypassed by widening the level.
+_LOGGING_METHODS: Final[frozenset[str]] = frozenset(
+    {"debug", "info", "warning", "error", "exception", "critical"}
+)
+
+# Suffixes that mark an entity-mutation audit constant.
+_MUTATION_SUFFIXES: Final[tuple[str, ...]] = (
+    "_SAVED",
+    "_CREATED",
+    "_UPDATED",
+    "_DELETED",
+    "_PERSISTED",
 )
 
 # Lifecycle / infrastructure events whose constants happen to end in a
@@ -229,39 +242,99 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
     return issues
 
 
+def _is_logger_call(call: ast.Call) -> str | None:
+    """Return the logging level if *call* is a logger call, else ``None``.
+
+    Recognises any attribute chain ending in a logging level
+    (``logger.info``, ``self._logger.warning``, ``cls.log.error``, ...)
+    so the gate cannot be bypassed by renaming the logger or hiding it
+    behind ``self`` / ``cls``.
+    """
+    if not isinstance(call.func, ast.Attribute):
+        return None
+    if call.func.attr not in _LOGGING_METHODS:
+        return None
+    return call.func.attr
+
+
+def _extract_event_constant(call: ast.Call) -> ast.Name | None:
+    """Return the ``Name`` node naming the event constant for *call*.
+
+    Logging calls in this codebase pass the event constant as the first
+    positional argument (`logger.info(EVENT, key=...)`).  Some sites
+    pass it via the ``event`` keyword instead.  Only ``Name`` references
+    count -- string literals and dynamic expressions are ignored
+    because the audit-event protocol mandates module-level constants.
+    """
+    if call.args:
+        first = call.args[0]
+        if isinstance(first, ast.Name):
+            return first
+    for kw in call.keywords:
+        if kw.arg == "event" and isinstance(kw.value, ast.Name):
+            return kw.value
+    return None
+
+
+def _has_mutation_suffix(constant: str) -> bool:
+    """``True`` when *constant* ends in a mutation-suffix marker."""
+    return any(constant.endswith(suffix) for suffix in _MUTATION_SUFFIXES)
+
+
 def _scan_persistence_mutation_logs(file_path: Path, rel: str) -> list[str]:
     """Return mutation-log violations for a persistence-boundary file.
 
     Repos must not log mutations themselves; service-layer events are
-    the canonical audit point.  This scanner finds every
-    ``logger.info|debug|warning(<EVENT>)`` whose ``EVENT`` constant ends
-    in ``_SAVED``/``_CREATED``/``_UPDATED``/``_DELETED``/``_PERSISTED``,
+    the canonical audit point.  This scanner walks the file's AST and
+    finds every logging call whose event-constant argument ends in
+    ``_SAVED``/``_CREATED``/``_UPDATED``/``_DELETED``/``_PERSISTED``,
     skipping (a) sanctioned lifecycle constants on
     ``_MUTATION_LOG_ALLOWED_CONSTANTS`` and (b) any line that carries
     the ``# lint-allow: persistence-boundary -- <reason>`` marker.
+
+    Detection covers ``logger.<level>(EVENT, ...)``,
+    ``self._logger.<level>(EVENT, ...)``, renamed-attribute loggers,
+    every standard logging level (debug/info/warning/error/exception/
+    critical), and the ``event=`` keyword form -- all of which the
+    previous regex-based scanner would silently miss.  Comments and
+    docstrings are ignored by construction (they are not ``Call``
+    nodes).
     """
     try:
         text = file_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         return [f"{rel}:0: unable to scan file: {exc}"]
+    try:
+        tree = ast.parse(text, filename=str(file_path))
+    except SyntaxError as exc:
+        return [f"{rel}:{exc.lineno or 0}: unable to parse file: {exc.msg}"]
     issues: list[str] = []
     lines = text.splitlines()
-    for match in _MUTATION_LOG_RE.finditer(text):
-        constant = match.group("constant")
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if _is_logger_call(node) is None:
+            continue
+        const_node = _extract_event_constant(node)
+        if const_node is None:
+            continue
+        constant = const_node.id
+        if not _has_mutation_suffix(constant):
+            continue
         if constant in _MUTATION_LOG_ALLOWED_CONSTANTS:
             continue
-        # Compute the line where ``logger.<level>(`` starts so the
-        # violation message points at the call, not the constant.
-        line_no = text.count("\n", 0, match.start()) + 1
-        # Allow per-line opt-out on the ``logger.<level>(`` line OR on
-        # the constant's line (multi-line calls span both).
-        constant_line_no = text.count("\n", 0, match.start("constant")) + 1
-        if _line_has_trailing_marker(lines[line_no - 1]) or _line_has_trailing_marker(
-            lines[constant_line_no - 1]
-        ):
+        # Allow per-line opt-out on either the ``logger.<level>(`` line
+        # OR the line carrying the constant -- multi-line calls span
+        # both, and the marker can be placed on whichever read more
+        # naturally.
+        call_line_no = node.lineno
+        constant_line_no = const_node.lineno
+        if _line_has_trailing_marker(
+            lines[call_line_no - 1]
+        ) or _line_has_trailing_marker(lines[constant_line_no - 1]):
             continue
         issues.append(
-            f"{rel}:{line_no}: repo-level mutation audit log "
+            f"{rel}:{call_line_no}: repo-level mutation audit log "
             f"'{constant}' must move to the service layer "
             "(repositories must not log mutations themselves; see "
             "docs/reference/persistence-boundary.md). Add "

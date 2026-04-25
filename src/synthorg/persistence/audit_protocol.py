@@ -14,8 +14,13 @@ class AuditRepository(Protocol):
     """Append-only persistence + query interface for AuditEntry.
 
     Audit entries are immutable records of security evaluations.
-    No update or delete operations are provided to preserve audit
-    integrity.
+    No update operations are provided to preserve audit integrity.
+
+    The single delete-style operation is :meth:`purge_before`, the
+    retention sweeper used to enforce the operator-configurable
+    ``security.audit_retention_days`` window.  This is a deliberate
+    exception, not a per-row mutation API; see :meth:`purge_before`
+    for the GDPR/forensic tradeoff.
     """
 
     async def save(self, entry: AuditEntry) -> None:

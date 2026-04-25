@@ -96,9 +96,22 @@ class ArtifactService:
         return artifact
 
     async def save(self, artifact: Artifact) -> None:
-        """Upsert a caller-constructed artifact (used by content upload)."""
+        """Upsert a caller-constructed artifact (used by content upload).
+
+        ``save()`` is an upsert -- the same path is taken whether the
+        row exists or not.  Probe the repository for the artifact id
+        first so the audit event reflects the actual lifecycle:
+        ``API_ARTIFACT_CREATED`` for new rows, ``API_ARTIFACT_UPDATED``
+        for an in-place upsert.  Operators keying alerts on
+        ``API_ARTIFACT_UPDATED`` must not see "phantom updates" for
+        first-write upload flows.
+        """
+        existing = await self._repo.get(artifact.id)
         await self._repo.save(artifact)
-        logger.info(API_ARTIFACT_UPDATED, artifact_id=artifact.id)
+        logger.info(
+            API_ARTIFACT_CREATED if existing is None else API_ARTIFACT_UPDATED,
+            artifact_id=artifact.id,
+        )
 
     async def delete(self, artifact_id: NotBlankStr) -> bool:
         """Delete an artifact; returns ``True`` when a row was removed."""

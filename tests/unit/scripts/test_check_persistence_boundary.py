@@ -273,11 +273,17 @@ def test_mutation_log_inside_persistence_flagged(
         "logger.warning(PERSISTENCE_USER_SAVE_FAILED, user_id=uid)\n",
         "logger.warning(PERSISTENCE_TASK_DELETE_FAILED, task_id=tid)\n",
         "logger.warning(PERSISTENCE_MESSAGE_DUPLICATE, msg_id=mid)\n",
-        # exception paths inside repos.
+        # exception paths inside repos (event has no mutation suffix).
         "logger.exception(PERSISTENCE_USER_SAVE_FAILED, user_id=uid)\n",
         # Non-mutation event names that happen to mention SAVED in
         # context but not as a constant suffix.
         "logger.info('user saved successfully')\n",
+        # AST-only safety: comment-only mentions of mutation-suffix
+        # constants must not fire (regex scanner could false-positive).
+        "# logger.info(PERSISTENCE_USER_SAVED) -- removed by #1234\n",
+        # AST-only safety: docstring mentions of mutation constants
+        # also must not fire.
+        '"""Repo that used to call logger.info(PERSISTENCE_USER_SAVED)."""\n',
     ],
 )
 def test_non_mutation_logs_inside_persistence_not_flagged(
@@ -294,20 +300,59 @@ def test_non_mutation_logs_inside_persistence_not_flagged(
     assert issues == []
 
 
-def test_mutation_log_marker_suppresses_on_logger_line(tmp_path: Path) -> None:
-    """The lint-allow marker on the ``logger.<level>(`` line silences."""
+@pytest.mark.parametrize(
+    "source",
+    [
+        # Renamed module-level logger.
+        "audit_log.info(PERSISTENCE_USER_SAVED, user_id=u.id)\n",
+        # Instance-attribute logger (catches the ``self._logger`` shape
+        # that the previous regex-based scanner missed).
+        "self._logger.info(PERSISTENCE_USER_SAVED, user_id=u.id)\n",
+        # Class-attribute logger.
+        "cls.log.warning(PERSISTENCE_USER_DELETED, user_id=u.id)\n",
+        # error / exception / critical levels (not in the original
+        # info|debug|warning regex).
+        "logger.error(PERSISTENCE_USER_DELETED, user_id=u.id)\n",
+        "logger.critical(PERSISTENCE_USER_PERSISTED, user_id=u.id)\n",
+        # Event passed via the ``event`` keyword.
+        "logger.info(event=PERSISTENCE_USER_SAVED, user_id=u.id)\n",
+    ],
+)
+def test_ast_scanner_catches_logger_shapes_regex_missed(
+    source: str,
+    tmp_path: Path,
+) -> None:
+    """AST scan catches non-trivial logger shapes the old regex missed."""
     target = tmp_path / "repo.py"
-    target.write_text(
-        "logger.info(PERSISTENCE_BACKEND_CREATED)  "
-        "# lint-allow: persistence-boundary -- backend lifecycle event\n",
-        encoding="utf-8",
-    )
+    target.write_text(source, encoding="utf-8")
     issues = _MODULE._scan_persistence_mutation_logs(  # type: ignore[attr-defined]
         target,
-        "src/synthorg/persistence/factory.py",
+        "src/synthorg/persistence/sqlite/example_repo.py",
     )
-    # Allowed-constant short-circuit also covers this case, so we use a
-    # constant NOT in the allowlist to test the marker path:
+    assert len(issues) == 1, f"AST scan should flag {source!r}, got {issues}"
+    assert "mutation audit log" in issues[0]
+
+
+def test_ast_scanner_recovers_from_syntax_error(tmp_path: Path) -> None:
+    """A file that fails to parse yields a single diagnostic, not a crash."""
+    target = tmp_path / "broken.py"
+    target.write_text("logger.info(PERSISTENCE_USER_SAVED  # missing close\n")
+    issues = _MODULE._scan_persistence_mutation_logs(  # type: ignore[attr-defined]
+        target,
+        "src/synthorg/persistence/sqlite/broken_repo.py",
+    )
+    assert len(issues) == 1
+    assert "unable to parse file" in issues[0]
+
+
+def test_mutation_log_marker_suppresses_on_logger_line(tmp_path: Path) -> None:
+    """The lint-allow marker on the ``logger.<level>(`` line silences.
+
+    Uses a constant NOT in the allowlist so we exercise the marker
+    path (the allowlist short-circuit already covers the lifecycle
+    constants and is tested separately).
+    """
+    target = tmp_path / "repo.py"
     target.write_text(
         "logger.info(PERSISTENCE_USER_SAVED, user_id=u.id)  "
         "# lint-allow: persistence-boundary -- legacy shim, removed in #99\n",

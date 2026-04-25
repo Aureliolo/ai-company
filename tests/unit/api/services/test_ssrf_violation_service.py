@@ -131,7 +131,13 @@ async def test_record_persists_and_emits_audit() -> None:
 
 
 async def test_record_propagates_duplicate_error() -> None:
-    """Duplicate persistence errors propagate and emit no audit."""
+    """Duplicate persistence errors propagate; only the warning audit fires.
+
+    CLAUDE.md `## Logging`: "All error paths must log at WARNING or
+    ERROR with context before raising."  The success-shape INFO event
+    must NOT fire (no full payload), but a WARNING with ``error_type``
+    is required so incident triage can correlate the failure.
+    """
     repo = _FakeSsrfViolationRepo()
     service = SsrfViolationService(repo=repo)
     violation = _make_violation()
@@ -143,13 +149,16 @@ async def test_record_propagates_duplicate_error() -> None:
     ):
         await service.record(violation)
 
-    duplicate_audits = [
-        log for log in logs if log["event"] == API_SSRF_VIOLATION_RECORDED
-    ]
-    assert duplicate_audits == [], (
-        "no audit must fire when the underlying save raises -- audits "
-        "are an after-success event, never an attempted-but-failed one"
+    audits = [log for log in logs if log["event"] == API_SSRF_VIOLATION_RECORDED]
+    info_audits = [log for log in audits if log.get("log_level") == "info"]
+    warning_audits = [log for log in audits if log.get("log_level") == "warning"]
+    assert info_audits == [], (
+        "the success-shape INFO event must NOT fire when save() raises -- "
+        f"got {info_audits}"
     )
+    assert len(warning_audits) == 1
+    assert warning_audits[0]["error_type"] == "DuplicateRecordError"
+    assert warning_audits[0]["violation_id"] == violation.id
 
 
 async def test_get_returns_persisted_violation() -> None:
@@ -231,6 +240,10 @@ async def test_update_status_emits_audit_on_success() -> None:
     assert event["violation_id"] == violation.id
     assert event["status"] == SsrfViolationStatus.ALLOWED.value
     assert event["resolved_by"] == "op-1"
+    # Audit defines the WHO+WHEN contract; both fields must be on the
+    # event payload so dashboards keyed on this event can reconstruct
+    # the resolution timeline without joining tables.
+    assert event["resolved_at"] == resolved_at.isoformat()
 
 
 async def test_update_status_no_audit_when_row_missing() -> None:
