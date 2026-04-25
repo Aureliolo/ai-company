@@ -40,7 +40,9 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_STARTED,
 )
-from synthorg.persistence.repositories import ParkedContextRepository  # noqa: TC001
+from synthorg.persistence.parked_context_protocol import (
+    ParkedContextRepository,  # noqa: TC001
+)
 from synthorg.security.timeout.park_service import ParkService  # noqa: TC001
 from synthorg.security.timeout.parked_context import ParkedContext  # noqa: TC001
 

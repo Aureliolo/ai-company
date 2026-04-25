@@ -39,8 +39,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
 )
+from synthorg.persistence.decision_protocol import DecisionRole  # noqa: TC001
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
-from synthorg.persistence.repositories import DecisionRole  # noqa: TC001
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

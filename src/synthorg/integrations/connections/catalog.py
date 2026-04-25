@@ -36,7 +36,7 @@ from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_EXCHANGED,
     SECRET_RETRIEVAL_FAILED,
 )
-from synthorg.persistence.repositories_integrations import (
+from synthorg.persistence.connection_protocol import (
     ConnectionRepository,  # noqa: TC001
 )
 from synthorg.persistence.secret_backends.protocol import (

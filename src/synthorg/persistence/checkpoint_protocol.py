@@ -1,9 +1,4 @@
-"""Checkpoint and heartbeat repository protocols.
-
-Extracted from ``repositories.py`` to keep that module under the
-800-line budget.  Re-exported from ``repositories`` for backwards
-compatibility so existing import sites keep working.
-"""
+"""Checkpoint and heartbeat repository protocols."""
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 

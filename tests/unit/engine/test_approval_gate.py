@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.engine.approval_gate import ApprovalGate
-from synthorg.persistence.repositories import ParkedContextRepository
+from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.security.timeout.park_service import ParkService
 from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 

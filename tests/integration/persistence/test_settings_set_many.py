@@ -17,7 +17,7 @@ import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
-from synthorg.persistence.repositories import SettingsRepository
+from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 

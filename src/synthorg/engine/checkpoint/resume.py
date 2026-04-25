@@ -31,7 +31,7 @@ from synthorg.providers.models import ChatMessage
 
 if TYPE_CHECKING:
     from synthorg.engine.loop_protocol import ExecutionLoop
-    from synthorg.persistence.repositories import (
+    from synthorg.persistence.checkpoint_protocol import (
         CheckpointRepository,
         HeartbeatRepository,
     )

@@ -31,11 +31,11 @@ from synthorg.observability.events.checkpoint import (
     CHECKPOINT_RECOVERY_RESUME,
     CHECKPOINT_RECOVERY_START,
 )
-from synthorg.persistence.errors import PersistenceError
-from synthorg.persistence.repositories import (
+from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,  # noqa: TC001
     HeartbeatRepository,  # noqa: TC001
 )
+from synthorg.persistence.errors import PersistenceError
 
 logger = get_logger(__name__)
 

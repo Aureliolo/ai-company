@@ -22,7 +22,7 @@ from synthorg.observability.events.integrations import (
     OAUTH_STATE_INVALID,
 )
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
-from synthorg.persistence.repositories_integrations import (
+from synthorg.persistence.connection_protocol import (
     OAuthStateRepository,  # noqa: TC001
 )
 

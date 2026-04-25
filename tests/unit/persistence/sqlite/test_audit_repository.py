@@ -8,8 +8,8 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.persistence.audit_protocol import AuditRepository
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
-from synthorg.persistence.repositories import AuditRepository
 from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )

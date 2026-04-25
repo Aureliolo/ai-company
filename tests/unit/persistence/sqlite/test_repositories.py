@@ -515,7 +515,7 @@ class TestSQLiteRepoProtocolCompliance:
     async def test_task_repo_implements_protocol(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        from synthorg.persistence.repositories import TaskRepository
+        from synthorg.persistence.task_protocol import TaskRepository
 
         repo = SQLiteTaskRepository(migrated_db)
         assert isinstance(repo, TaskRepository)
@@ -523,7 +523,9 @@ class TestSQLiteRepoProtocolCompliance:
     async def test_cost_record_repo_implements_protocol(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        from synthorg.persistence.repositories import CostRecordRepository
+        from synthorg.persistence.cost_record_protocol import (
+            CostRecordRepository,
+        )
 
         repo = SQLiteCostRecordRepository(migrated_db)
         assert isinstance(repo, CostRecordRepository)
@@ -531,7 +533,7 @@ class TestSQLiteRepoProtocolCompliance:
     async def test_message_repo_implements_protocol(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        from synthorg.persistence.repositories import MessageRepository
+        from synthorg.persistence.message_protocol import MessageRepository
 
         repo = SQLiteMessageRepository(migrated_db)
         assert isinstance(repo, MessageRepository)

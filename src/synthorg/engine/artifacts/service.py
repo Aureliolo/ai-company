@@ -27,7 +27,7 @@ from synthorg.observability.events.api import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.persistence.artifact_project_repos import ArtifactRepository
+    from synthorg.persistence.artifact_protocol import ArtifactRepository
 
 logger = get_logger(__name__)
 
