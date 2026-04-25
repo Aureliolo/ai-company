@@ -9,6 +9,17 @@ import time
 from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
 
+# Boot-time guard parity (see synthorg.api.app create_app): every backend
+# boot -- dev, pre-release, prod -- refuses to start with an ephemeral
+# pagination cursor secret. Tests build the app via create_app() so they
+# need a stable value too. Set at module import (before any collection
+# imports cascade through to create_app) and only when not already set,
+# so tests that explicitly drive the env var still control it.
+os.environ.setdefault(
+    "SYNTHORG_PAGINATION_CURSOR_SECRET",
+    "test-suite-stable-cursor-secret-not-a-real-secret",
+)
+
 import aiosqlite
 import pytest
 import structlog

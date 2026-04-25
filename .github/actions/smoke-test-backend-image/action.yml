@@ -72,12 +72,22 @@ runs:
         # The image's setup wizard falls back to ephemeral SQLite when
         # no DATABASE_URL is provided -- sufficient for a liveness
         # smoke without provisioning external state.
+        #
+        # SYNTHORG_PAGINATION_CURSOR_SECRET: final-tag images bake
+        # DEPLOYMENT_ENV=prod, and the prod-strict guard in
+        # synthorg.api.app refuses to start with an ephemeral cursor
+        # secret. Pass a clearly-bogus stable value (>= 16 bytes) so
+        # the smoke test exercises the same boot path as a properly
+        # configured prod deployment without needing real secrets.
+        #
         # NOTE: deliberately NO --rm. If the container crashes
         # immediately at startup, --rm would have docker remove it
         # before the trap's `docker logs` could read it, leaving no
         # forensic trail. We `docker rm -f` explicitly in the trap
         # AFTER the logs are dumped so the postmortem still works.
-        CID=$(docker run -d -p "${HOST_PORT}:${CONTAINER_PORT}" "$IMAGE")
+        CID=$(docker run -d -p "${HOST_PORT}:${CONTAINER_PORT}" \
+          -e SYNTHORG_PAGINATION_CURSOR_SECRET=smoke-test-not-a-real-cursor-secret \
+          "$IMAGE")
         # Always dump the last 50 lines of container logs on exit so
         # flake postmortems have something to look at, then force-rm
         # the container so the runner does not leak it.

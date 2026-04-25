@@ -72,6 +72,7 @@ func TestGenerateCustomPorts(t *testing.T) {
 		LogLevel:           "debug",
 		JWTSecret:          "test-secret-value",
 		SettingsKey:        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		CursorSecret:       "test-cursor-secret-stable-value",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 		BusBackend:         "internal",
@@ -89,6 +90,8 @@ func TestGenerateCustomPorts(t *testing.T) {
 	assertContains(t, yaml, "test-secret-value")
 	assertContains(t, yaml, "SYNTHORG_SETTINGS_KEY")
 	assertContains(t, yaml, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	assertContains(t, yaml, "SYNTHORG_PAGINATION_CURSOR_SECRET")
+	assertContains(t, yaml, "test-cursor-secret-stable-value")
 
 	compareGolden(t, "compose_custom_ports.yml", out)
 }
@@ -354,6 +357,7 @@ func TestGenerateWithSandboxAndSecrets(t *testing.T) {
 		DockerSockGID:      -1,
 		JWTSecret:          "test-secret-value",
 		SettingsKey:        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		CursorSecret:       "test-cursor-secret-stable-value",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 		BusBackend:         "internal",
@@ -368,6 +372,7 @@ func TestGenerateWithSandboxAndSecrets(t *testing.T) {
 	assertContains(t, yaml, `SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"`)
 	assertContains(t, yaml, "SYNTHORG_JWT_SECRET")
 	assertContains(t, yaml, "SYNTHORG_SETTINGS_KEY")
+	assertContains(t, yaml, "SYNTHORG_PAGINATION_CURSOR_SECRET")
 	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock")
 }
 
@@ -387,6 +392,7 @@ func TestGenerateMasterKeyGatedByEncryptSecrets(t *testing.T) {
 		DockerSockGID:      -1,
 		JWTSecret:          "j",
 		SettingsKey:        "s",
+		CursorSecret:       "test-cursor-secret-stable-value",
 		MasterKey:          "m",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
@@ -522,6 +528,7 @@ func TestParamsFromState(t *testing.T) {
 		LogLevel:           "debug",
 		JWTSecret:          "secret",
 		SettingsKey:        "settings-key",
+		CursorSecret:       "test-cursor-secret-stable-value",
 		Sandbox:            true,
 		DockerSock:         "/var/run/docker.sock",
 		PersistenceBackend: "sqlite",
@@ -559,6 +566,9 @@ func TestParamsFromState(t *testing.T) {
 	}
 	if p.SettingsKey != "settings-key" {
 		t.Errorf("SettingsKey = %q, want settings-key", p.SettingsKey)
+	}
+	if p.CursorSecret != "test-cursor-secret-stable-value" {
+		t.Errorf("CursorSecret = %q, want test-cursor-secret-stable-value", p.CursorSecret)
 	}
 	if p.BusBackend != "internal" {
 		t.Errorf("BusBackend = %q, want internal", p.BusBackend)

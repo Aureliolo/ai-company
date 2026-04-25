@@ -25,6 +25,15 @@ import sys
 os.environ["SYNTHORG_DB_PATH"] = ":memory:"
 os.environ.pop("SYNTHORG_DATABASE_URL", None)
 
+# Cursor-secret boot guard parity: synthorg.api.app.create_app refuses
+# to start with an ephemeral pagination cursor secret on every channel.
+# CI invokes this script with no env preset, so supply a stable bogus
+# value before the create_app() call below.
+os.environ.setdefault(
+    "SYNTHORG_PAGINATION_CURSOR_SECRET",
+    "openapi-liveness-stable-cursor-secret-not-a-real-secret",
+)
+
 # Calibrated to the healthy export floor (~237 paths as of audit #79); a
 # small delta tolerates legitimate endpoint additions / deprecations
 # without letting a partial-export regression slip through.  Raise in

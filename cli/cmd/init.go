@@ -121,6 +121,11 @@ func runInitInteractive(cmd *cobra.Command, out *ui.UI) error {
 		if oldState.MasterKey != "" {
 			state.MasterKey = oldState.MasterKey
 		}
+		if oldState.CursorSecret != "" {
+			// Cursor secret rotation invalidates every outstanding pagination
+			// token; preserve across re-init for the same reason as MasterKey.
+			state.CursorSecret = oldState.CursorSecret
+		}
 		// Only reuse Postgres settings from the old state when the user did
 		// not switch backends or change the Postgres port interactively.
 		// Otherwise the TUI choice would be silently reverted.
@@ -260,6 +265,9 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 		if oldState.MasterKey != "" {
 			state.MasterKey = oldState.MasterKey
 		}
+		if oldState.CursorSecret != "" {
+			state.CursorSecret = oldState.CursorSecret
+		}
 		if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
 			return false, err
 		}
@@ -284,6 +292,11 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 	// orphan every stored connection secret.
 	if oldState.MasterKey != "" {
 		state.MasterKey = oldState.MasterKey
+	}
+	// Preserve the pagination cursor secret -- rotating it invalidates every
+	// outstanding cursor token across every restart, same hazard as MasterKey.
+	if oldState.CursorSecret != "" {
+		state.CursorSecret = oldState.CursorSecret
 	}
 	if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
 		return false, err
@@ -732,7 +745,7 @@ func buildState(a setupAnswers) (config.State, error) {
 		return config.State{}, err
 	}
 
-	jwtSecret, settingsKey, masterKey, err := generateInitSecrets()
+	jwtSecret, settingsKey, masterKey, cursorSecret, err := generateInitSecrets()
 	if err != nil {
 		return config.State{}, err
 	}
@@ -766,6 +779,7 @@ func buildState(a setupAnswers) (config.State, error) {
 		JWTSecret:          jwtSecret,
 		SettingsKey:        settingsKey,
 		MasterKey:          masterKey,
+		CursorSecret:       cursorSecret,
 		EncryptSecrets:     a.encryptSecrets,
 		PersistenceBackend: a.persistenceBackend,
 		MemoryBackend:      a.memoryBackend,
@@ -822,24 +836,30 @@ func resolveImageTag(override string) string {
 	return "latest"
 }
 
-// generateInitSecrets creates the JWT, settings encryption, and secret-storage
-// master keys. The settings key and master key are 32 bytes (44-char URL-safe
-// base64) each, matching the format required by Python
-// cryptography.fernet.Fernet. Do NOT change byte counts.
-func generateInitSecrets() (jwtSecret, settingsKey, masterKey string, err error) {
+// generateInitSecrets creates the JWT, settings encryption, secret-storage
+// master, and pagination cursor signing keys. The settings key and master
+// key are 32 bytes (44-char URL-safe base64) each, matching the format
+// required by Python cryptography.fernet.Fernet. Do NOT change byte counts.
+// The cursor secret is 32 bytes (well above the backend's 16-byte minimum)
+// so the boot guard accepts it unconditionally on every channel.
+func generateInitSecrets() (jwtSecret, settingsKey, masterKey, cursorSecret string, err error) {
 	jwtSecret, err = generateSecret(48)
 	if err != nil {
-		return "", "", "", fmt.Errorf("generating JWT secret: %w", err)
+		return "", "", "", "", fmt.Errorf("generating JWT secret: %w", err)
 	}
 	settingsKey, err = generateSecret(32)
 	if err != nil {
-		return "", "", "", fmt.Errorf("generating settings encryption key: %w", err)
+		return "", "", "", "", fmt.Errorf("generating settings encryption key: %w", err)
 	}
 	masterKey, err = generateSecret(32)
 	if err != nil {
-		return "", "", "", fmt.Errorf("generating secret master key: %w", err)
+		return "", "", "", "", fmt.Errorf("generating secret master key: %w", err)
 	}
-	return jwtSecret, settingsKey, masterKey, nil
+	cursorSecret, err = generateSecret(32)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("generating pagination cursor secret: %w", err)
+	}
+	return jwtSecret, settingsKey, masterKey, cursorSecret, nil
 }
 
 func validateDockerSock(path string) error {

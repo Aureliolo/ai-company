@@ -40,6 +40,7 @@ type Params struct {
 	LogLevel           string
 	JWTSecret          string
 	SettingsKey        string
+	CursorSecret       string // HMAC key for opaque pagination cursor tokens (>= 16 bytes)
 	MasterKey          string // Fernet key for encrypted secret backend
 	EncryptSecrets     bool   // whether to wire SYNTHORG_MASTER_KEY into backend
 	Sandbox            bool
@@ -150,6 +151,7 @@ func ParamsFromState(s config.State) (Params, error) {
 		LogLevel:              s.LogLevel,
 		JWTSecret:             s.JWTSecret,
 		SettingsKey:           s.SettingsKey,
+		CursorSecret:          s.CursorSecret,
 		MasterKey:             s.MasterKey,
 		EncryptSecrets:        s.EncryptSecrets,
 		Sandbox:               s.Sandbox,
@@ -197,6 +199,15 @@ func (p Params) DistributedEnabled() bool {
 // field.
 func Generate(p Params) ([]byte, error) {
 	applyComposeDefaults(&p)
+	// Trim secret fields in place so a whitespace-padded operator value
+	// (e.g. accidentally captured trailing newline) cannot pass the
+	// boolean truthiness checks below and then leak into the rendered
+	// env block as a value with embedded whitespace -- the backend would
+	// either reject it or, worse, accept a subtly-different secret.
+	p.JWTSecret = strings.TrimSpace(p.JWTSecret)
+	p.SettingsKey = strings.TrimSpace(p.SettingsKey)
+	p.CursorSecret = strings.TrimSpace(p.CursorSecret)
+	p.MasterKey = strings.TrimSpace(p.MasterKey)
 	if err := validateParams(p); err != nil {
 		return nil, fmt.Errorf("validating params: %w", err)
 	}
@@ -381,15 +392,36 @@ func validateParams(p Params) error {
 			return fmt.Errorf("postgres password must be >= 32 characters, got %d", len(p.PostgresPassword))
 		}
 	}
-	// Cross-validate secrets: if one is set, both must be set.
-	// Both-empty is valid for development/testing (template omits env vars).
-	hasJWT := strings.TrimSpace(p.JWTSecret) != ""
-	hasKey := strings.TrimSpace(p.SettingsKey) != ""
+	// Cross-validate secrets across three permitted shapes:
+	//   - all-empty: valid for development / testing (template omits every
+	//     secret env var and the backend stays unwired);
+	//   - all three set: the standard production layout that init.go
+	//     generates and the backend boot guard expects;
+	//   - cursor-only: valid when the operator wants the unconditional
+	//     pagination cursor secret (synthorg.api.app create_app refuses
+	//     to start without one) but has not yet wired JWT auth or
+	//     encrypted settings storage.
+	// What is NOT valid is a partially-configured production layout: JWT
+	// without SettingsKey, SettingsKey without JWT, or JWT/SettingsKey
+	// without a CursorSecret -- emitting that compose.yml would produce a
+	// boot loop on ``synthorg start``.
+	// Generate trims these fields before calling validateParams, so
+	// truthiness here is equivalent to "operator supplied a non-blank
+	// value" -- no second TrimSpace pass needed.
+	hasJWT := p.JWTSecret != ""
+	hasKey := p.SettingsKey != ""
+	hasCursor := p.CursorSecret != ""
 	if hasJWT && !hasKey {
 		return fmt.Errorf("SYNTHORG_SETTINGS_KEY is required when JWT secret is set")
 	}
 	if hasKey && !hasJWT {
 		return fmt.Errorf("JWT secret is required when SYNTHORG_SETTINGS_KEY is set")
+	}
+	if (hasJWT || hasKey) && !hasCursor {
+		return fmt.Errorf("SYNTHORG_PAGINATION_CURSOR_SECRET is required when JWT/SettingsKey are set: backend refuses to start without it")
+	}
+	if hasCursor && len(p.CursorSecret) < 16 {
+		return fmt.Errorf("SYNTHORG_PAGINATION_CURSOR_SECRET must be >= 16 bytes, got %d", len(p.CursorSecret))
 	}
 	for name, d := range p.DigestPins {
 		if !verify.IsValidDigest(d) {

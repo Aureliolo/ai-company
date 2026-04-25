@@ -443,52 +443,28 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         app_state.set_distributed_task_queue(distributed_task_queue)
 
     # Opaque pagination cursor HMAC secret.  Loaded from the
-    # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var; falls back to an
-    # ephemeral per-process key which invalidates cursors across
-    # restarts (WARNING logged below so operators see the choice).
+    # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var; rolling with a
+    # random per-process key silently invalidates every client cursor
+    # on every restart, which is a correctness defect, not a warning.
+    # We refuse to boot unconditionally -- dev, pre-release, and prod
+    # share the same posture so this latent failure can never hide
+    # behind a "looks fine in dev" code path.
     cursor_secret = CursorSecret.from_config(CursorConfig.from_env())
     app_state.set_cursor_secret(cursor_secret)
     if cursor_secret.is_ephemeral:
-        # Production deployments must supply a stable key.  Infer the
-        # deployment environment from ``SYNTHORG_TELEMETRY_ENV`` /
-        # ``SYNTHORG_TELEMETRY_ENV_BAKED`` (the same chain used by
-        # telemetry) and refuse to boot when the marker is ``prod``:
-        # rolling with a random key silently invalidates every client
-        # cursor on every restart, which is a correctness defect, not
-        # just a warning.
-        env_marker = (
-            (
-                os.environ.get("SYNTHORG_TELEMETRY_ENV")
-                or os.environ.get("SYNTHORG_TELEMETRY_ENV_BAKED")
-                or ""
-            )
-            .strip()
-            .lower()
+        msg = (
+            "refusing to start with an ephemeral pagination cursor "
+            "secret; set SYNTHORG_PAGINATION_CURSOR_SECRET to a stable "
+            "value (>= 16 bytes)."
         )
-        if env_marker == "prod":
-            msg = (
-                "refusing to start with an ephemeral pagination cursor "
-                "secret in a production environment; set "
-                "SYNTHORG_PAGINATION_CURSOR_SECRET to a stable value "
-                "(>= 16 bytes)."
-            )
-            # Emit the structured error before raising so centralized
-            # log collectors see the refusal reason even if the caller
-            # swallows or reformats the exception message.
-            logger.error(
-                API_APP_STARTUP,
-                note="refusing startup: ephemeral pagination cursor secret in prod",
-                env_marker=env_marker,
-            )
-            raise RuntimeError(msg)
-        logger.warning(
+        # Emit the structured error before raising so centralized log
+        # collectors see the refusal reason even if the caller swallows
+        # or reformats the exception message.
+        logger.error(
             API_APP_STARTUP,
-            note=(
-                "pagination cursor secret is ephemeral -- tokens will not "
-                "survive a restart.  Set SYNTHORG_PAGINATION_CURSOR_SECRET "
-                "to a stable value (>= 16 bytes) for production deployments."
-            ),
+            note="refusing startup: ephemeral pagination cursor secret",
         )
+        raise RuntimeError(msg)
 
     # Human escalation approval queue (#1418).  Builds the pluggable
     # store + processor + Future registry and attaches them to
