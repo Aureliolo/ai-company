@@ -5,6 +5,8 @@ persist ``User`` and ``ApiKey`` domain models to SQLite via aiosqlite.
 Both use upsert semantics for ``save`` operations.
 """
 
+import asyncio
+import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -19,25 +21,21 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_API_KEY_DELETE_FAILED,
-    PERSISTENCE_API_KEY_DELETED,
     PERSISTENCE_API_KEY_FETCH_FAILED,
     PERSISTENCE_API_KEY_FETCHED,
     PERSISTENCE_API_KEY_LIST_FAILED,
     PERSISTENCE_API_KEY_LISTED,
     PERSISTENCE_API_KEY_SAVE_FAILED,
-    PERSISTENCE_API_KEY_SAVED,
     PERSISTENCE_USER_COUNT_BY_ROLE_FAILED,
     PERSISTENCE_USER_COUNT_FAILED,
     PERSISTENCE_USER_COUNTED,
     PERSISTENCE_USER_COUNTED_BY_ROLE,
     PERSISTENCE_USER_DELETE_FAILED,
-    PERSISTENCE_USER_DELETED,
     PERSISTENCE_USER_FETCH_FAILED,
     PERSISTENCE_USER_FETCHED,
     PERSISTENCE_USER_LIST_FAILED,
     PERSISTENCE_USER_LISTED,
     PERSISTENCE_USER_SAVE_FAILED,
-    PERSISTENCE_USER_SAVED,
 )
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
@@ -91,7 +89,7 @@ def _row_to_user(row: aiosqlite.Row) -> User:
     data["role"] = HumanRole(data["role"])
     data["created_at"] = datetime.fromisoformat(data["created_at"])
     data["updated_at"] = datetime.fromisoformat(data["updated_at"])
-    # Deserialise JSON columns (may be missing in pre-migration rows).
+    # Deserialize JSON columns (may be missing in pre-migration rows).
     raw_org = data.get("org_roles")
     parsed_org = json.loads("[]" if raw_org is None else raw_org)
     if not isinstance(parsed_org, list):
@@ -142,8 +140,18 @@ class SQLiteUserRepository:
             set to ``aiosqlite.Row``.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, user: User) -> None:
         """Persist a user via upsert (insert or update on conflict).
@@ -154,9 +162,10 @@ class SQLiteUserRepository:
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    """\
 INSERT INTO users (id, username, password_hash, role,
                    must_change_password, org_roles,
                    scoped_departments, created_at, updated_at)
@@ -169,34 +178,36 @@ ON CONFLICT(id) DO UPDATE SET
     org_roles=excluded.org_roles,
     scoped_departments=excluded.scoped_departments,
     updated_at=excluded.updated_at""",
-                (
-                    user.id,
-                    user.username,
-                    user.password_hash,
-                    user.role.value,
-                    int(user.must_change_password),
-                    json.dumps([r.value for r in user.org_roles]),
-                    json.dumps(list(user.scoped_departments)),
-                    user.created_at.astimezone(UTC).isoformat(),
-                    user.updated_at.astimezone(UTC).isoformat(),
-                ),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save user {user.id!r}"
-            logger.exception(
-                PERSISTENCE_USER_SAVE_FAILED,
-                user_id=user.id,
-                error=str(exc),
-            )
-            constraint = _classify_sqlite_user_error(str(exc))
-            if constraint is not None:
-                raise ConstraintViolationError(
-                    msg,
-                    constraint=constraint,
-                ) from exc
-            raise QueryError(msg) from exc
-        logger.info(PERSISTENCE_USER_SAVED, user_id=user.id)
+                    (
+                        user.id,
+                        user.username,
+                        user.password_hash,
+                        user.role.value,
+                        int(user.must_change_password),
+                        json.dumps([r.value for r in user.org_roles]),
+                        json.dumps(list(user.scoped_departments)),
+                        user.created_at.astimezone(UTC).isoformat(),
+                        user.updated_at.astimezone(UTC).isoformat(),
+                    ),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to save user {user.id!r}"
+                logger.warning(
+                    PERSISTENCE_USER_SAVE_FAILED,
+                    user_id=user.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                constraint = _classify_sqlite_user_error(str(exc))
+                if constraint is not None:
+                    raise ConstraintViolationError(
+                        msg,
+                        constraint=constraint,
+                    ) from exc
+                raise QueryError(msg) from exc
 
     async def get(self, user_id: NotBlankStr) -> User | None:
         """Retrieve a user by primary key.
@@ -450,34 +461,38 @@ ON CONFLICT(id) DO UPDATE SET
                 error=msg,
             )
             raise QueryError(msg)
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM users WHERE id = ?", (user_id,)
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            constraint = _classify_sqlite_user_error(str(exc))
-            if constraint is not None:
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM users WHERE id = ?", (user_id,)
+                )
+                await self._db.commit()
+                deleted = cursor.rowcount > 0
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                constraint = _classify_sqlite_user_error(str(exc))
+                if constraint is not None:
+                    msg = f"Failed to delete user {user_id!r}"
+                    logger.warning(
+                        PERSISTENCE_USER_DELETE_FAILED,
+                        user_id=user_id,
+                        constraint=constraint,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    raise ConstraintViolationError(
+                        msg,
+                        constraint=constraint,
+                    ) from exc
                 msg = f"Failed to delete user {user_id!r}"
                 logger.warning(
                     PERSISTENCE_USER_DELETE_FAILED,
                     user_id=user_id,
-                    constraint=constraint,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                raise ConstraintViolationError(
-                    msg,
-                    constraint=constraint,
-                ) from exc
-            msg = f"Failed to delete user {user_id!r}"
-            logger.exception(
-                PERSISTENCE_USER_DELETE_FAILED,
-                user_id=user_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        deleted = cursor.rowcount > 0
-        logger.info(PERSISTENCE_USER_DELETED, user_id=user_id, deleted=deleted)
+                raise QueryError(msg) from exc
         return deleted
 
 
@@ -493,8 +508,18 @@ class SQLiteApiKeyRepository:
             set to ``aiosqlite.Row``.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, key: ApiKey) -> None:
         """Persist an API key via upsert (insert or update on conflict).
@@ -505,9 +530,10 @@ class SQLiteApiKeyRepository:
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    """\
 INSERT INTO api_keys (id, key_hash, name, role, user_id,
                       created_at, expires_at, revoked)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -518,31 +544,33 @@ ON CONFLICT(id) DO UPDATE SET
     user_id=excluded.user_id,
     expires_at=excluded.expires_at,
     revoked=excluded.revoked""",
-                (
-                    key.id,
-                    key.key_hash,
-                    key.name,
-                    key.role.value,
-                    key.user_id,
-                    key.created_at.astimezone(UTC).isoformat(),
                     (
-                        key.expires_at.astimezone(UTC).isoformat()
-                        if key.expires_at
-                        else None
+                        key.id,
+                        key.key_hash,
+                        key.name,
+                        key.role.value,
+                        key.user_id,
+                        key.created_at.astimezone(UTC).isoformat(),
+                        (
+                            key.expires_at.astimezone(UTC).isoformat()
+                            if key.expires_at
+                            else None
+                        ),
+                        int(key.revoked),
                     ),
-                    int(key.revoked),
-                ),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save API key {key.id!r}"
-            logger.exception(
-                PERSISTENCE_API_KEY_SAVE_FAILED,
-                key_id=key.id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        logger.info(PERSISTENCE_API_KEY_SAVED, key_id=key.id)
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to save API key {key.id!r}"
+                logger.warning(
+                    PERSISTENCE_API_KEY_SAVE_FAILED,
+                    key_id=key.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get(self, key_id: NotBlankStr) -> ApiKey | None:
         """Retrieve an API key by primary key.
@@ -671,19 +699,22 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM api_keys WHERE id = ?", (key_id,)
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete API key {key_id!r}"
-            logger.exception(
-                PERSISTENCE_API_KEY_DELETE_FAILED,
-                key_id=key_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        deleted = cursor.rowcount > 0
-        logger.info(PERSISTENCE_API_KEY_DELETED, key_id=key_id, deleted=deleted)
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM api_keys WHERE id = ?", (key_id,)
+                )
+                await self._db.commit()
+                deleted = cursor.rowcount > 0
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to delete API key {key_id!r}"
+                logger.warning(
+                    PERSISTENCE_API_KEY_DELETE_FAILED,
+                    key_id=key_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
         return deleted

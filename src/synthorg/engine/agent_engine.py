@@ -87,12 +87,14 @@ if TYPE_CHECKING:
     from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
-    from synthorg.persistence.artifact_project_repos import ProjectRepository
-    from synthorg.persistence.repositories import (
+    from synthorg.persistence.checkpoint_protocol import (
         CheckpointRepository,
         HeartbeatRepository,
+    )
+    from synthorg.persistence.parked_context_protocol import (
         ParkedContextRepository,
     )
+    from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry

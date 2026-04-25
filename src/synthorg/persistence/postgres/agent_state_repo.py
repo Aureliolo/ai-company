@@ -14,13 +14,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AGENT_STATE_ACTIVE_QUERIED,
     PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED,
     PERSISTENCE_AGENT_STATE_DELETE_FAILED,
-    PERSISTENCE_AGENT_STATE_DELETED,
     PERSISTENCE_AGENT_STATE_DESERIALIZE_FAILED,
     PERSISTENCE_AGENT_STATE_FETCH_FAILED,
     PERSISTENCE_AGENT_STATE_FETCHED,
     PERSISTENCE_AGENT_STATE_NOT_FOUND,
     PERSISTENCE_AGENT_STATE_SAVE_FAILED,
-    PERSISTENCE_AGENT_STATE_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -85,11 +83,6 @@ ON CONFLICT (agent_id) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            PERSISTENCE_AGENT_STATE_SAVED,
-            agent_id=state.agent_id,
-            status=state.status.value,
-        )
 
     async def get(self, agent_id: NotBlankStr) -> AgentRuntimeState | None:
         """Retrieve an agent runtime state by agent ID."""
@@ -182,12 +175,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        if deleted:
-            logger.info(
-                PERSISTENCE_AGENT_STATE_DELETED,
-                agent_id=agent_id,
-            )
-        else:
+        if not deleted:
             logger.debug(
                 PERSISTENCE_AGENT_STATE_NOT_FOUND,
                 agent_id=agent_id,

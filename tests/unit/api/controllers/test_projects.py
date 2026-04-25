@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+import structlog.testing
 from litestar.testing import TestClient
 
 from tests.unit.api.conftest import make_auth_headers
@@ -187,10 +188,11 @@ class TestProjectController:
         )
         project_id = create_resp.json()["data"]["id"]
 
-        delete_resp = test_client.delete(
-            f"/api/v1/projects/{project_id}",
-            headers=make_auth_headers("ceo"),
-        )
+        with structlog.testing.capture_logs() as logs:
+            delete_resp = test_client.delete(
+                f"/api/v1/projects/{project_id}",
+                headers=make_auth_headers("ceo"),
+            )
         assert delete_resp.status_code == 204
 
         delete_events = [
@@ -204,3 +206,14 @@ class TestProjectController:
         assert event["channel"] == "projects"
         assert event["payload"]["project_id"] == project_id
         assert event["payload"]["name"] == "Doomed"
+
+        # Audit-trail regression guard: ProjectService.delete() must
+        # emit ``api.project.deleted`` with the project_id at INFO.  If
+        # the audit is silently dropped during a refactor, monitoring
+        # filters that key on the event name will go quiet.
+        deleted_audit = [log for log in logs if log["event"] == "api.project.deleted"]
+        assert len(deleted_audit) >= 1, (
+            f"expected api.project.deleted audit log; got events: "
+            f"{[log['event'] for log in logs]}"
+        )
+        assert deleted_audit[0]["project_id"] == project_id

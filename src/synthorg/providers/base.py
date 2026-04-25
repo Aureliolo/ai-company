@@ -33,6 +33,7 @@ from .models import (
     TokenUsage,
     ToolDefinition,
 )
+from .resilience.errors import RetryExhaustedError
 from .resilience.rate_limiter import RateLimiter  # noqa: TC001
 from .resilience.retry import RetryHandler  # noqa: TC001
 
@@ -246,6 +247,14 @@ class BaseCompletionProvider(ABC):
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Validate model identifier, delegate to ``_do_get_model_capabilities``.
 
+        Capability lookups go through the same retry handler and rate
+        limiter as ``complete()`` / ``stream()`` so the contract "all
+        provider calls go through BaseCompletionProvider" stays honest
+        for any future driver whose ``_do_get_model_capabilities``
+        does network I/O.  Same budget as completions: capability
+        lookups consume a rate-limiter slot and are retried on
+        retryable errors.
+
         Args:
             model: Model identifier.
 
@@ -254,9 +263,39 @@ class BaseCompletionProvider(ABC):
 
         Raises:
             InvalidRequestError: If model is blank.
+            RetryExhaustedError: If all retries are exhausted.
         """
         self._validate_model(model)
-        return await self._do_get_model_capabilities(model)
+
+        async def _attempt() -> ModelCapabilities:
+            return await self._rate_limited_call(
+                self._do_get_model_capabilities,
+                model,
+            )
+
+        try:
+            return await self._resilient_execute(_attempt)
+        except Exception as exc:
+            # SEC-1: ``logger.exception`` would attach a traceback
+            # whose frame-locals can leak provider credentials; use
+            # ``logger.error`` with the structured ``error_type`` +
+            # scrubbed ``error`` fields, mirroring ``complete()`` /
+            # ``stream()``.  ``record_provider_error`` keeps the
+            # provider-error metric in sync with the other call paths
+            # so dashboards do not under-count capability failures.
+            logger.error(  # noqa: TRY400 -- see SEC-1 rationale above
+                PROVIDER_CALL_ERROR,
+                model=model,
+                phase="get_model_capabilities",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            record_provider_error(
+                provider=self._provider_label(),
+                model=model,
+                error_class=classify_provider_error(exc),
+            )
+            raise
 
     async def batch_get_capabilities(
         self,
@@ -265,10 +304,18 @@ class BaseCompletionProvider(ABC):
         """Fan out capability lookups across many models in parallel.
 
         The default implementation runs ``get_model_capabilities`` per
-        model concurrently via :class:`asyncio.TaskGroup`. Per-model
-        failures degrade to ``None`` entries so a single bad model id
-        does not poison the whole batch. ``MemoryError`` and
-        ``RecursionError`` propagate unchanged.
+        model concurrently via :class:`asyncio.TaskGroup`.
+
+        Per-model classification errors (model-not-found, validation,
+        non-retryable provider errors) degrade to ``None`` entries so a
+        single bad model id does not poison the whole batch.
+
+        ``RetryExhaustedError`` propagates: retry exhaustion is a
+        signal that the provider is unhealthy, not a per-model
+        classification issue. Surfacing it lets the caller decide
+        whether to fail the whole list-models request or retry the
+        batch later. ``MemoryError`` and ``RecursionError`` also
+        propagate unchanged.
 
         Subclasses that expose a cheaper bulk source (e.g. a static
         preset catalog) should override this to avoid the per-model
@@ -280,7 +327,7 @@ class BaseCompletionProvider(ABC):
         async def _one(m: str) -> tuple[str, ModelCapabilities | None]:
             try:
                 return m, await self.get_model_capabilities(m)
-            except MemoryError, RecursionError:
+            except MemoryError, RecursionError, RetryExhaustedError:
                 raise
             except Exception as exc:
                 logger.warning(

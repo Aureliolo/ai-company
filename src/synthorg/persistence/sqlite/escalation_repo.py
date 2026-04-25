@@ -51,7 +51,7 @@ _SELECT_COLS = (
 
 
 def _row_to_escalation(row: Row) -> Escalation:
-    """Deserialise a DB row into an :class:`Escalation`."""
+    """Deserialize a DB row into an :class:`Escalation`."""
     try:
         conflict = Conflict.model_validate_json(str(row["conflict_json"]))
         decision: EscalationDecision | None = None
@@ -101,10 +101,20 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             the :class:`SQLiteBackend` with all other SQLite repos).
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         """Initialise the repository with a shared aiosqlite connection."""
         self._db: aiosqlite.Connection = db
         self._db.row_factory = aiosqlite.Row
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def create(self, escalation: Escalation) -> None:
         """Insert a PENDING escalation row."""
@@ -122,31 +132,32 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             None,
             None,
         )
-        try:
-            await self._db.execute(_UPSERT_SQL, params)
-            await self._db.commit()
-        except sqlite3.IntegrityError as exc:
-            msg = f"Escalation {escalation.id!r} already exists"
-            logger.warning(
-                API_REQUEST_ERROR,
-                error_type="escalation_create_duplicate",
-                escalation_id=escalation.id,
-                conflict_id=escalation.conflict.id,
-                error=safe_error_description(exc),
-            )
-            await self._db.rollback()
-            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to create escalation {escalation.id!r}: {exc}"
-            logger.warning(
-                API_REQUEST_ERROR,
-                error_type="escalation_create_failed",
-                escalation_id=escalation.id,
-                conflict_id=escalation.conflict.id,
-                error=safe_error_description(exc),
-            )
-            await self._db.rollback()
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                await self._db.execute(_UPSERT_SQL, params)
+                await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                msg = f"Escalation {escalation.id!r} already exists"
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    error_type="escalation_create_duplicate",
+                    escalation_id=escalation.id,
+                    conflict_id=escalation.conflict.id,
+                    error=safe_error_description(exc),
+                )
+                await self._db.rollback()
+                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to create escalation {escalation.id!r}: {exc}"
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    error_type="escalation_create_failed",
+                    escalation_id=escalation.id,
+                    conflict_id=escalation.conflict.id,
+                    error=safe_error_description(exc),
+                )
+                await self._db.rollback()
+                raise QueryError(msg) from exc
 
     async def get(self, escalation_id: str) -> Escalation | None:
         """Fetch by ID."""
@@ -269,19 +280,20 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             "AND expires_at <= ? "
             "RETURNING id"
         )
-        try:
-            cursor = await self._db.execute(update_sql, (now_iso, now_iso))
-            rows = await cursor.fetchall()
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = "Failed to mark escalations expired"
-            logger.warning(
-                API_REQUEST_ERROR,
-                error_type="escalation_mark_expired_failed",
-                error=safe_error_description(exc),
-            )
-            await self._db.rollback()
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(update_sql, (now_iso, now_iso))
+                rows = await cursor.fetchall()
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = "Failed to mark escalations expired"
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    error_type="escalation_mark_expired_failed",
+                    error=safe_error_description(exc),
+                )
+                await self._db.rollback()
+                raise QueryError(msg) from exc
         return tuple(str(r["id"]) for r in rows)
 
     async def close(self) -> None:
@@ -355,20 +367,21 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             decision_json,
             escalation_id,
         )
-        try:
-            cursor = await self._db.execute(update_sql, params)
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to update escalation {escalation_id!r}: {exc}"
-            logger.warning(
-                API_REQUEST_ERROR,
-                error_type="escalation_update_failed",
-                escalation_id=escalation_id,
-                target_status=new_status.value,
-                error=safe_error_description(exc),
-            )
-            await self._db.rollback()
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(update_sql, params)
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to update escalation {escalation_id!r}: {exc}"
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    error_type="escalation_update_failed",
+                    escalation_id=escalation_id,
+                    target_status=new_status.value,
+                    error=safe_error_description(exc),
+                )
+                await self._db.rollback()
+                raise QueryError(msg) from exc
         if cursor.rowcount == 0:
             # Recovery lookup runs on a fresh cursor so a crashed row
             # doesn't poison the failure signal back to the caller.

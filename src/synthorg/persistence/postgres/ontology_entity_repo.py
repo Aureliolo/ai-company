@@ -7,12 +7,10 @@ from typing import TYPE_CHECKING, Any
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
-    ONTOLOGY_ENTITY_DELETED,
     ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
     ONTOLOGY_ENTITY_DUPLICATE,
     ONTOLOGY_ENTITY_NOT_FOUND,
     ONTOLOGY_ENTITY_REGISTERED,
-    ONTOLOGY_ENTITY_UPDATED,
     ONTOLOGY_SEARCH_EXECUTED,
 )
 from synthorg.ontology.errors import (
@@ -202,7 +200,6 @@ class PostgresOntologyEntityRepository:
                     op="update",
                 )
                 raise OntologyNotFoundError(msg)
-        logger.info(ONTOLOGY_ENTITY_UPDATED, entity_name=entity.name)
 
     async def delete(self, name: str) -> None:
         """Delete an entity definition by name."""
@@ -219,7 +216,6 @@ class PostgresOntologyEntityRepository:
                     op="delete",
                 )
                 raise OntologyNotFoundError(msg)
-        logger.info(ONTOLOGY_ENTITY_DELETED, entity_name=name)
 
     async def list_entities(
         self,

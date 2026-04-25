@@ -38,10 +38,9 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_QUERIED,
     PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-    PERSISTENCE_DECISION_RECORD_SAVED,
 )
+from synthorg.persistence.decision_protocol import DecisionRole  # noqa: TC001
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
-from synthorg.persistence.repositories import DecisionRole  # noqa: TC001
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -268,14 +267,7 @@ class PostgresDecisionRepository:
             raise
 
         assigned_version = await self._execute_insert(record_id, params)
-        record = draft_record.model_copy(update={"version": assigned_version})
-        logger.debug(
-            PERSISTENCE_DECISION_RECORD_SAVED,
-            record_id=record_id,
-            task_id=task_id,
-            version=assigned_version,
-        )
-        return record
+        return draft_record.model_copy(update={"version": assigned_version})
 
     #: Maximum attempts to retry a version-race UniqueViolation before
     #: giving up and treating the failure as a genuine duplicate record

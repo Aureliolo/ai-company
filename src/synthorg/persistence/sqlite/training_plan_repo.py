@@ -4,6 +4,8 @@ Provides ``SQLiteTrainingPlanRepository`` which persists
 ``TrainingPlan`` models via aiosqlite with upsert semantics.
 """
 
+import asyncio
+import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -18,10 +20,9 @@ from synthorg.hr.training.models import (
     TrainingPlan,
     TrainingPlanStatus,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
-    HR_TRAINING_PLAN_PERSISTED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -158,8 +159,18 @@ class SQLiteTrainingPlanRepository:
             set to ``aiosqlite.Row``.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, plan: TrainingPlan) -> None:
         """Persist a training plan via upsert.
@@ -170,18 +181,21 @@ class SQLiteTrainingPlanRepository:
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            await self._db.execute(_UPSERT_SQL, _plan_to_params(plan))
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save training plan {plan.id!r}"
-            logger.exception(
-                HR_TRAINING_PERSISTENCE_ERROR,
-                plan_id=str(plan.id),
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        logger.info(HR_TRAINING_PLAN_PERSISTED, plan_id=str(plan.id))
+        async with self._write_lock:
+            try:
+                await self._db.execute(_UPSERT_SQL, _plan_to_params(plan))
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to save training plan {plan.id!r}"
+                logger.warning(
+                    HR_TRAINING_PERSISTENCE_ERROR,
+                    plan_id=str(plan.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get(
         self,

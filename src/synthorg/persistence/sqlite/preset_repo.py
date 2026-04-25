@@ -1,21 +1,21 @@
 """SQLite repository implementation for custom personality presets."""
 
+import asyncio
+import contextlib
 import sqlite3
 
-import aiosqlite  # noqa: TC002
+import aiosqlite
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.preset import (
     PRESET_CUSTOM_COUNT_FAILED,
     PRESET_CUSTOM_DELETE_FAILED,
-    PRESET_CUSTOM_DELETED,
     PRESET_CUSTOM_FETCH_FAILED,
     PRESET_CUSTOM_FETCHED,
     PRESET_CUSTOM_LIST_FAILED,
     PRESET_CUSTOM_LISTED,
     PRESET_CUSTOM_SAVE_FAILED,
-    PRESET_CUSTOM_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 from synthorg.persistence.preset_repository import PresetListRow, PresetRow
@@ -33,8 +33,18 @@ class SQLitePersonalityPresetRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(
         self,
@@ -56,9 +66,10 @@ class SQLitePersonalityPresetRepository:
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    """\
 INSERT INTO custom_presets (name, config_json, description,
                            created_at, updated_at)
 VALUES (?, ?, ?, ?, ?)
@@ -66,18 +77,20 @@ ON CONFLICT(name) DO UPDATE SET
     config_json=excluded.config_json,
     description=excluded.description,
     updated_at=excluded.updated_at""",
-                (name, config_json, description, created_at, updated_at),
-            )
-            await self._db.commit()
-        except sqlite3.Error as exc:
-            msg = f"Failed to save custom preset {name!r}"
-            logger.exception(
-                PRESET_CUSTOM_SAVE_FAILED,
-                preset_name=name,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        logger.info(PRESET_CUSTOM_SAVED, preset_name=name)
+                    (name, config_json, description, created_at, updated_at),
+                )
+                await self._db.commit()
+            except sqlite3.Error as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to save custom preset {name!r}"
+                logger.warning(
+                    PRESET_CUSTOM_SAVE_FAILED,
+                    preset_name=name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get(
         self,
@@ -103,10 +116,11 @@ ON CONFLICT(name) DO UPDATE SET
                 row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to fetch custom preset {name!r}"
-            logger.exception(
+            logger.warning(
                 PRESET_CUSTOM_FETCH_FAILED,
                 preset_name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -138,7 +152,11 @@ ON CONFLICT(name) DO UPDATE SET
                 rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list custom presets"
-            logger.exception(PRESET_CUSTOM_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PRESET_CUSTOM_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         result = tuple(
             PresetListRow(row[0], row[1], row[2], row[3], row[4]) for row in rows
@@ -158,26 +176,25 @@ ON CONFLICT(name) DO UPDATE SET
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            async with self._db.execute(
-                "DELETE FROM custom_presets WHERE name = ?",
-                (name,),
-            ) as cursor:
-                deleted = cursor.rowcount > 0
-            await self._db.commit()
-        except sqlite3.Error as exc:
-            msg = f"Failed to delete custom preset {name!r}"
-            logger.exception(
-                PRESET_CUSTOM_DELETE_FAILED,
-                preset_name=name,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        logger.info(
-            PRESET_CUSTOM_DELETED,
-            preset_name=name,
-            deleted=deleted,
-        )
+        async with self._write_lock:
+            try:
+                async with self._db.execute(
+                    "DELETE FROM custom_presets WHERE name = ?",
+                    (name,),
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
+                await self._db.commit()
+            except sqlite3.Error as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to delete custom preset {name!r}"
+                logger.warning(
+                    PRESET_CUSTOM_DELETE_FAILED,
+                    preset_name=name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
         return deleted
 
     async def count(self) -> int:
@@ -193,7 +210,11 @@ ON CONFLICT(name) DO UPDATE SET
                 row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = "Failed to count custom presets"
-            logger.exception(PRESET_CUSTOM_COUNT_FAILED, error=str(exc))
+            logger.warning(
+                PRESET_CUSTOM_COUNT_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         if row is None:
             msg = "COUNT(*) returned no row -- database driver error"

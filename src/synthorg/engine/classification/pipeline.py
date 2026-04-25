@@ -73,7 +73,7 @@ if TYPE_CHECKING:
         ScopedContextLoader,
     )
     from synthorg.engine.loop_protocol import ExecutionResult
-    from synthorg.persistence.repositories import TaskRepository
+    from synthorg.persistence.task_protocol import TaskRepository
     from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)

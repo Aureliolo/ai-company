@@ -1,11 +1,4 @@
-"""Decision records repository protocol.
-
-Extracted from ``repositories.py`` to keep that module under the
-800-line budget.  ``DecisionRepository`` and ``DecisionRole`` are
-re-exported from ``repositories`` for backwards compatibility so
-existing ``from synthorg.persistence.repositories import
-DecisionRepository`` call sites continue to work.
-"""
+"""Decision records repository protocol."""
 
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
@@ -72,7 +65,7 @@ class DecisionRepository(Protocol):
                 via ``get`` / ``list_by_task`` / ``list_by_agent`` will
                 always carry UTC timestamps.
             metadata: Forward-compatible metadata.  Defaults to ``{}``
-                when not supplied -- callers that do not attach
+                when not supplied; callers that do not attach
                 metadata do not have to pass an empty dict.
 
         Returns:

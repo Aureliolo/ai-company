@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from synthorg.memory.consolidation.archival import ArchivalStore
     from synthorg.memory.org.protocol import OrgMemoryBackend
     from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.repositories import TaskRepository
+    from synthorg.persistence.task_protocol import TaskRepository
 
 logger = get_logger(__name__)
 

@@ -1,7 +1,13 @@
 """Repository protocol for custom personality preset persistence.
 
-Separate module for the preset repository protocol, keeping persistence
-protocols modular (same pattern as ``artifact_project_repos.py``).
+Each persistence domain has its own protocol module under
+``src/synthorg/persistence/``.  Two naming conventions coexist:
+``<domain>_protocol.py`` (the majority -- audit, project, settings,
+task, ...) and ``<domain>_repo(s).py`` (this file plus
+``ssrf_violation_repo.py``, ``workflow_definition_repo.py`` and
+similar).  Both forms are equivalent; the variation is historical
+and not worth normalising on its own.  This file is the preset
+slice.
 """
 
 from typing import NamedTuple, Protocol, runtime_checkable

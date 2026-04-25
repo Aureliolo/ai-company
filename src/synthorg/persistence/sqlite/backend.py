@@ -338,26 +338,86 @@ class SQLitePersistenceBackend:
     def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active connection."""
         assert self._db is not None  # noqa: S101
-        self._artifacts = SQLiteArtifactRepository(self._db)
-        self._projects = SQLiteProjectRepository(self._db)
-        self._tasks = SQLiteTaskRepository(self._db)
-        self._cost_records = SQLiteCostRecordRepository(self._db)
-        self._messages = SQLiteMessageRepository(self._db)
-        self._lifecycle_events = SQLiteLifecycleEventRepository(self._db)
-        self._task_metrics = SQLiteTaskMetricRepository(self._db)
-        self._collaboration_metrics = SQLiteCollaborationMetricRepository(self._db)
-        self._parked_contexts = SQLiteParkedContextRepository(self._db)
-        self._audit_entries = SQLiteAuditRepository(self._db)
-        self._users = SQLiteUserRepository(self._db)
-        self._api_keys = SQLiteApiKeyRepository(self._db)
-        self._checkpoints = SQLiteCheckpointRepository(self._db)
-        self._heartbeats = SQLiteHeartbeatRepository(self._db)
-        self._agent_states = SQLiteAgentStateRepository(self._db)
-        self._settings = SQLiteSettingsRepository(self._db)
-        self._custom_presets = SQLitePersonalityPresetRepository(self._db)
-        self._workflow_definitions = SQLiteWorkflowDefinitionRepository(self._db)
-        self._workflow_executions = SQLiteWorkflowExecutionRepository(self._db)
-        self._subworkflows = SQLiteSubworkflowRepository(self._db)
+        self._artifacts = SQLiteArtifactRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._projects = SQLiteProjectRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._tasks = SQLiteTaskRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._cost_records = SQLiteCostRecordRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._messages = SQLiteMessageRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._lifecycle_events = SQLiteLifecycleEventRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._task_metrics = SQLiteTaskMetricRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._collaboration_metrics = SQLiteCollaborationMetricRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._parked_contexts = SQLiteParkedContextRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._audit_entries = SQLiteAuditRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._users = SQLiteUserRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._api_keys = SQLiteApiKeyRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._checkpoints = SQLiteCheckpointRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._heartbeats = SQLiteHeartbeatRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._agent_states = SQLiteAgentStateRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._settings = SQLiteSettingsRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._custom_presets = SQLitePersonalityPresetRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._workflow_definitions = SQLiteWorkflowDefinitionRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._workflow_executions = SQLiteWorkflowExecutionRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._subworkflows = SQLiteSubworkflowRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
 
         def _ver_repo[T: BaseModel](
             table: str,
@@ -373,6 +433,7 @@ class SQLitePersistenceBackend:
                 deserialize_snapshot=lambda s: model_cls.model_validate(
                     json.loads(s),
                 ),
+                write_lock=self._shared_write_lock,
             )
 
         self._workflow_versions = _ver_repo(
@@ -418,17 +479,50 @@ class SQLitePersistenceBackend:
             self._db,
             write_lock=self._shared_write_lock,
         )
-        self._fine_tune_checkpoints = SQLiteFineTuneCheckpointRepository(self._db)
-        self._fine_tune_runs = SQLiteFineTuneRunRepository(self._db)
-        self._training_plans = SQLiteTrainingPlanRepository(self._db)
-        self._training_results = SQLiteTrainingResultRepository(self._db)
-        self._custom_rules = SQLiteCustomRuleRepository(self._db)
-        self._sessions = SQLiteSessionRepository(self._db)
-        self._refresh_tokens = SQLiteRefreshTokenRepository(self._db)
-        self._mcp_installations = SQLiteMcpInstallationRepository(self._db)
-        self._org_facts = SQLiteOrgFactRepository(self._db)
-        self._ontology_entities = SQLiteOntologyEntityRepository(self._db)
-        self._ontology_drift = SQLiteOntologyDriftReportRepository(self._db)
+        self._fine_tune_checkpoints = SQLiteFineTuneCheckpointRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._fine_tune_runs = SQLiteFineTuneRunRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._training_plans = SQLiteTrainingPlanRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._training_results = SQLiteTrainingResultRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._custom_rules = SQLiteCustomRuleRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._sessions = SQLiteSessionRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._refresh_tokens = SQLiteRefreshTokenRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._mcp_installations = SQLiteMcpInstallationRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._org_facts = SQLiteOrgFactRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._ontology_entities = SQLiteOntologyEntityRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._ontology_drift = SQLiteOntologyDriftReportRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.

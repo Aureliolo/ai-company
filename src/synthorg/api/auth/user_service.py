@@ -21,7 +21,7 @@ from synthorg.observability.events.api import (
 
 if TYPE_CHECKING:
     from synthorg.persistence.auth_protocol import RefreshTokenRepository
-    from synthorg.persistence.repositories import UserRepository
+    from synthorg.persistence.user_protocol import UserRepository
 
 logger = get_logger(__name__)
 

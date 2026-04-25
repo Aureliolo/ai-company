@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from synthorg.core.task import Task
     from synthorg.core.types import NotBlankStr
     from synthorg.engine.loop_protocol import ExecutionResult
-    from synthorg.persistence.repositories import TaskRepository
+    from synthorg.persistence.task_protocol import TaskRepository
 
 logger = get_logger(__name__)
 

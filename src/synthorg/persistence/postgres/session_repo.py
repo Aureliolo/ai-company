@@ -15,7 +15,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
-    API_SESSION_CREATED,
     API_SESSION_LIMIT_ENFORCED,
     API_SESSION_REVOKED,
 )
@@ -107,11 +106,6 @@ class PostgresSessionRepository:
             )
         if session.revoked:
             self._revoked.add(session.session_id)
-        logger.debug(
-            API_SESSION_CREATED,
-            session_id=session.session_id,
-            user_id=session.user_id,
-        )
 
     async def get(self, session_id: str) -> Session | None:
         """Look up a session by ID."""

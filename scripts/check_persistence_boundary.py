@@ -19,7 +19,9 @@ Usage:
 """
 
 import argparse
+import ast
 import io
+import os
 import re
 import subprocess
 import sys
@@ -59,6 +61,64 @@ _RAW_SQL_RE: Final[re.Pattern[str]] = re.compile(
         [^'"]*                                 # any trailing SQL
         ['"]""",
     re.VERBOSE | re.IGNORECASE,
+)
+
+# Mutation audit log calls inside the persistence boundary.  Repos must
+# not log mutations themselves -- the service layer is the audit point.
+# Per-line opt-out via the existing
+# ``# lint-allow: persistence-boundary -- <reason>`` marker.
+#
+# Detection lives in :func:`_scan_persistence_mutation_logs` and uses
+# the AST so it catches the full surface: ``logger.info``,
+# ``self._logger.warning``, renamed loggers, *every* logging level, and
+# events passed by keyword.  Comments and docstrings are ignored by
+# construction (they are not ``Call`` nodes).
+
+# Logging methods whose first positional / ``event`` keyword argument is
+# inspected for a mutation-suffix constant.  ``exception`` / ``critical``
+# are included so the gate cannot be bypassed by widening the level.
+_LOGGING_METHODS: Final[frozenset[str]] = frozenset(
+    {"debug", "info", "warning", "error", "exception", "critical"}
+)
+
+# Suffixes that mark an entity-mutation audit constant.  The first
+# tuple covers SCREAMING_SNAKE constant names (``PERSISTENCE_USER_SAVED``);
+# the second covers the corresponding event-string values
+# (``"persistence.user.saved"``) so the scanner catches both
+# constant references AND raw string literals at logger call sites.
+_MUTATION_SUFFIXES: Final[tuple[str, ...]] = (
+    "_SAVED",
+    "_CREATED",
+    "_UPDATED",
+    "_DELETED",
+    "_PERSISTED",
+)
+_MUTATION_VALUE_SUFFIXES: Final[tuple[str, ...]] = (
+    ".saved",
+    ".created",
+    ".updated",
+    ".deleted",
+    ".persisted",
+)
+
+# Lifecycle / infrastructure events whose constants happen to end in a
+# mutation suffix but are NOT entity-mutation audits (the rule targets
+# entity audit, not "the backend started" / "TimescaleDB hypertable was
+# initialised" lifecycle).  Each entry must carry a justification.
+_MUTATION_LOG_ALLOWED_CONSTANTS: Final[frozenset[str]] = frozenset(
+    {
+        # Backend factory: lifecycle event when the persistence backend
+        # itself is constructed; not an entity mutation.
+        "PERSISTENCE_BACKEND_CREATED",
+        # TimescaleDB hypertable conversion: schema-evolution lifecycle,
+        # fired once per migration (not per row mutation).
+        "PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED",
+        # Filesystem artifact storage: blob-store deletion event from
+        # the storage abstraction (separate concern from the artifact
+        # repository which already has its own audit at the service
+        # layer via API_ARTIFACT_DELETED).
+        "PERSISTENCE_ARTIFACT_STORAGE_DELETED",
+    }
 )
 
 # ── Allowlist ───────────────────────────────────────────────────
@@ -193,16 +253,261 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
     return issues
 
 
+def _is_logger_call(call: ast.Call) -> str | None:
+    """Return the logging level if *call* is a logger call, else ``None``.
+
+    Recognises any attribute chain ending in a logging level
+    (``logger.info``, ``self._logger.warning``, ``cls.log.error``, ...)
+    so the gate cannot be bypassed by renaming the logger or hiding it
+    behind ``self`` / ``cls``.
+    """
+    if not isinstance(call.func, ast.Attribute):
+        return None
+    if call.func.attr not in _LOGGING_METHODS:
+        return None
+    return call.func.attr
+
+
+def _extract_event_node(call: ast.Call) -> ast.expr | None:
+    """Return the AST node carrying the event-constant argument for *call*.
+
+    Logging calls in this codebase pass the event constant as the first
+    positional argument (``logger.info(EVENT, key=...)``); some sites
+    pass it via the ``event`` keyword.  Both forms are accepted, and
+    the returned node may be:
+
+    - :class:`ast.Name` (``EVENT``) -- the canonical case.
+    - :class:`ast.Attribute` (``events.EVENT`` / ``module.EVENT``) --
+      module-attribute access.
+    - :class:`ast.Constant` with a string value
+      (``logger.info("persistence.user.saved", ...)``) -- the
+      escape-hatch literal form.
+
+    Dynamic expressions (variables built at runtime, f-strings, etc.)
+    are ignored: the audit-event protocol mandates static event names,
+    so anything else is not a real audit emission worth gating.
+    """
+    if call.args:
+        first = call.args[0]
+        if isinstance(first, (ast.Name, ast.Attribute, ast.Constant)):
+            return first
+    for kw in call.keywords:
+        if kw.arg == "event" and isinstance(
+            kw.value, (ast.Name, ast.Attribute, ast.Constant)
+        ):
+            return kw.value
+    return None
+
+
+def _build_alias_map(tree: ast.AST) -> dict[str, str]:
+    """Return ``{local_name: imported_name}`` for ``import ... as ...`` lines.
+
+    Used to resolve aliased imports so the scanner cannot be bypassed
+    by ``from synthorg.observability.events.persistence import
+    PERSISTENCE_USER_SAVED as EVT`` followed by ``logger.info(EVT, ...)``.
+
+    Module-level only -- function-scoped imports are ignored on the
+    grounds that they are rare and adding scope tracking would balloon
+    the script.  If a real escape ever shows up, the fallback string-
+    value check below still catches it.
+    """
+    aliases: dict[str, str] = {}
+    for node in tree.body if isinstance(tree, ast.Module) else ():
+        if isinstance(node, (ast.ImportFrom, ast.Import)):
+            for alias in node.names:
+                if alias.asname:
+                    aliases[alias.asname] = alias.name
+    return aliases
+
+
+def _build_assignment_map(tree: ast.AST) -> dict[str, ast.expr]:
+    """Return ``{local_name: rhs_node}`` for module-level assignments.
+
+    Closes the second escape hatch: a repo could ``AUDIT_EVENT =
+    PERSISTENCE_PROJECT_SAVED`` (or the literal string form) and then
+    ``logger.info(AUDIT_EVENT, ...)``.  The aliased-import resolver
+    only catches ``import ... as ...``; this resolver catches
+    plain-`Assign` and `AnnAssign` redirections.
+
+    The map values are the right-hand-side AST expressions, which the
+    caller dereferences via :func:`_resolve_event_token` (one level
+    of indirection -- chains of more than one redirection are rare
+    enough that the extra complexity is not worth it).
+    """
+    assignments: dict[str, ast.expr] = {}
+    for node in tree.body if isinstance(tree, ast.Module) else ():
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    assignments[target.id] = node.value
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.value is not None
+        ):
+            assignments[node.target.id] = node.value
+    return assignments
+
+
+def _resolve_event_token(  # noqa: PLR0911
+    node: ast.expr,
+    aliases: dict[str, str],
+    assignments: dict[str, ast.expr],
+) -> tuple[str | None, str | None]:
+    """Resolve *node* to ``(canonical_name, literal_value)``.
+
+    ``canonical_name`` is the identifier form
+    (``PERSISTENCE_USER_SAVED``) when the event reference is a
+    :class:`ast.Name`/:class:`ast.Attribute`; ``literal_value`` is the
+    string form (``"persistence.user.saved"``) when the event is
+    written as a :class:`ast.Constant`.  Either may be ``None``.
+
+    Resolution order for :class:`ast.Name`:
+
+    1. ``aliases`` -- ``import X as Y`` rewrites Y back to X.
+    2. ``assignments`` -- ``Y = X`` (or ``Y = "..."``) follows one
+       level of redirection so module-level reassignment cannot
+       bypass the suffix check.
+    3. Fall back to the local name itself -- the suffix check still
+       fires when an unresolved Name happens to end in a mutation
+       suffix on its own.
+    """
+    if isinstance(node, ast.Name):
+        if node.id in aliases:
+            return aliases[node.id], None
+        if node.id in assignments:
+            rhs = assignments[node.id]
+            if isinstance(rhs, ast.Name):
+                return aliases.get(rhs.id, rhs.id), None
+            if isinstance(rhs, ast.Attribute):
+                return rhs.attr, None
+            if isinstance(rhs, ast.Constant) and isinstance(rhs.value, str):
+                return None, rhs.value
+        return node.id, None
+    if isinstance(node, ast.Attribute):
+        # ``events.PERSISTENCE_FOO`` -> the rightmost attribute is the
+        # constant name we care about.  Module-prefix is irrelevant
+        # for the suffix check.
+        return node.attr, None
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return None, node.value
+    return None, None
+
+
+def _has_mutation_suffix(constant: str) -> bool:
+    """``True`` when *constant* (identifier form) ends in a mutation suffix."""
+    return any(constant.endswith(suffix) for suffix in _MUTATION_SUFFIXES)
+
+
+def _has_mutation_value_suffix(value: str) -> bool:
+    """``True`` when *value* (string-literal form) ends in a mutation suffix."""
+    lower = value.lower()
+    return any(lower.endswith(suffix) for suffix in _MUTATION_VALUE_SUFFIXES)
+
+
+def _scan_persistence_mutation_logs(file_path: Path, rel: str) -> list[str]:
+    """Return mutation-log violations for a persistence-boundary file.
+
+    Repos must not log mutations themselves; service-layer events are
+    the canonical audit point.  This scanner walks the file's AST and
+    finds every logging call whose event-constant argument ends in
+    ``_SAVED``/``_CREATED``/``_UPDATED``/``_DELETED``/``_PERSISTED``,
+    skipping (a) sanctioned lifecycle constants on
+    ``_MUTATION_LOG_ALLOWED_CONSTANTS`` and (b) any line that carries
+    the ``# lint-allow: persistence-boundary -- <reason>`` marker.
+
+    Detection covers ``logger.<level>(EVENT, ...)``,
+    ``self._logger.<level>(EVENT, ...)``, renamed-attribute loggers,
+    every standard logging level (debug/info/warning/error/exception/
+    critical), and the ``event=`` keyword form -- all of which the
+    previous regex-based scanner would silently miss.  Comments and
+    docstrings are ignored by construction (they are not ``Call``
+    nodes).
+    """
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return [f"{rel}:0: unable to scan file: {exc}"]
+    try:
+        tree = ast.parse(text, filename=str(file_path))
+    except SyntaxError as exc:
+        return [f"{rel}:{exc.lineno or 0}: unable to parse file: {exc.msg}"]
+    issues: list[str] = []
+    lines = text.splitlines()
+    aliases = _build_alias_map(tree)
+    assignments = _build_assignment_map(tree)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if _is_logger_call(node) is None:
+            continue
+        event_node = _extract_event_node(node)
+        if event_node is None:
+            continue
+        canonical_name, literal_value = _resolve_event_token(
+            event_node, aliases, assignments
+        )
+        # The event matches if either the canonical identifier OR the
+        # literal string ends in a mutation suffix.  Resolved aliases
+        # and ``module.CONST`` attribute references both surface as
+        # ``canonical_name``; raw string literals surface as
+        # ``literal_value``.
+        is_mutation = (
+            canonical_name is not None and _has_mutation_suffix(canonical_name)
+        ) or (literal_value is not None and _has_mutation_value_suffix(literal_value))
+        if not is_mutation:
+            continue
+        # Allowlist applies to the canonical identifier form only --
+        # the lifecycle constants are always referenced by name in
+        # this codebase.  String-literal usage is treated as a
+        # deliberate escape hatch and never silently allowed.
+        if (
+            canonical_name is not None
+            and canonical_name in _MUTATION_LOG_ALLOWED_CONSTANTS
+        ):
+            continue
+        # Allow per-line opt-out on either the ``logger.<level>(`` line
+        # OR the line carrying the event token -- multi-line calls
+        # span both, and the marker can be placed on whichever read
+        # more naturally.
+        call_line_no = node.lineno
+        event_line_no = event_node.lineno
+        if _line_has_trailing_marker(
+            lines[call_line_no - 1]
+        ) or _line_has_trailing_marker(lines[event_line_no - 1]):
+            continue
+        display = canonical_name if canonical_name is not None else repr(literal_value)
+        issues.append(
+            f"{rel}:{call_line_no}: repo-level mutation audit log "
+            f"{display} must move to the service layer "
+            "(repositories must not log mutations themselves; see "
+            "docs/reference/persistence-boundary.md). Add "
+            "'# lint-allow: persistence-boundary -- <reason>' on the "
+            "logger call line ONLY when the event is a non-entity "
+            "lifecycle/infrastructure signal."
+        )
+    return issues
+
+
 def _resolve_root(root: Path, project_root: Path) -> Path | None:
-    """Resolve *root* to an absolute path anchored under *project_root*."""
+    """Resolve *root* to an absolute path strictly under *project_root*.
+
+    Uses :func:`os.path.commonpath` (rather than :meth:`Path.relative_to`)
+    as the containment check so CodeQL's path-injection data-flow
+    analysis recognises the sanitizer.
+    """
     candidate = root if root.is_absolute() else project_root / root
     try:
         resolved = candidate.resolve(strict=False)
     except OSError:
         return None
+    project_root_str = os.fspath(project_root.resolve(strict=False))
+    resolved_str = os.fspath(resolved)
     try:
-        resolved.relative_to(project_root)
+        common = os.path.commonpath([project_root_str, resolved_str])
     except ValueError:
+        return None
+    if common != project_root_str:
         return None
     return resolved
 
@@ -255,6 +560,131 @@ def _iter_targets(
     return targets
 
 
+_PERSISTENCE_SRC_PREFIX: Final[str] = "src/synthorg/persistence/"
+
+
+def _iter_persistence_targets(
+    roots: list[Path],
+    project_root: Path,
+) -> list[tuple[Path, str]]:
+    """Yield ``(absolute_path, posix_relative_path)`` for persistence files.
+
+    The mutation-log gate only ever needs to scan
+    ``src/synthorg/persistence/``; user-supplied ``--paths`` are used as
+    a *coarse opt-in* (skip persistence scanning entirely if no path
+    overlaps the persistence tree) but do **not** drive the actual
+    enumeration -- that is anchored at a hard-coded prefix under
+    ``project_root``.  Avoiding user-input on the final filesystem read
+    keeps CodeQL's path-injection analysis happy and prevents the
+    persistence sweep from accidentally widening scope when callers
+    pass aggressive ``--paths``.
+
+    Tests under ``tests/.../persistence/`` are intentionally excluded
+    -- the rule applies to production code; tests that exercise repo
+    internals can log whatever they need.
+    """
+    if not _persistence_in_scope(roots, project_root):
+        return []
+    persistence_root = project_root / _PERSISTENCE_SRC_PREFIX.rstrip("/")
+    if not persistence_root.is_dir():
+        return []
+    targets: list[tuple[Path, str]] = []
+    for path, rel in _git_tracked_python_files(persistence_root, project_root):
+        if rel.startswith(_PERSISTENCE_SRC_PREFIX):
+            targets.append((path, rel))
+    return targets
+
+
+def _persistence_in_scope(roots: list[Path], project_root: Path) -> bool:
+    """Return ``True`` when at least one ``--paths`` entry overlaps persistence.
+
+    Coarse opt-in for the mutation-log sweep -- uses the same
+    containment check as :func:`_resolve_root` so the boundary is
+    consistent.  The function never returns the user-supplied path
+    itself, only a boolean derived from it.
+    """
+    persistence_prefix = (project_root / _PERSISTENCE_SRC_PREFIX.rstrip("/")).resolve(
+        strict=False
+    )
+    for root in roots:
+        resolved = _resolve_root(root, project_root)
+        if resolved is None:
+            continue
+        # Either the user path is inside persistence, or persistence is
+        # inside the user path -- both count as "persistence is in
+        # scope".  Compare resolved string forms so CodeQL recognises
+        # the prefix relationship.
+        resolved_str = os.fspath(resolved)
+        prefix_str = os.fspath(persistence_prefix)
+        if (
+            resolved_str == prefix_str
+            or resolved_str.startswith(prefix_str + os.sep)
+            or prefix_str.startswith(resolved_str + os.sep)
+        ):
+            return True
+    return False
+
+
+class ProjectRootError(Exception):
+    """Raised when ``--repo-root`` cannot be resolved to a usable directory.
+
+    Carries the diagnostic message intended for stderr so :func:`main`
+    can format it consistently and exit with a non-zero status.
+    """
+
+
+def _resolve_project_root(repo_root: Path | None) -> Path:
+    """Resolve the project root from CLI arguments.
+
+    Args:
+        repo_root: User-supplied repo root from ``--repo-root``, or
+            ``None`` to fall back to the script's own parent directory.
+
+    Returns:
+        A resolved :class:`Path` to the project root.
+
+    Raises:
+        ProjectRootError: If ``--repo-root`` is inaccessible (OSError on
+            resolve) or does not point at a directory.  The message
+            attached to the exception is suitable for printing directly
+            to stderr.
+    """
+    default_root = Path(__file__).resolve().parent.parent
+    if repo_root is None:
+        return default_root
+    try:
+        resolved = repo_root.resolve(strict=True)
+    except OSError as exc:
+        msg = f"--repo-root not accessible: {repo_root} ({exc})"
+        raise ProjectRootError(msg) from exc
+    if not resolved.is_dir():
+        msg = f"--repo-root must be a directory: {resolved}"
+        raise ProjectRootError(msg)
+    return resolved
+
+
+def _scan_all(
+    roots: list[Path],
+    project_root: Path,
+) -> int:
+    """Run both scanning passes, print issues, return total count."""
+    total = 0
+    for path, rel in _iter_targets(roots, project_root):
+        issues = _scan_file(path, rel)
+        for msg in issues:
+            print(msg)
+        total += len(issues)
+    # Mutation-log gate: scan persistence-boundary files for repo-level
+    # mutation audit logs.  These violate the service-layer rule
+    # (repositories must not log mutations themselves).
+    for path, rel in _iter_persistence_targets(roots, project_root):
+        issues = _scan_persistence_mutation_logs(path, rel)
+        for msg in issues:
+            print(msg)
+        total += len(issues)
+    return total
+
+
 def main() -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -276,24 +706,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    default_root = Path(__file__).resolve().parent.parent
-    if args.repo_root is not None:
-        try:
-            project_root = args.repo_root.resolve(strict=True)
-        except OSError as exc:
-            print(
-                f"--repo-root not accessible: {args.repo_root} ({exc})",
-                file=sys.stderr,
-            )
-            return 2
-        if not project_root.is_dir():
-            print(
-                f"--repo-root must be a directory: {project_root}",
-                file=sys.stderr,
-            )
-            return 2
-    else:
-        project_root = default_root
+    try:
+        project_root = _resolve_project_root(args.repo_root)
+    except ProjectRootError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
     roots = [Path(p) for p in args.paths]
     for root in roots:
         if _resolve_root(root, project_root) is None:
@@ -302,12 +720,8 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 2
-    total = 0
-    for path, rel in _iter_targets(roots, project_root):
-        issues = _scan_file(path, rel)
-        for msg in issues:
-            print(msg)
-        total += len(issues)
+
+    total = _scan_all(roots, project_root)
     if total:
         print(
             f"\n{total} persistence-boundary violation(s) found.  See "

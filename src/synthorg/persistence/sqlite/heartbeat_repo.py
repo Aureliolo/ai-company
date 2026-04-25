@@ -1,5 +1,7 @@
 """SQLite repository implementation for heartbeat persistence."""
 
+import asyncio
+import contextlib
 import sqlite3
 from datetime import UTC
 
@@ -11,13 +13,11 @@ from synthorg.engine.checkpoint.models import Heartbeat
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_HEARTBEAT_DELETE_FAILED,
-    PERSISTENCE_HEARTBEAT_DELETED,
     PERSISTENCE_HEARTBEAT_DESERIALIZE_FAILED,
     PERSISTENCE_HEARTBEAT_NOT_FOUND,
     PERSISTENCE_HEARTBEAT_QUERIED,
     PERSISTENCE_HEARTBEAT_QUERY_FAILED,
     PERSISTENCE_HEARTBEAT_SAVE_FAILED,
-    PERSISTENCE_HEARTBEAT_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -31,40 +31,51 @@ class SQLiteHeartbeatRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, heartbeat: Heartbeat) -> None:
         """Persist a heartbeat (upsert by execution_id)."""
-        try:
-            data = heartbeat.model_dump(mode="json")
-            # Normalize to UTC so lexicographic comparisons in
-            # get_stale() work correctly regardless of input timezone.
-            data["last_heartbeat_at"] = heartbeat.last_heartbeat_at.astimezone(
-                UTC
-            ).isoformat()
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                data = heartbeat.model_dump(mode="json")
+                # Normalize to UTC so lexicographic comparisons in
+                # get_stale() work correctly regardless of input timezone.
+                data["last_heartbeat_at"] = heartbeat.last_heartbeat_at.astimezone(
+                    UTC
+                ).isoformat()
+                await self._db.execute(
+                    """\
 INSERT OR REPLACE INTO heartbeats (
     execution_id, agent_id, task_id, last_heartbeat_at
 ) VALUES (
     :execution_id, :agent_id, :task_id, :last_heartbeat_at
 )""",
-                data,
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save heartbeat for execution {heartbeat.execution_id!r}"
-            logger.exception(
-                PERSISTENCE_HEARTBEAT_SAVE_FAILED,
-                execution_id=heartbeat.execution_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_HEARTBEAT_SAVED,
-            execution_id=heartbeat.execution_id,
-        )
+                    data,
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = (
+                    f"Failed to save heartbeat for execution {heartbeat.execution_id!r}"
+                )
+                logger.exception(
+                    PERSISTENCE_HEARTBEAT_SAVE_FAILED,
+                    execution_id=heartbeat.execution_id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get(self, execution_id: NotBlankStr) -> Heartbeat | None:
         """Retrieve a heartbeat by execution ID."""
@@ -128,26 +139,24 @@ INSERT OR REPLACE INTO heartbeats (
 
     async def delete(self, execution_id: NotBlankStr) -> bool:
         """Delete a heartbeat by execution ID."""
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM heartbeats WHERE execution_id = ?",
-                (execution_id,),
-            )
-            deleted = cursor.rowcount > 0
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete heartbeat {execution_id!r}"
-            logger.exception(
-                PERSISTENCE_HEARTBEAT_DELETE_FAILED,
-                execution_id=execution_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        if deleted:
-            logger.debug(
-                PERSISTENCE_HEARTBEAT_DELETED,
-                execution_id=execution_id,
-            )
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM heartbeats WHERE execution_id = ?",
+                    (execution_id,),
+                )
+                deleted = cursor.rowcount > 0
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to delete heartbeat {execution_id!r}"
+                logger.exception(
+                    PERSISTENCE_HEARTBEAT_DELETE_FAILED,
+                    execution_id=execution_id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
         return deleted
 
     def _row_to_model(self, row: dict[str, object]) -> Heartbeat:

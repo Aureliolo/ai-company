@@ -1,17 +1,17 @@
 """SQLite implementation of the SettingsRepository protocol."""
 
+import asyncio
 import sqlite3
 from collections.abc import Mapping, Sequence  # noqa: TC003
 
 import aiosqlite
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_DELETE_FAILED,
     SETTINGS_FETCH_FAILED,
     SETTINGS_SET_FAILED,
-    SETTINGS_VALUE_DELETED,
     SETTINGS_VALUE_SET,
 )
 from synthorg.persistence.errors import QueryError
@@ -29,8 +29,18 @@ class SQLiteSettingsRepository:
         db: An open aiosqlite connection with row_factory set.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def get(
         self,
@@ -121,47 +131,48 @@ class SQLiteSettingsRepository:
             ``True`` if the write succeeded, ``False`` if the
             compare-and-swap condition was not met.
         """
-        try:
-            if expected_updated_at is not None:
-                cursor = await self._db.execute(
-                    "UPDATE settings SET value = ?, updated_at = ? "
-                    "WHERE namespace = ? AND key = ? "
-                    "AND updated_at = ?",
-                    (value, updated_at, namespace, key, expected_updated_at),
-                )
-                await self._db.commit()
-                if cursor.rowcount == 0:
-                    if expected_updated_at == "":
-                        # No DB row yet -- try insert.
-                        cursor = await self._db.execute(
-                            "INSERT OR IGNORE INTO settings "
-                            "(namespace, key, value, updated_at) "
-                            "VALUES (?, ?, ?, ?)",
-                            (namespace, key, value, updated_at),
-                        )
-                        await self._db.commit()
-                        if cursor.rowcount == 0:
+        async with self._write_lock:
+            try:
+                if expected_updated_at is not None:
+                    cursor = await self._db.execute(
+                        "UPDATE settings SET value = ?, updated_at = ? "
+                        "WHERE namespace = ? AND key = ? "
+                        "AND updated_at = ?",
+                        (value, updated_at, namespace, key, expected_updated_at),
+                    )
+                    await self._db.commit()
+                    if cursor.rowcount == 0:
+                        if expected_updated_at == "":
+                            # No DB row yet -- try insert.
+                            cursor = await self._db.execute(
+                                "INSERT OR IGNORE INTO settings "
+                                "(namespace, key, value, updated_at) "
+                                "VALUES (?, ?, ?, ?)",
+                                (namespace, key, value, updated_at),
+                            )
+                            await self._db.commit()
+                            if cursor.rowcount == 0:
+                                return False
+                        else:
                             return False
-                    else:
-                        return False
-            else:
-                await self._db.execute(
-                    "INSERT INTO settings (namespace, key, value, updated_at) "
-                    "VALUES (?, ?, ?, ?) "
-                    "ON CONFLICT(namespace, key) DO UPDATE SET "
-                    "value=excluded.value, updated_at=excluded.updated_at",
-                    (namespace, key, value, updated_at),
+                else:
+                    await self._db.execute(
+                        "INSERT INTO settings (namespace, key, value, updated_at) "
+                        "VALUES (?, ?, ?, ?) "
+                        "ON CONFLICT(namespace, key) DO UPDATE SET "
+                        "value=excluded.value, updated_at=excluded.updated_at",
+                        (namespace, key, value, updated_at),
+                    )
+                    await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to set setting {namespace}/{key}"
+                logger.exception(
+                    SETTINGS_SET_FAILED,
+                    namespace=namespace,
+                    key=key,
+                    error=str(exc),
                 )
-                await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to set setting {namespace}/{key}"
-            logger.exception(
-                SETTINGS_SET_FAILED,
-                namespace=namespace,
-                key=key,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+                raise QueryError(msg) from exc
         logger.debug(
             SETTINGS_VALUE_SET,
             namespace=namespace,
@@ -179,32 +190,33 @@ class SQLiteSettingsRepository:
         if not items:
             return True
         cas_map: Mapping[tuple[str, str], str] = expected_updated_at_map or {}
-        try:
-            await self._db.execute("BEGIN IMMEDIATE")
+        async with self._write_lock:
             try:
-                for namespace, key, value, updated_at in items:
-                    expected = cas_map.get((str(namespace), str(key)))
-                    if not await self._upsert_one(
-                        namespace,
-                        key,
-                        value,
-                        updated_at,
-                        expected,
-                    ):
-                        await self._db.rollback()
-                        return False
-                await self._db.commit()
-            except BaseException:
-                await self._db.rollback()
-                raise
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = "Failed to set_many settings"
-            logger.exception(
-                SETTINGS_SET_FAILED,
-                error=str(exc),
-                item_count=len(items),
-            )
-            raise QueryError(msg) from exc
+                await self._db.execute("BEGIN IMMEDIATE")
+                try:
+                    for namespace, key, value, updated_at in items:
+                        expected = cas_map.get((str(namespace), str(key)))
+                        if not await self._upsert_one(
+                            namespace,
+                            key,
+                            value,
+                            updated_at,
+                            expected,
+                        ):
+                            await self._db.rollback()
+                            return False
+                    await self._db.commit()
+                except BaseException:
+                    await self._db.rollback()
+                    raise
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = "Failed to set_many settings"
+                logger.exception(
+                    SETTINGS_SET_FAILED,
+                    error=str(exc),
+                    item_count=len(items),
+                )
+                raise QueryError(msg) from exc
         for namespace, key, _value, _updated_at in items:
             logger.debug(
                 SETTINGS_VALUE_SET,
@@ -258,50 +270,73 @@ class SQLiteSettingsRepository:
         key: NotBlankStr,
     ) -> bool:
         """Delete a setting. Return True if deleted."""
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM settings WHERE namespace = ? AND key = ?",
-                (namespace, key),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete setting {namespace}/{key}"
-            logger.exception(
-                SETTINGS_DELETE_FAILED,
-                namespace=namespace,
-                key=key,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        deleted = cursor.rowcount > 0
-        if deleted:
-            logger.debug(
-                SETTINGS_VALUE_DELETED,
-                namespace=namespace,
-                key=key,
-            )
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM settings WHERE namespace = ? AND key = ?",
+                    (namespace, key),
+                )
+                await self._db.commit()
+                deleted = cursor.rowcount > 0
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete setting {namespace}/{key}"
+                logger.warning(
+                    SETTINGS_DELETE_FAILED,
+                    namespace=namespace,
+                    key=key,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
         return deleted
 
     async def delete_namespace(self, namespace: NotBlankStr) -> int:
         """Delete all settings in a namespace. Return count."""
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM settings WHERE namespace = ?",
-                (namespace,),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete namespace {namespace}"
-            logger.exception(
-                SETTINGS_DELETE_FAILED,
-                namespace=namespace,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        count = cursor.rowcount
-        logger.debug(
-            SETTINGS_VALUE_DELETED,
-            namespace=namespace,
-            count=count,
-        )
-        return count
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM settings WHERE namespace = ?",
+                    (namespace,),
+                )
+                await self._db.commit()
+                rowcount = cursor.rowcount
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete namespace {namespace}"
+                logger.warning(
+                    SETTINGS_DELETE_FAILED,
+                    namespace=namespace,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return rowcount
+
+    async def delete_namespace_returning_keys(
+        self,
+        namespace: NotBlankStr,
+    ) -> tuple[NotBlankStr, ...]:
+        """Atomic delete-and-return-keys for namespace clear.
+
+        Uses ``DELETE ... RETURNING key`` (SQLite 3.35+) so the
+        ``get_namespace`` snapshot and the delete cannot drift under a
+        concurrent ``set`` -- the returned tuple is exactly the set of
+        keys whose override row was removed by *this* call.
+        """
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM settings WHERE namespace = ? RETURNING key",
+                    (namespace,),
+                )
+                rows = await cursor.fetchall()
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete namespace {namespace}"
+                logger.warning(
+                    SETTINGS_DELETE_FAILED,
+                    namespace=namespace,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return tuple(NotBlankStr(row[0]) for row in rows)

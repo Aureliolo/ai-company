@@ -22,25 +22,21 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_API_KEY_DELETE_FAILED,
-    PERSISTENCE_API_KEY_DELETED,
     PERSISTENCE_API_KEY_FETCH_FAILED,
     PERSISTENCE_API_KEY_FETCHED,
     PERSISTENCE_API_KEY_LIST_FAILED,
     PERSISTENCE_API_KEY_LISTED,
     PERSISTENCE_API_KEY_SAVE_FAILED,
-    PERSISTENCE_API_KEY_SAVED,
     PERSISTENCE_USER_COUNT_BY_ROLE_FAILED,
     PERSISTENCE_USER_COUNT_FAILED,
     PERSISTENCE_USER_COUNTED,
     PERSISTENCE_USER_COUNTED_BY_ROLE,
     PERSISTENCE_USER_DELETE_FAILED,
-    PERSISTENCE_USER_DELETED,
     PERSISTENCE_USER_FETCH_FAILED,
     PERSISTENCE_USER_FETCHED,
     PERSISTENCE_USER_LIST_FAILED,
     PERSISTENCE_USER_LISTED,
     PERSISTENCE_USER_SAVE_FAILED,
-    PERSISTENCE_USER_SAVED,
 )
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
@@ -164,7 +160,6 @@ class PostgresUserRepository:
                     constraint=constraint,
                 ) from exc
             raise QueryError(msg) from exc
-        logger.info(PERSISTENCE_USER_SAVED, user_id=user.id)
 
     async def get(self, user_id: NotBlankStr) -> User | None:
         """Retrieve a user by primary key."""
@@ -361,7 +356,6 @@ class PostgresUserRepository:
                 PERSISTENCE_USER_DELETE_FAILED, user_id=user_id, error=str(exc)
             )
             raise QueryError(msg) from exc
-        logger.info(PERSISTENCE_USER_DELETED, user_id=user_id, deleted=deleted)
         return deleted
 
 
@@ -410,7 +404,6 @@ class PostgresApiKeyRepository:
                 PERSISTENCE_API_KEY_SAVE_FAILED, key_id=key.id, error=str(exc)
             )
             raise QueryError(msg) from exc
-        logger.info(PERSISTENCE_API_KEY_SAVED, key_id=key.id)
 
     async def get(self, key_id: NotBlankStr) -> ApiKey | None:
         """Retrieve an API key by primary key."""
@@ -507,5 +500,4 @@ class PostgresApiKeyRepository:
                 PERSISTENCE_API_KEY_DELETE_FAILED, key_id=key_id, error=str(exc)
             )
             raise QueryError(msg) from exc
-        logger.info(PERSISTENCE_API_KEY_DELETED, key_id=key_id, deleted=deleted)
         return deleted

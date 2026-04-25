@@ -25,7 +25,7 @@ if TYPE_CHECKING:
         ModelCallResult,
         ToolCallResult,
     )
-    from synthorg.persistence.repositories import (
+    from synthorg.persistence.checkpoint_protocol import (
         CheckpointRepository,
         HeartbeatRepository,
     )

@@ -5,6 +5,7 @@ in their own table keyed by ``(subworkflow_id, semver)``.  See
 ``src/synthorg/persistence/subworkflow_repo.py`` for the protocol.
 """
 
+import asyncio
 import json
 import sqlite3
 from collections.abc import Iterable  # noqa: TC003
@@ -28,14 +29,12 @@ from synthorg.engine.workflow.definition import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
-    PERSISTENCE_SUBWORKFLOW_DELETED,
     PERSISTENCE_SUBWORKFLOW_DESERIALIZE_FAILED,
     PERSISTENCE_SUBWORKFLOW_FETCH_FAILED,
     PERSISTENCE_SUBWORKFLOW_FETCHED,
     PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
     PERSISTENCE_SUBWORKFLOW_LISTED,
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-    PERSISTENCE_SUBWORKFLOW_SAVED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.persistence.subworkflow_repo import (
@@ -208,8 +207,18 @@ class SQLiteSubworkflowRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, definition: WorkflowDefinition) -> None:
         """Insert a new subworkflow version row.
@@ -235,61 +244,56 @@ class SQLiteSubworkflowRepository:
         outputs_json = json.dumps(
             [o.model_dump(mode="json") for o in definition.outputs],
         )
-        try:
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    """\
 INSERT INTO subworkflows
     (subworkflow_id, semver, name, description, workflow_type,
      inputs, outputs, nodes, edges, created_by, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    definition.id,
-                    definition.version,
-                    definition.name,
-                    definition.description,
-                    definition.workflow_type.value,
-                    inputs_json,
-                    outputs_json,
-                    nodes_json,
-                    edges_json,
-                    definition.created_by,
-                    definition.created_at.astimezone(UTC).isoformat(),
-                    definition.updated_at.astimezone(UTC).isoformat(),
-                ),
-            )
-            await self._db.commit()
-        except sqlite3.IntegrityError as exc:
-            await self._db.rollback()
-            msg = (
-                f"Subworkflow {definition.id!r} version "
-                f"{definition.version!r} already exists"
-            )
-            logger.warning(
-                PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                subworkflow_id=definition.id,
-                version=definition.version,
-                error=msg,
-            )
-            raise DuplicateRecordError(msg) from exc
-        except sqlite3.Error as exc:
-            await self._db.rollback()
-            msg = (
-                f"Failed to save subworkflow {definition.id!r} version "
-                f"{definition.version!r}"
-            )
-            logger.exception(
-                PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                subworkflow_id=definition.id,
-                version=definition.version,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-
-        logger.info(
-            PERSISTENCE_SUBWORKFLOW_SAVED,
-            subworkflow_id=definition.id,
-            version=definition.version,
-        )
+                    (
+                        definition.id,
+                        definition.version,
+                        definition.name,
+                        definition.description,
+                        definition.workflow_type.value,
+                        inputs_json,
+                        outputs_json,
+                        nodes_json,
+                        edges_json,
+                        definition.created_by,
+                        definition.created_at.astimezone(UTC).isoformat(),
+                        definition.updated_at.astimezone(UTC).isoformat(),
+                    ),
+                )
+                await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                await self._db.rollback()
+                msg = (
+                    f"Subworkflow {definition.id!r} version "
+                    f"{definition.version!r} already exists"
+                )
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
+                    subworkflow_id=definition.id,
+                    version=definition.version,
+                    error=msg,
+                )
+                raise DuplicateRecordError(msg) from exc
+            except sqlite3.Error as exc:
+                await self._db.rollback()
+                msg = (
+                    f"Failed to save subworkflow {definition.id!r} version "
+                    f"{definition.version!r}"
+                )
+                logger.exception(
+                    PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
+                    subworkflow_id=definition.id,
+                    version=definition.version,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get(
         self,
@@ -431,31 +435,25 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         version: NotBlankStr,
     ) -> bool:
         """Delete a subworkflow version, returning ``True`` on success."""
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM subworkflows WHERE subworkflow_id = ? AND semver = ?",
-                (subworkflow_id, version),
-            )
-            await self._db.commit()
-        except sqlite3.Error as exc:
-            await self._db.rollback()
-            msg = f"Failed to delete subworkflow {subworkflow_id!r}@{version!r}"
-            logger.exception(
-                PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
-                subworkflow_id=subworkflow_id,
-                version=version,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM subworkflows WHERE subworkflow_id = ? AND semver = ?",
+                    (subworkflow_id, version),
+                )
+                await self._db.commit()
+            except sqlite3.Error as exc:
+                await self._db.rollback()
+                msg = f"Failed to delete subworkflow {subworkflow_id!r}@{version!r}"
+                logger.exception(
+                    PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
+                    subworkflow_id=subworkflow_id,
+                    version=version,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
-        deleted = cursor.rowcount > 0
-        logger.info(
-            PERSISTENCE_SUBWORKFLOW_DELETED,
-            subworkflow_id=subworkflow_id,
-            version=version,
-            deleted=deleted,
-        )
-        return deleted
+        return cursor.rowcount > 0
 
     async def delete_if_unreferenced(
         self,
@@ -463,53 +461,48 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         version: NotBlankStr,
     ) -> tuple[bool, tuple[ParentReference, ...]]:
         """Atomically check-and-delete inside a single transaction."""
-        try:
-            # find_parents already uses self._db so we wrap the
-            # whole check + delete in an explicit transaction.
-            await self._db.execute("BEGIN IMMEDIATE")
-        except sqlite3.Error as exc:
-            msg = (
-                "Failed to begin transaction for"
-                f" delete_if_unreferenced {subworkflow_id!r}@{version!r}"
-            )
-            logger.exception(
-                PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
-                subworkflow_id=subworkflow_id,
-                version=version,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-
-        try:
-            parents = await self.find_parents(subworkflow_id, version)
-            if parents:
-                await self._db.rollback()
-                return False, parents
-
-            cursor = await self._db.execute(
-                "DELETE FROM subworkflows WHERE subworkflow_id = ? AND semver = ?",
-                (subworkflow_id, version),
-            )
-            await self._db.commit()
-        except Exception:
+        async with self._write_lock:
             try:
-                await self._db.rollback()
-            except sqlite3.Error:
+                # find_parents already uses self._db so we wrap the
+                # whole check + delete in an explicit transaction.
+                await self._db.execute("BEGIN IMMEDIATE")
+            except sqlite3.Error as exc:
+                msg = (
+                    "Failed to begin transaction for"
+                    f" delete_if_unreferenced {subworkflow_id!r}@{version!r}"
+                )
                 logger.exception(
                     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
                     subworkflow_id=subworkflow_id,
                     version=version,
-                    error="Rollback failed after primary error",
+                    error=str(exc),
                 )
-            raise
+                raise QueryError(msg) from exc
+
+            try:
+                parents = await self.find_parents(subworkflow_id, version)
+                if parents:
+                    await self._db.rollback()
+                    return False, parents
+
+                cursor = await self._db.execute(
+                    "DELETE FROM subworkflows WHERE subworkflow_id = ? AND semver = ?",
+                    (subworkflow_id, version),
+                )
+                await self._db.commit()
+            except Exception:
+                try:
+                    await self._db.rollback()
+                except sqlite3.Error:
+                    logger.exception(
+                        PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
+                        subworkflow_id=subworkflow_id,
+                        version=version,
+                        error="Rollback failed after primary error",
+                    )
+                raise
 
         deleted = cursor.rowcount > 0
-        logger.info(
-            PERSISTENCE_SUBWORKFLOW_DELETED,
-            subworkflow_id=subworkflow_id,
-            version=version,
-            deleted=deleted,
-        )
         return deleted, ()
 
     async def find_parents(

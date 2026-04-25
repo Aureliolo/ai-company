@@ -12,8 +12,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-    PERSISTENCE_SSRF_VIOLATION_SAVED,
-    PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, PersistenceError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
@@ -130,11 +128,6 @@ class SQLiteSsrfViolationRepository:
                 error=msg,
             )
             raise PersistenceError(msg) from exc
-        else:
-            logger.debug(
-                PERSISTENCE_SSRF_VIOLATION_SAVED,
-                id=violation.id,
-            )
 
     async def get(
         self,
@@ -240,13 +233,19 @@ class SQLiteSsrfViolationRepository:
             ValueError: If status is PENDING.
         """
         if status == SsrfViolationStatus.PENDING:
-            msg = "Cannot transition a violation back to PENDING"
+            msg = (
+                f"Cannot transition violation {violation_id!r} "
+                f"to PENDING (target status must be ALLOW or DENY)"
+            )
+            # Log the rejection at WARNING with full context so an
+            # operator investigating an audit-trail anomaly can see
+            # who attempted the bad transition.
             logger.warning(
-                PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
+                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
                 violation_id=violation_id,
-                reason="invalid_status_transition",
                 attempted_status=status.value,
-                outcome="rejected",
+                resolved_by=resolved_by,
+                error=msg,
             )
             raise ValueError(msg)
 
@@ -274,15 +273,7 @@ class SQLiteSsrfViolationRepository:
             )
             raise PersistenceError(msg) from exc
 
-        updated = cursor.rowcount > 0
-        logger.info(
-            PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
-            violation_id=violation_id,
-            new_status=status.value,
-            resolved_by=resolved_by,
-            updated=updated,
-        )
-        return updated
+        return cursor.rowcount > 0
 
 
 def _row_to_violation(row: Any) -> SsrfViolation:

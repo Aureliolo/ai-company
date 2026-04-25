@@ -23,7 +23,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     SECRET_BACKEND_UNAVAILABLE,
     SECRET_DELETE_FAILED,
-    SECRET_DELETED,
     SECRET_RETRIEVAL_FAILED,
     SECRET_ROTATED,
     SECRET_STORAGE_FAILED,
@@ -215,8 +214,6 @@ class EncryptedSqliteSecretBackend:
             msg = f"Failed to delete secret {secret_id}"
             raise SecretStorageError(msg) from exc
         else:
-            if deleted:
-                logger.debug(SECRET_DELETED, secret_id=secret_id)
             return deleted
 
     async def rotate(

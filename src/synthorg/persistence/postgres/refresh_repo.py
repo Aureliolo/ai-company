@@ -14,7 +14,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_REFRESH_CLEANUP,
     API_AUTH_REFRESH_CONSUMED,
-    API_AUTH_REFRESH_CREATED,
     API_AUTH_REFRESH_REJECTED,
     API_AUTH_REFRESH_REVOKED,
 )
@@ -67,11 +66,6 @@ class PostgresRefreshTokenRepository:
                     now,
                 ),
             )
-        logger.info(
-            API_AUTH_REFRESH_CREATED,
-            session_id=session_id,
-            user_id=user_id,
-        )
 
     async def consume(
         self,

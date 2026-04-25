@@ -23,7 +23,7 @@ from synthorg.observability.events.checkpoint import (
     HEARTBEAT_UPDATE_FAILED,
     HEARTBEAT_UPDATED,
 )
-from synthorg.persistence.repositories import (
+from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,  # noqa: TC001
     HeartbeatRepository,  # noqa: TC001
 )

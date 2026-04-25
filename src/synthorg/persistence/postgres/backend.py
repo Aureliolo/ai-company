@@ -146,31 +146,35 @@ if TYPE_CHECKING:
         TaskMetricRepository,
     )
     from synthorg.ontology.models import EntityDefinition
+    from synthorg.persistence.agent_state_protocol import AgentStateRepository
+    from synthorg.persistence.artifact_protocol import ArtifactRepository
+    from synthorg.persistence.audit_protocol import AuditRepository
     from synthorg.persistence.auth_protocol import LockoutRepository
+    from synthorg.persistence.checkpoint_protocol import (
+        CheckpointRepository,
+        HeartbeatRepository,
+    )
     from synthorg.persistence.circuit_breaker_repo import (
         CircuitBreakerStateRepository,
     )
+    from synthorg.persistence.cost_record_protocol import CostRecordRepository
+    from synthorg.persistence.decision_protocol import DecisionRepository
     from synthorg.persistence.escalation_protocol import EscalationQueueRepository
-    from synthorg.persistence.preset_repository import PersonalityPresetRepository
-    from synthorg.persistence.repositories import (
-        AgentStateRepository,
-        ApiKeyRepository,
-        ArtifactRepository,
-        AuditRepository,
-        CheckpointRepository,
-        CostRecordRepository,
-        DecisionRepository,
-        HeartbeatRepository,
-        MessageRepository,
+    from synthorg.persistence.message_protocol import MessageRepository
+    from synthorg.persistence.parked_context_protocol import (
         ParkedContextRepository,
-        ProjectRepository,
-        SettingsRepository,
-        TaskRepository,
+    )
+    from synthorg.persistence.preset_repository import PersonalityPresetRepository
+    from synthorg.persistence.project_protocol import ProjectRepository
+    from synthorg.persistence.risk_override_repo import RiskOverrideRepository
+    from synthorg.persistence.settings_protocol import SettingsRepository
+    from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
+    from synthorg.persistence.subworkflow_repo import SubworkflowRepository
+    from synthorg.persistence.task_protocol import TaskRepository
+    from synthorg.persistence.user_protocol import (
+        ApiKeyRepository,
         UserRepository,
     )
-    from synthorg.persistence.risk_override_repo import RiskOverrideRepository
-    from synthorg.persistence.ssrf_violation_repo import SsrfViolationRepository
-    from synthorg.persistence.subworkflow_repo import SubworkflowRepository
     from synthorg.persistence.version_repo import VersionRepository
     from synthorg.persistence.workflow_definition_repo import (
         WorkflowDefinitionRepository,

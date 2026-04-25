@@ -4,6 +4,7 @@ HR-related repositories (LifecycleEvent, TaskMetric, CollaborationMetric)
 are in ``hr_repositories.py`` within this package.
 """
 
+import asyncio
 import json
 import sqlite3
 
@@ -22,24 +23,20 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_QUERIED,
     PERSISTENCE_COST_RECORD_QUERY_FAILED,
     PERSISTENCE_COST_RECORD_SAVE_FAILED,
-    PERSISTENCE_COST_RECORD_SAVED,
     PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
     PERSISTENCE_MESSAGE_DUPLICATE,
     PERSISTENCE_MESSAGE_HISTORY_FAILED,
     PERSISTENCE_MESSAGE_HISTORY_FETCHED,
     PERSISTENCE_MESSAGE_SAVE_FAILED,
-    PERSISTENCE_MESSAGE_SAVED,
     PERSISTENCE_TASK_COUNT_FAILED,
     PERSISTENCE_TASK_COUNTED,
     PERSISTENCE_TASK_DELETE_FAILED,
-    PERSISTENCE_TASK_DELETED,
     PERSISTENCE_TASK_DESERIALIZE_FAILED,
     PERSISTENCE_TASK_FETCH_FAILED,
     PERSISTENCE_TASK_FETCHED,
     PERSISTENCE_TASK_LIST_FAILED,
     PERSISTENCE_TASK_LISTED,
     PERSISTENCE_TASK_SAVE_FAILED,
-    PERSISTENCE_TASK_SAVED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 
@@ -67,24 +64,35 @@ class SQLiteTaskRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, task: Task) -> None:
         """Persist a task (upsert semantics)."""
-        try:
-            params = task.model_dump(mode="json")
-            # Tuple fields must be stored as JSON strings.
-            params["reviewers"] = _json_list(task.reviewers)
-            params["dependencies"] = _json_list(task.dependencies)
-            params["artifacts_expected"] = _json_list(task.artifacts_expected)
-            params["acceptance_criteria"] = _json_list(
-                task.acceptance_criteria,
-            )
-            params["delegation_chain"] = _json_list(task.delegation_chain)
+        async with self._write_lock:
+            try:
+                params = task.model_dump(mode="json")
+                # Tuple fields must be stored as JSON strings.
+                params["reviewers"] = _json_list(task.reviewers)
+                params["dependencies"] = _json_list(task.dependencies)
+                params["artifacts_expected"] = _json_list(task.artifacts_expected)
+                params["acceptance_criteria"] = _json_list(
+                    task.acceptance_criteria,
+                )
+                params["delegation_chain"] = _json_list(task.delegation_chain)
 
-            await self._db.execute(
-                """\
+                await self._db.execute(
+                    """\
 INSERT INTO tasks (
     id, title, description, type, priority, project, created_by,
     assigned_to, status, estimated_complexity, budget_limit, deadline,
@@ -120,19 +128,18 @@ ON CONFLICT(id) DO UPDATE SET
     acceptance_criteria=excluded.acceptance_criteria,
     delegation_chain=excluded.delegation_chain
 """,
-                params,
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save task {task.id!r}"
-            logger.warning(
-                PERSISTENCE_TASK_SAVE_FAILED,
-                task_id=task.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
-        logger.debug(PERSISTENCE_TASK_SAVED, task_id=task.id)
+                    params,
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save task {task.id!r}"
+                logger.warning(
+                    PERSISTENCE_TASK_SAVE_FAILED,
+                    task_id=task.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
 
     #: Fields stored as JSON strings that need deserialization.
     _JSON_FIELDS: tuple[str, ...] = (
@@ -295,22 +302,22 @@ id, title, description, type, priority, project, created_by,
 
     async def delete(self, task_id: str) -> bool:
         """Delete a task by ID."""
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM tasks WHERE id = ?", (task_id,)
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete task {task_id!r}"
-            logger.warning(
-                PERSISTENCE_TASK_DELETE_FAILED,
-                task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
-        deleted = cursor.rowcount > 0
-        logger.debug(PERSISTENCE_TASK_DELETED, task_id=task_id, deleted=deleted)
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM tasks WHERE id = ?", (task_id,)
+                )
+                await self._db.commit()
+                deleted = cursor.rowcount > 0
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete task {task_id!r}"
+                logger.warning(
+                    PERSISTENCE_TASK_DELETE_FAILED,
+                    task_id=task_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
         return deleted
 
 
@@ -321,15 +328,26 @@ class SQLiteCostRecordRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, record: CostRecord) -> None:
         """Persist a cost record (append-only)."""
-        try:
-            data = record.model_dump(mode="json")
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                data = record.model_dump(mode="json")
+                await self._db.execute(
+                    """\
 INSERT INTO cost_records (
     agent_id, task_id, provider, model, input_tokens,
     output_tokens, cost, currency, timestamp, call_category
@@ -337,23 +355,18 @@ INSERT INTO cost_records (
     :agent_id, :task_id, :provider, :model, :input_tokens,
     :output_tokens, :cost, :currency, :timestamp, :call_category
 )""",
-                data,
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save cost record for agent {record.agent_id!r}"
-            logger.exception(
-                PERSISTENCE_COST_RECORD_SAVE_FAILED,
-                agent_id=record.agent_id,
-                task_id=record.task_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_COST_RECORD_SAVED,
-            agent_id=record.agent_id,
-            task_id=record.task_id,
-        )
+                    data,
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save cost record for agent {record.agent_id!r}"
+                logger.exception(
+                    PERSISTENCE_COST_RECORD_SAVE_FAILED,
+                    agent_id=record.agent_id,
+                    task_id=record.task_id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def query(
         self,
@@ -482,17 +495,28 @@ class SQLiteMessageRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, message: Message) -> None:
         """Persist a message."""
         data = message.model_dump(mode="json")
         msg_id = str(message.id)
 
-        try:
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    """\
 INSERT INTO messages (
     id, timestamp, sender, "to", type, priority,
     channel, content, attachments, metadata
@@ -500,48 +524,47 @@ INSERT INTO messages (
     :id, :timestamp, :sender, :to, :type, :priority,
     :channel, :content, :attachments, :metadata
 )""",
-                {
-                    "id": msg_id,
-                    "timestamp": data["timestamp"],
-                    "sender": data["sender"],
-                    "to": data["to"],
-                    "type": data["type"],
-                    "priority": data["priority"],
-                    "channel": data["channel"],
-                    "content": json.dumps(data["parts"]),
-                    "attachments": "[]",
-                    "metadata": json.dumps(data["metadata"]),
-                },
-            )
-            await self._db.commit()
-        except sqlite3.IntegrityError as exc:
-            error_text = str(exc)
-            is_duplicate_id = (
-                "UNIQUE constraint failed: messages.id" in error_text
-                or "PRIMARY KEY" in error_text
-            )
-            if is_duplicate_id:
-                err_msg = f"Message {msg_id} already exists"
-                logger.warning(PERSISTENCE_MESSAGE_DUPLICATE, message_id=msg_id)
-                raise DuplicateRecordError(err_msg) from exc
-            # Other integrity errors (NOT NULL, different UNIQUE).
-            msg = f"Failed to save message {msg_id!r}"
-            logger.exception(
-                PERSISTENCE_MESSAGE_SAVE_FAILED,
-                message_id=msg_id,
-                error=error_text,
-            )
-            raise QueryError(msg) from exc
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save message {msg_id!r}"
-            logger.warning(
-                PERSISTENCE_MESSAGE_SAVE_FAILED,
-                message_id=msg_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
-        logger.debug(PERSISTENCE_MESSAGE_SAVED, message_id=msg_id)
+                    {
+                        "id": msg_id,
+                        "timestamp": data["timestamp"],
+                        "sender": data["sender"],
+                        "to": data["to"],
+                        "type": data["type"],
+                        "priority": data["priority"],
+                        "channel": data["channel"],
+                        "content": json.dumps(data["parts"]),
+                        "attachments": "[]",
+                        "metadata": json.dumps(data["metadata"]),
+                    },
+                )
+                await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                error_text = str(exc)
+                is_duplicate_id = (
+                    "UNIQUE constraint failed: messages.id" in error_text
+                    or "PRIMARY KEY" in error_text
+                )
+                if is_duplicate_id:
+                    err_msg = f"Message {msg_id} already exists"
+                    logger.warning(PERSISTENCE_MESSAGE_DUPLICATE, message_id=msg_id)
+                    raise DuplicateRecordError(err_msg) from exc
+                # Other integrity errors (NOT NULL, different UNIQUE).
+                msg = f"Failed to save message {msg_id!r}"
+                logger.exception(
+                    PERSISTENCE_MESSAGE_SAVE_FAILED,
+                    message_id=msg_id,
+                    error=error_text,
+                )
+                raise QueryError(msg) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save message {msg_id!r}"
+                logger.warning(
+                    PERSISTENCE_MESSAGE_SAVE_FAILED,
+                    message_id=msg_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
 
     def _row_to_message(self, row: aiosqlite.Row) -> Message:
         """Reconstruct a Message from a database row."""

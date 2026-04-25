@@ -5,7 +5,25 @@ and error hierarchy so consumers can import from ``synthorg.persistence``
 directly.
 """
 
+from synthorg.persistence.agent_state_protocol import AgentStateRepository
+from synthorg.persistence.artifact_protocol import ArtifactRepository
+from synthorg.persistence.audit_protocol import AuditRepository
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
+from synthorg.persistence.connection_protocol import (
+    ConnectionRepository,
+    ConnectionSecretRepository,
+    OAuthStateRepository,
+    WebhookReceiptRepository,
+)
+from synthorg.persistence.cost_record_protocol import CostRecordRepository
+from synthorg.persistence.decision_protocol import (
+    DecisionRepository,
+    DecisionRole,
+)
 from synthorg.persistence.errors import (
     ArtifactStorageFullError,
     ArtifactTooLargeError,
@@ -17,28 +35,35 @@ from synthorg.persistence.errors import (
     RecordNotFoundError,
 )
 from synthorg.persistence.factory import create_backend
+from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.parked_context_protocol import ParkedContextRepository
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.persistence.repositories import (
-    AgentStateRepository,
-    ArtifactRepository,
-    AuditRepository,
-    CostRecordRepository,
-    MessageRepository,
-    ParkedContextRepository,
-    ProjectRepository,
-    TaskRepository,
+from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.persistence.task_protocol import TaskRepository
+from synthorg.persistence.user_protocol import (
+    ApiKeyRepository,
+    UserRepository,
 )
 
 __all__ = [
     "AgentStateRepository",
+    "ApiKeyRepository",
     "ArtifactRepository",
     "ArtifactStorageFullError",
     "ArtifactTooLargeError",
     "AuditRepository",
+    "CheckpointRepository",
+    "ConnectionRepository",
+    "ConnectionSecretRepository",
     "CostRecordRepository",
+    "DecisionRepository",
+    "DecisionRole",
     "DuplicateRecordError",
+    "HeartbeatRepository",
     "MessageRepository",
     "MigrationError",
+    "OAuthStateRepository",
     "ParkedContextRepository",
     "PersistenceBackend",
     "PersistenceConfig",
@@ -48,6 +73,9 @@ __all__ = [
     "QueryError",
     "RecordNotFoundError",
     "SQLiteConfig",
+    "SettingsRepository",
     "TaskRepository",
+    "UserRepository",
+    "WebhookReceiptRepository",
     "create_backend",
 ]

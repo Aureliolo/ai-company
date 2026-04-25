@@ -18,18 +18,20 @@ from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.services.project_service import ProjectService
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
-from synthorg.observability.events.persistence import (
-    PERSISTENCE_PROJECT_DELETED,
-    PERSISTENCE_PROJECT_SAVED,
-)
 
 logger = get_logger(__name__)
+
+
+def _service(state: State) -> ProjectService:
+    """Build the per-request :class:`ProjectService` instance."""
+    return ProjectService(repo=state.app_state.persistence.projects)
 
 
 ProjectStatusFilter = Annotated[
@@ -91,8 +93,7 @@ class ProjectController(Controller):
                 msg = f"Invalid project status: {status!r}. Valid values: {valid}"
                 raise ApiValidationError(msg) from exc
 
-        repo = state.app_state.persistence.projects
-        projects = await repo.list_projects(
+        projects = await _service(state).list_projects(
             status=parsed_status,
             lead=lead,
         )
@@ -119,8 +120,7 @@ class ProjectController(Controller):
         Returns:
             The project, or 404 if not found.
         """
-        repo = state.app_state.persistence.projects
-        project = await repo.get(project_id)
+        project = await _service(state).get(project_id)
         if project is None:
             msg = f"Project {project_id!r} not found"
             raise NotFoundError(msg)
@@ -150,8 +150,8 @@ class ProjectController(Controller):
         Raises:
             NotFoundError: Project with ``project_id`` does not exist.
         """
-        repo = state.app_state.persistence.projects
-        project = await repo.get(project_id)
+        service = _service(state)
+        project = await service.get(project_id)
         if project is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -161,7 +161,7 @@ class ProjectController(Controller):
             )
             msg = f"Project {project_id!r} not found"
             raise NotFoundError(msg)
-        deleted = await repo.delete(project_id)
+        deleted = await service.delete(project_id)
         if not deleted:
             # Race: row disappeared between get() and delete(). Log as a
             # warning so concurrent destructive operations stay in the audit
@@ -175,7 +175,6 @@ class ProjectController(Controller):
             )
             msg = f"Project {project_id!r} not found"
             raise NotFoundError(msg)
-        logger.info(PERSISTENCE_PROJECT_DELETED, project_id=project_id)
         publish_ws_event(
             request,
             WsEventType.PROJECT_DELETED,
@@ -209,21 +208,19 @@ class ProjectController(Controller):
             deadline=data.deadline,
             budget=data.budget,
         )
-        repo = state.app_state.persistence.projects
-        await repo.save(project)
-        logger.info(PERSISTENCE_PROJECT_SAVED, project_id=project.id)
+        created = await _service(state).create(project)
         publish_ws_event(
             request,
             WsEventType.PROJECT_CREATED,
             CHANNEL_PROJECTS,
             {
-                "project_id": project.id,
-                "name": project.name,
-                "status": project.status.value,
-                "lead": project.lead,
+                "project_id": created.id,
+                "name": created.name,
+                "status": created.status.value,
+                "lead": created.lead,
             },
         )
         return Response(
-            content=ApiResponse[Project](data=project),
+            content=ApiResponse[Project](data=created),
             status_code=201,
         )

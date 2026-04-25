@@ -21,17 +21,36 @@ from synthorg.hr.persistence_protocol import (
     LifecycleEventRepository,  # noqa: TC001
     TaskMetricRepository,  # noqa: TC001
 )
+from synthorg.persistence.agent_state_protocol import (
+    AgentStateRepository,  # noqa: TC001
+)
+from synthorg.persistence.artifact_protocol import ArtifactRepository  # noqa: TC001
+from synthorg.persistence.audit_protocol import AuditRepository  # noqa: TC001
 from synthorg.persistence.auth_protocol import (
     LockoutRepository,  # noqa: TC001
     RefreshTokenRepository,  # noqa: TC001
     SessionRepository,  # noqa: TC001
 )
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,  # noqa: TC001
+    HeartbeatRepository,  # noqa: TC001
+)
 from synthorg.persistence.circuit_breaker_repo import (
     CircuitBreakerStateRepository,  # noqa: TC001
+)
+from synthorg.persistence.connection_protocol import (
+    ConnectionRepository,  # noqa: TC001
+    ConnectionSecretRepository,  # noqa: TC001
+    OAuthStateRepository,  # noqa: TC001
+    WebhookReceiptRepository,  # noqa: TC001
+)
+from synthorg.persistence.cost_record_protocol import (
+    CostRecordRepository,  # noqa: TC001
 )
 from synthorg.persistence.custom_rule_repo import (
     CustomRuleRepository,  # noqa: TC001
 )
+from synthorg.persistence.decision_protocol import DecisionRepository  # noqa: TC001
 from synthorg.persistence.escalation_protocol import (
     EscalationQueueRepository,  # noqa: TC001
 )
@@ -45,9 +64,13 @@ from synthorg.persistence.mcp_protocol import (
 from synthorg.persistence.memory_protocol import (
     OrgFactRepository,  # noqa: TC001
 )
+from synthorg.persistence.message_protocol import MessageRepository  # noqa: TC001
 from synthorg.persistence.ontology_protocol import (
     OntologyDriftReportRepository,  # noqa: TC001
     OntologyEntityRepository,  # noqa: TC001
+)
+from synthorg.persistence.parked_context_protocol import (
+    ParkedContextRepository,  # noqa: TC001
 )
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
@@ -55,38 +78,25 @@ from synthorg.persistence.preset_repository import (
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,  # noqa: TC001
 )
-from synthorg.persistence.repositories import (
-    AgentStateRepository,  # noqa: TC001
-    ApiKeyRepository,  # noqa: TC001
-    ArtifactRepository,  # noqa: TC001
-    AuditRepository,  # noqa: TC001
-    CheckpointRepository,  # noqa: TC001
-    ConnectionRepository,  # noqa: TC001
-    ConnectionSecretRepository,  # noqa: TC001
-    CostRecordRepository,  # noqa: TC001
-    DecisionRepository,  # noqa: TC001
-    HeartbeatRepository,  # noqa: TC001
-    MessageRepository,  # noqa: TC001
-    OAuthStateRepository,  # noqa: TC001
-    ParkedContextRepository,  # noqa: TC001
-    ProjectRepository,  # noqa: TC001
-    SettingsRepository,  # noqa: TC001
-    TaskRepository,  # noqa: TC001
-    UserRepository,  # noqa: TC001
-    WebhookReceiptRepository,  # noqa: TC001
-)
+from synthorg.persistence.project_protocol import ProjectRepository  # noqa: TC001
 from synthorg.persistence.risk_override_repo import (
     RiskOverrideRepository,  # noqa: TC001
 )
-from synthorg.persistence.ssrf_violation_repo import (
+from synthorg.persistence.settings_protocol import SettingsRepository  # noqa: TC001
+from synthorg.persistence.ssrf_violation_protocol import (
     SsrfViolationRepository,  # noqa: TC001
 )
 from synthorg.persistence.subworkflow_repo import (
     SubworkflowRepository,  # noqa: TC001
 )
+from synthorg.persistence.task_protocol import TaskRepository  # noqa: TC001
 from synthorg.persistence.training_repos import (
     TrainingPlanRepository,  # noqa: TC001
     TrainingResultRepository,  # noqa: TC001
+)
+from synthorg.persistence.user_protocol import (
+    ApiKeyRepository,  # noqa: TC001
+    UserRepository,  # noqa: TC001
 )
 from synthorg.persistence.version_repo import (
     VersionRepository,  # noqa: TC001

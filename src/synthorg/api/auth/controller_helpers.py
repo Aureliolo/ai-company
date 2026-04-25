@@ -80,7 +80,8 @@ async def make_session_cookies(  # noqa: PLR0913
                 )
                 store: RefreshStore | None = getattr(app_state, "_refresh_store", None)
                 if store is not None:
-                    await store.create(
+                    await auth_service.persist_refresh_token(
+                        store,
                         token_hash=token_hash,
                         session_id=session_id,
                         user_id=user_id,

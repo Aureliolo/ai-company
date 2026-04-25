@@ -7,7 +7,7 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.persistence.repositories import SettingsRepository
+from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import (
     SettingNamespace,
@@ -94,6 +94,7 @@ def mock_repo() -> AsyncMock:
     repo.get_namespace = AsyncMock(return_value=())
     repo.get_all = AsyncMock(return_value=())
     repo.delete_namespace = AsyncMock(return_value=0)
+    repo.delete_namespace_returning_keys = AsyncMock(return_value=())
     return repo
 
 
@@ -433,6 +434,139 @@ class TestNotifications:
         """Set should succeed even without message bus."""
         entry = await service.set("budget", "total_monthly", "200.0")
         assert entry.value == "200.0"
+
+
+# ── delete_namespace Tests ───────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDeleteNamespace:
+    """Tests for SettingsService.delete_namespace."""
+
+    async def test_returns_repository_count(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        """The deleted-row count is forwarded from the repository."""
+        mock_repo.delete_namespace_returning_keys.return_value = (
+            "total_monthly",
+            "another_a",
+            "another_b",
+        )
+        deleted = await service.delete_namespace("budget")
+        assert deleted == 3
+        mock_repo.delete_namespace_returning_keys.assert_awaited_once()
+        # NotBlankStr coercion: assert via positional arg name
+        called_with = mock_repo.delete_namespace_returning_keys.call_args[0][0]
+        assert str(called_with) == "budget"
+
+    async def test_invalidates_namespace_cache(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        """Every cached entry under the namespace is dropped."""
+        mock_repo.get.return_value = ("100.0", "2026-04-25T10:00:00Z")
+        await service.get("budget", "total_monthly")
+        assert mock_repo.get.call_count == 1
+
+        mock_repo.delete_namespace_returning_keys.return_value = ("total_monthly",)
+        await service.delete_namespace("budget")
+
+        # Subsequent get() must re-query the repo (not hit the cache)
+        mock_repo.get.return_value = None
+        result = await service.get("budget", "total_monthly")
+        assert result.source == SettingSource.YAML
+        assert mock_repo.get.call_count == 2
+
+    async def test_publishes_only_for_keys_with_overrides_removed(
+        self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
+    ) -> None:
+        """Publish only fires for keys whose DB override was actually cleared.
+
+        Pins the round-12 fix: keys that have no DB override (defaults
+        / env-only) must NOT republish on a namespace delete -- that
+        would trigger phantom reload work for every registered key in
+        the namespace even when only a single override row was
+        cleared.
+        """
+        registry.register(
+            _make_definition(
+                key="another_key",
+                yaml_path="budget.another_key",
+            )
+        )
+        bus = MagicMock()
+        bus.is_running = True
+        bus.publish = AsyncMock()
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            message_bus=bus,
+        )
+        # Only one of the two registered keys has a DB override.
+        # The second registered key (``another_key``) has no override
+        # row; the publish loop must skip it.
+        mock_repo.delete_namespace_returning_keys.return_value = ("total_monthly",)
+
+        deleted = await svc.delete_namespace("budget")
+
+        assert deleted == 1
+        # Only ``total_monthly`` had a DB override removed; the other
+        # registered definition stays silent.
+        assert bus.publish.call_count == 1
+
+    async def test_emits_audit_event(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        """The namespace delete fires SETTINGS_VALUE_DELETED with count."""
+        import structlog
+
+        from synthorg.observability.events.settings import SETTINGS_VALUE_DELETED
+
+        mock_repo.delete_namespace_returning_keys.return_value = (
+            "k1",
+            "k2",
+            "k3",
+            "k4",
+        )
+        with structlog.testing.capture_logs() as logs:
+            await service.delete_namespace("budget")
+
+        events = [log for log in logs if log["event"] == SETTINGS_VALUE_DELETED]
+        assert len(events) == 1, f"expected one event, got {logs}"
+        assert events[0]["namespace"] == "budget"
+        assert events[0]["count"] == 4
+
+    async def test_no_op_when_zero_rows_deleted(
+        self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
+    ) -> None:
+        """Zero-row delete: cache invalidates, no audit, no publish.
+
+        A namespace-clear that touched no rows is a no-op as far as
+        downstream subscribers are concerned; emitting
+        ``SETTINGS_VALUE_DELETED`` and per-key change notifications
+        would trigger phantom reload/restart work.
+        """
+        import structlog
+
+        from synthorg.observability.events.settings import SETTINGS_VALUE_DELETED
+
+        bus = MagicMock()
+        bus.is_running = True
+        bus.publish = AsyncMock()
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            message_bus=bus,
+        )
+        mock_repo.delete_namespace_returning_keys.return_value = ()
+
+        with structlog.testing.capture_logs() as logs:
+            deleted = await svc.delete_namespace("budget")
+
+        assert deleted == 0
+        assert not any(log["event"] == SETTINGS_VALUE_DELETED for log in logs)
+        bus.publish.assert_not_called()
 
 
 # ── Schema Tests ─────────────────────────────────────────────────

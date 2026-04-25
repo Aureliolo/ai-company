@@ -13,16 +13,15 @@ from typing import TYPE_CHECKING, cast
 import psycopg
 from psycopg.rows import dict_row
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_DELETE_FAILED,
     SETTINGS_FETCH_FAILED,
     SETTINGS_SET_FAILED,
-    SETTINGS_VALUE_DELETED,
     SETTINGS_VALUE_SET,
 )
 from synthorg.persistence.errors import QueryError
@@ -372,12 +371,6 @@ class PostgresSettingsRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        if deleted:
-            logger.debug(
-                SETTINGS_VALUE_DELETED,
-                namespace=namespace,
-                key=key,
-            )
         return deleted
 
     async def delete_namespace(self, namespace: NotBlankStr) -> int:
@@ -398,9 +391,34 @@ class PostgresSettingsRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
-            SETTINGS_VALUE_DELETED,
-            namespace=namespace,
-            count=count,
-        )
         return count
+
+    async def delete_namespace_returning_keys(
+        self,
+        namespace: NotBlankStr,
+    ) -> tuple[NotBlankStr, ...]:
+        """Atomic delete-and-return-keys for namespace clear.
+
+        Uses ``DELETE ... RETURNING key`` so the ``get_namespace``
+        snapshot and the delete cannot drift under a concurrent
+        ``set`` -- the returned tuple is exactly the set of keys
+        whose override row was removed by *this* call.
+        """
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM settings WHERE namespace = %s RETURNING key",
+                    (namespace,),
+                )
+                rows = await cur.fetchall()
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to delete namespace {namespace}"
+            logger.warning(
+                SETTINGS_DELETE_FAILED,
+                namespace=namespace,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(NotBlankStr(row[0]) for row in rows)

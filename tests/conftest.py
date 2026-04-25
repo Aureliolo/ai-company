@@ -1,10 +1,9 @@
 """Root test configuration and shared fixtures."""
 
-import contextlib
-import json
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import time
 from collections.abc import AsyncGenerator, Iterable
@@ -21,6 +20,35 @@ from hypothesis.database import (
 )
 
 from synthorg.persistence import atlas
+
+# ── Windows console-flash suppression ──────────────────────────────
+#
+# On Windows, `subprocess.Popen` (and everything that funnels through
+# it -- `subprocess.run`, `asyncio.create_subprocess_exec`, every git
+# / python / aws / etc. shell-out across the suite) creates the child
+# process with the parent's console attached by default.  When the
+# parent is itself a console process (pytest under `python.exe` or
+# `uv run python`), the child briefly flashes a console window
+# before exiting.  This is purely a UX annoyance during local test
+# runs but it stacks up across thousands of tests.
+#
+# Globally injecting `creationflags=CREATE_NO_WINDOW` at `Popen`
+# construction silences every site at once (instead of patching each
+# subprocess call individually).  No production code path imports
+# this conftest, so the patch is strictly test-only.
+if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
+    from typing import Any, cast
+
+    _original_popen_init: Any = subprocess.Popen.__init__
+
+    def _no_console_popen_init(self: Any, *args: Any, **kwargs: Any) -> None:
+        existing = kwargs.get("creationflags", 0)
+        if not isinstance(existing, int):
+            existing = 0
+        kwargs["creationflags"] = existing | subprocess.CREATE_NO_WINDOW
+        _original_popen_init(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = cast(Any, _no_console_popen_init)  # type: ignore[method-assign]
 
 
 class _WriteOnlyDatabase(ExampleDatabase):
@@ -131,6 +159,31 @@ DISALLOWED_VENDOR_NAMES: frozenset[str] = frozenset(
 _UNIT_TEST_WALL_CLOCK_LIMIT = 8.0  # seconds
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 _start_key = pytest.StashKey[float]()
+# Accumulator for unit-only wall-clock time, summed across tests in
+# ``pytest_runtest_teardown``.  Used by the suite regression guard
+# below to compare per-unit-test cost against the baseline without
+# polluting the math with non-unit (integration / e2e / conformance)
+# test elapsed time.
+#
+# Under pytest-xdist (the default ``-n 8`` configuration mandated by
+# CLAUDE.md), each worker is its own subprocess with its own copy of
+# this module.  Worker-local mutations are NOT visible on the
+# controller process where ``pytest_sessionfinish`` runs the
+# regression check.  The two hooks below close the gap:
+#
+#  - ``pytest_sessionfinish`` on each worker copies the worker-local
+#    accumulator into ``config.workeroutput`` (which xdist serializes
+#    back to the controller).
+#  - ``pytest_testnodedown`` on the controller sums the per-worker
+#    contributions back into the module-level accumulator, so when
+#    the controller's own ``pytest_sessionfinish`` runs the rail it
+#    sees the full unit-only elapsed time.
+#
+# The non-xdist case (single-process pytest) needs neither hook: the
+# accumulator is set in teardown and read in sessionfinish in the
+# same process.
+_unit_elapsed_secs: float = 0.0
+_WORKEROUTPUT_KEY = "_unit_elapsed_secs"
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -141,11 +194,14 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
 @pytest.hookimpl(trylast=True)
 def pytest_runtest_teardown(item: pytest.Item) -> None:
-    """Fail unit tests that exceed the wall-clock limit."""
+    """Fail unit tests that exceed the wall-clock limit + tally per-test elapsed."""
+    global _unit_elapsed_secs  # noqa: PLW0603
     start = item.stash.get(_start_key, None)
     if start is None:
         return
     elapsed = time.monotonic() - start
+    if item.get_closest_marker("unit"):
+        _unit_elapsed_secs += elapsed
     if (
         not _FUZZ_PROFILE_ACTIVE
         and item.get_closest_marker("unit")
@@ -169,35 +225,105 @@ _BASELINE_PATH = Path(__file__).parent / "baselines" / "unit_timing.json"
 _suite_start: float | None = None
 
 
-def _compute_max_allowed(
-    baseline_secs: float,
-    baseline_count: int,
-    unit_count: int,
-    threshold_secs: float,
-) -> float:
-    """Scale absolute threshold by test-count growth.
-
-    When a PR adds tests, expected wall-clock grows proportionally.
-    The absolute threshold is scaled so legitimate test additions
-    do not trip the guard when per-test cost is unchanged.
-    """
-    if baseline_count > 0 and unit_count > baseline_count:
-        count_ratio = unit_count / baseline_count
-        max_allowed = baseline_secs * count_ratio + threshold_secs
-    else:
-        max_allowed = baseline_secs + threshold_secs
-    env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
-    if env_override is not None:
-        with contextlib.suppress(ValueError):
-            max_allowed = float(env_override)
-    return max_allowed
-
-
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Record suite start time for regression detection."""
-    global _suite_start  # noqa: PLW0603
+    """Record suite start time + reset the unit-elapsed accumulator."""
+    global _suite_start, _unit_elapsed_secs  # noqa: PLW0603
     _suite_start = time.monotonic()
+    _unit_elapsed_secs = 0.0
+
+
+def _load_baseline_for_conftest() -> tuple[float, int, float] | None:
+    """Return ``(baseline_secs, baseline_count, threshold_ratio)`` or ``None``.
+
+    Returns ``None`` only when the baseline file does not exist
+    (fresh checkout, no baseline yet -- callers skip the regression
+    check).  A baseline that exists but is malformed propagates a
+    :class:`tests.baselines.loader.BaselineMalformedError`: silently
+    disabling the regression rail on a typo would defeat the very
+    failure mode it exists to catch.
+
+    Delegates to :func:`tests.baselines.loader.load_baseline_snapshot`
+    so the validation contract is identical to the pre-push runner
+    (``scripts/run_affected_tests.py``).  The legacy 3-tuple shape is
+    rebuilt here from the shared snapshot for the existing
+    :func:`pytest_sessionfinish` consumer.
+    """
+    from tests.baselines.loader import load_baseline_snapshot
+
+    snapshot = load_baseline_snapshot(_BASELINE_PATH)
+    if snapshot is None:
+        return None
+    # The legacy hook signature returns ``unit_suite_seconds``; rebuild
+    # it from the per-test cost so callers downstream do not need to
+    # change shape.
+    baseline_secs = snapshot.per_test_ms * snapshot.baseline_test_count / 1000.0
+    return baseline_secs, snapshot.baseline_test_count, snapshot.threshold_ratio
+
+
+def _emit_regression_banner(
+    *,
+    elapsed: float,
+    unit_count: int,
+    baseline_secs: float,
+    baseline_count: int,
+    threshold_ratio: float,
+) -> None:
+    """Print the regression banner to stderr."""
+    baseline_per_test_ms = baseline_secs * 1000.0 / baseline_count
+    current_per_test_ms = elapsed * 1000.0 / unit_count
+    border = "!" * 60
+    msg = (
+        f"\n{border}\n"
+        f"REGRESSION DETECTED: per-test cost "
+        f"{current_per_test_ms:.2f}ms exceeds "
+        f"{baseline_per_test_ms * threshold_ratio:.2f}ms "
+        f"(baseline {baseline_per_test_ms:.2f}ms, "
+        f"ratio cap {threshold_ratio:.2f}x).\n"
+        f"Suite: {elapsed:.0f}s across {unit_count} tests "
+        f"(baseline {baseline_secs:.0f}s across {baseline_count}).\n"
+        f"Run A/B against origin/main before fixing anything.\n"
+        f"Do NOT delete tests or use --no-verify.\n"
+        f"If the new baseline is intentional, update "
+        f"tests/baselines/unit_timing.json.\n"
+        f"{border}\n"
+    )
+    print(msg, file=sys.stderr)  # noqa: T201
+
+
+def pytest_testnodedown(node: pytest.Item, error: object) -> None:
+    """xdist controller hook: aggregate per-worker accumulators.
+
+    Each worker writes its local ``_unit_elapsed_secs`` (sum of the
+    per-test wall-clock measurements that worker observed) to
+    ``workeroutput`` in its own ``pytest_sessionfinish``.  The
+    controller folds those values into the module-level accumulator
+    here using **MAX**, not SUM:
+
+    - The baseline (``unit_timing.json::unit_suite_seconds``) is
+      WALL-CLOCK seconds for the full xdist run -- i.e. how long
+      the suite took to complete in real time, with workers running
+      in parallel.
+    - Summing per-worker per-test elapsed times across N workers
+      gives ``N * wall-clock`` (each worker accumulates ~wall-clock
+      worth of sequential test execution).  Comparing that against
+      a wall-clock baseline would always trip the rail by a factor
+      of ~N.
+    - The wall-clock duration of the unit suite is approximated by
+      the longest-running worker's accumulator (workers all finish
+      around the same time when balanced).  ``max`` is dimension-
+      consistent with the baseline and stable across worker counts.
+
+    The non-xdist case never reaches this hook -- pytest-xdist only
+    invokes it when running with ``-n``.
+    """
+    global _unit_elapsed_secs  # noqa: PLW0603
+    workeroutput = getattr(node, "workeroutput", {})
+    if _WORKEROUTPUT_KEY in workeroutput:
+        _unit_elapsed_secs = max(
+            _unit_elapsed_secs,
+            float(workeroutput[_WORKEROUTPUT_KEY]),
+        )
 
 
 @pytest.hookimpl(trylast=True)
@@ -205,90 +331,65 @@ def pytest_sessionfinish(
     session: pytest.Session,
     exitstatus: int,
 ) -> None:
-    """Fail the suite hard if it regressed beyond the baseline.
+    """Fail the suite hard if per-test cost regressed beyond the baseline.
 
-    Only small increases (a few seconds, ``regression_threshold_secs``
-    in the baseline file) are tolerated.  Larger regressions are a
-    real bug -- either in source code or in test infrastructure --
-    and the suite must exit with a non-zero status so CI and
-    pre-push hooks block the change.
+    The metric is per-test milliseconds (``elapsed * 1000 /
+    unit_count``) compared against the baseline's per-test cost
+    multiplied by ``regression_threshold_ratio`` (default 1.3).
+    Mechanical test-count growth (PRs adding tests) does not move this
+    metric, so the baseline stays valid until per-test cost actually
+    drifts.  See ``tests/baselines/README.md`` for schema.
     """
+    # Worker path (pytest-xdist): publish the accumulator to
+    # ``workeroutput`` so the controller can sum it in
+    # ``pytest_testnodedown``, then return -- workers do not run the
+    # regression rail (they only see their own slice of the suite,
+    # so per-test math on the worker is meaningless).
+    workeroutput = getattr(session.config, "workeroutput", None)
+    if workeroutput is not None:
+        workeroutput[_WORKEROUTPUT_KEY] = _unit_elapsed_secs
+        return
     if _suite_start is None or _FUZZ_PROFILE_ACTIVE:
         return
-    # Only check when running unit tests (not integration/e2e-only).
     if not any(item.get_closest_marker("unit") for item in session.items):
         return
-    elapsed = time.monotonic() - _suite_start
-    if not _BASELINE_PATH.exists():
+    loaded = _load_baseline_for_conftest()
+    if loaded is None:
         return
-    try:
-        baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
-        baseline_secs = float(baseline["unit_suite_seconds"])
-        baseline_count = int(baseline.get("test_count", 0))
-        # Two complementary tolerances:
-        # - ``regression_threshold_secs`` bounds small absolute drift
-        #   (runner noise, single flaky test).
-        # - ``regression_threshold_ratio`` bounds per-test cost growth,
-        #   so a PR adding a few hundred legitimate tests does not
-        #   trip the guard just because total wall-clock grew.
-        threshold_secs = float(baseline.get("regression_threshold_secs", 10))
-        threshold_ratio = float(baseline.get("regression_threshold_ratio", 1.3))
-    except json.JSONDecodeError, KeyError, ValueError, OSError:
-        return  # Malformed baseline -- skip check, don't block.
-    # Only compare against baseline when the session is (roughly) the
-    # full unit suite and nothing else.  The baseline measures unit-
-    # test time only; ``elapsed`` is total wall-clock including
-    # integration/conformance/e2e tests when they are mixed in via
-    # ``pytest tests/``.  Skip the check if either:
-    #   1. the unit count is well below the baseline (partial run), or
-    #   2. non-unit tests were collected alongside unit tests.
+    baseline_secs, baseline_count, threshold_ratio = loaded
     unit_count = sum(1 for item in session.items if item.get_closest_marker("unit"))
-    non_unit_count = len(session.items) - unit_count
-    if baseline_count and unit_count < baseline_count * 0.8:
+    # Only compare against baseline when the session contains (roughly)
+    # the full unit suite.  Mixed CI runs (``pytest tests/`` with
+    # ``RUN_INTEGRATION_TESTS=1``) still need regression detection
+    # because that's where slowdowns are most damaging -- but the
+    # comparison must use unit-only elapsed, not total session
+    # wall-clock, otherwise a single slow integration test can trip
+    # the rail even when the unit suite is unchanged.
+    # ``_unit_elapsed_secs`` is summed across only ``@unit``-marked
+    # items in ``pytest_runtest_teardown`` for exactly this reason.
+    partial_run = bool(baseline_count) and unit_count < baseline_count * 0.8
+    cannot_compute = baseline_count <= 0 or unit_count <= 0
+    if partial_run or cannot_compute:
         return
-    if non_unit_count > 0:
+    elapsed = _unit_elapsed_secs
+    baseline_per_test_ms = baseline_secs * 1000.0 / baseline_count
+    current_per_test_ms = elapsed * 1000.0 / unit_count
+    if current_per_test_ms <= baseline_per_test_ms * threshold_ratio:
         return
-    # Per-test cost is the primary regression signal.  It is immune to
-    # runner noise (pre-push thermal throttling, parallel mypy, etc.)
-    # and scales naturally with test-count growth.  The absolute
-    # threshold is a fallback only when per-test cost cannot be
-    # computed (no baseline count or no unit tests collected).
-    can_compare_per_test = baseline_count > 0 and unit_count > 0
-    if can_compare_per_test:
-        baseline_per_test = baseline_secs / baseline_count
-        current_per_test = elapsed / unit_count
-        regression = current_per_test > baseline_per_test * threshold_ratio
-    else:
-        max_allowed = _compute_max_allowed(
-            baseline_secs,
-            baseline_count,
-            unit_count,
-            threshold_secs,
-        )
-        regression = elapsed > max_allowed
-    if regression:
-        delta = elapsed - baseline_secs
-        baseline_per_test = baseline_secs / max(baseline_count, 1)
-        current_per_test = elapsed / max(unit_count, 1)
-        border = "!" * 60
-        msg = (
-            f"\n{border}\n"
-            f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
-            f"baseline is {baseline_secs:.0f}s (+{delta:.0f}s, "
-            f"tolerance {threshold_secs:.0f}s)\n"
-            f"Per-test cost: {current_per_test * 1000:.1f}ms vs "
-            f"baseline {baseline_per_test * 1000:.1f}ms "
-            f"(ratio cap {threshold_ratio:.2f}x)\n"
-            f"Run A/B against origin/main before fixing anything.\n"
-            f"Do NOT delete tests or use --no-verify.\n"
-            f"If the new baseline is intentional, update "
-            f"tests/baselines/unit_timing.json.\n"
-            f"{border}\n"
-        )
-        print(msg, file=sys.stderr)  # noqa: T201
-        # Hard fail: exit status 3 signals test-level failure to CI
-        # and pre-push hooks.  This is intentional -- regressions
-        # beyond the tolerance must block the change, not just warn.
+    _emit_regression_banner(
+        elapsed=elapsed,
+        unit_count=unit_count,
+        baseline_secs=baseline_secs,
+        baseline_count=baseline_count,
+        threshold_ratio=threshold_ratio,
+    )
+    # Hard fail: exit status 3 signals test-level failure to CI
+    # and pre-push hooks.  This is intentional; regressions
+    # beyond the tolerance must block the change, not just warn.
+    # Never overwrite an already-failing exit status -- doing so
+    # would mask the primary failure mode (test failures, collection
+    # errors, fixture errors) and make CI diagnostics noisier.
+    if session.exitstatus == 0:
         session.exitstatus = 3
 
 

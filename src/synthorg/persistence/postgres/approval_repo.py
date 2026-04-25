@@ -25,11 +25,9 @@ from synthorg.core.evidence import EvidencePackage
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
-    API_APPROVAL_REPO_DELETED,
     API_APPROVAL_REPO_FAILED,
     API_APPROVAL_REPO_FETCHED,
     API_APPROVAL_REPO_LISTED,
-    API_APPROVAL_REPO_SAVED,
 )
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
@@ -208,11 +206,6 @@ class PostgresApprovalRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            API_APPROVAL_REPO_SAVED,
-            approval_id=item.id,
-            status=item.status.value,
-        )
 
     async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID, or ``None`` if not found.
@@ -311,9 +304,4 @@ class PostgresApprovalRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            API_APPROVAL_REPO_DELETED,
-            approval_id=approval_id,
-            deleted=deleted,
-        )
         return deleted

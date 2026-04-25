@@ -19,13 +19,11 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.preset import (
     PRESET_CUSTOM_COUNT_FAILED,
     PRESET_CUSTOM_DELETE_FAILED,
-    PRESET_CUSTOM_DELETED,
     PRESET_CUSTOM_FETCH_FAILED,
     PRESET_CUSTOM_FETCHED,
     PRESET_CUSTOM_LIST_FAILED,
     PRESET_CUSTOM_LISTED,
     PRESET_CUSTOM_SAVE_FAILED,
-    PRESET_CUSTOM_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 from synthorg.persistence.preset_repository import PresetListRow, PresetRow
@@ -132,7 +130,6 @@ ON CONFLICT(name) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(PRESET_CUSTOM_SAVED, preset_name=name)
 
     async def get(
         self,
@@ -277,11 +274,6 @@ ON CONFLICT(name) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        logger.info(
-            PRESET_CUSTOM_DELETED,
-            preset_name=name,
-            deleted=deleted,
-        )
         return deleted
 
     async def count(self) -> int:

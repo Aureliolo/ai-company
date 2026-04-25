@@ -754,10 +754,13 @@ Sort by severity (Critical first, Minor last).
 
 ## Phase 6: Present for User Approval
 
-Show the consolidated table with:
+**Render the full triage table in chat, not just a path.** The user may not have a file viewer open, and a one-line link to `_audit/pre-pr-review/triage.md` is not a substitute for them seeing the items they're approving. Read the file you wrote in Phase 5 and emit its contents inline (as a fenced markdown block or quoted body) before calling `AskUserQuestion`.
+
+Then summarise:
 - Total count of items
 - Count by source agent
-- The path to the triage file: `_audit/pre-pr-review/triage.md`
+- Count by severity
+- The path to the triage file: `_audit/pre-pr-review/triage.md` (so the user can pull it up later, but the inline rendering is the source of truth for the approval decision)
 
 **Default behavior: implement ALL valid findings** -- including pre-existing issues found in surrounding code, suggestions, findings in files outside the PR diff, and anything that would require larger / follow-up work. The deflection patterns below are explicitly forbidden during triage:
 

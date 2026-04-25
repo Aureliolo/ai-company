@@ -15,8 +15,8 @@ from pydantic import AwareDatetime
 from synthorg.core.enums import DecisionOutcome
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decisions import DecisionRecord
+from synthorg.persistence.decision_protocol import DecisionRole
 from synthorg.persistence.errors import DuplicateRecordError
-from synthorg.persistence.repositories_decisions import DecisionRole
 
 __all__ = ["FakeDecisionRepository"]
 

@@ -29,7 +29,11 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.persistence.errors import (
+    DuplicateRecordError,
+    QueryError,
+    RecordNotFoundError,
+)
 from synthorg.persistence.preset_repository import PresetListRow, PresetRow
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
@@ -425,8 +429,10 @@ class FakeArtifactRepository:
     def __init__(self) -> None:
         self._artifacts: dict[str, Artifact] = {}
 
-    async def save(self, artifact: Artifact) -> None:
+    async def save(self, artifact: Artifact) -> bool:
+        created = artifact.id not in self._artifacts
         self._artifacts[artifact.id] = artifact
+        return created
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         return self._artifacts.get(artifact_id)
@@ -445,6 +451,9 @@ class FakeArtifactRepository:
             result = [a for a in result if a.created_by == created_by]
         if artifact_type is not None:
             result = [a for a in result if a.type == artifact_type]
+        # Match the SQLite repo contract (``ORDER BY id``) so tests
+        # asserting list order do not depend on dict insertion order.
+        result.sort(key=lambda a: a.id)
         return tuple(result)
 
     async def delete(self, artifact_id: NotBlankStr) -> bool:
@@ -456,6 +465,18 @@ class FakeProjectRepository:
 
     def __init__(self) -> None:
         self._projects: dict[str, Project] = {}
+
+    async def create(self, project: Project) -> None:
+        if project.id in self._projects:
+            msg = f"Project with id {project.id!r} already exists"
+            raise DuplicateRecordError(msg)
+        self._projects[project.id] = project
+
+    async def update(self, project: Project) -> None:
+        if project.id not in self._projects:
+            msg = f"No project with id {project.id!r}"
+            raise RecordNotFoundError(msg)
+        self._projects[project.id] = project
 
     async def save(self, project: Project) -> None:
         self._projects[project.id] = project
@@ -469,7 +490,7 @@ class FakeProjectRepository:
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
     ) -> tuple[Project, ...]:
-        result = list(self._projects.values())
+        result = sorted(self._projects.values(), key=lambda p: p.id)
         if status is not None:
             result = [p for p in result if p.status == status]
         if lead is not None:
@@ -663,6 +684,14 @@ class FakeSettingsRepository:
         keys = [k for k in self._store if k[0] == namespace]
         self._store = {k: v for k, v in self._store.items() if k[0] != namespace}
         return len(keys)
+
+    async def delete_namespace_returning_keys(
+        self,
+        namespace: str,
+    ) -> tuple[NotBlankStr, ...]:
+        keys = tuple(NotBlankStr(k[1]) for k in self._store if k[0] == namespace)
+        self._store = {k: v for k, v in self._store.items() if k[0] != namespace}
+        return keys
 
 
 class FakeMessageBus:

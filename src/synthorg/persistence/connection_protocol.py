@@ -1,8 +1,7 @@
 """Repository protocols for integration persistence.
 
-Defines CRUD interfaces for connections, OAuth states, and webhook
-receipts.  Split from ``repositories.py`` to keep files under the
-800-line limit.
+Defines CRUD interfaces for connections, encrypted secret blobs, OAuth
+authorization states, and webhook receipts.
 """
 
 from typing import Protocol, runtime_checkable

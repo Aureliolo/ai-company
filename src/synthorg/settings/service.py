@@ -17,6 +17,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
     SETTINGS_CACHE_INVALIDATED,
+    SETTINGS_DELETE_FAILED,
     SETTINGS_ENCRYPTION_ERROR,
     SETTINGS_NOT_FOUND,
     SETTINGS_NOTIFICATION_FAILED,
@@ -38,7 +39,7 @@ from synthorg.settings.models import SettingDefinition, SettingEntry, SettingVal
 
 if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.persistence.repositories import SettingsRepository
+    from synthorg.persistence.settings_protocol import SettingsRepository
     from synthorg.settings.encryption import SettingsEncryptor
     from synthorg.settings.registry import SettingsRegistry
 
@@ -542,6 +543,11 @@ class SettingsService:
         self._cache = {k: v for k, v in self._cache.items() if k != cache_key}
         logger.debug(SETTINGS_CACHE_INVALIDATED, namespace=namespace, key=key)
 
+    def _invalidate_namespace_cache(self, namespace: str) -> None:
+        """Drop every cache entry under *namespace*."""
+        self._cache = {k: v for k, v in self._cache.items() if k[0] != namespace}
+        logger.debug(SETTINGS_CACHE_INVALIDATED, namespace=namespace)
+
     async def get_versioned(
         self,
         namespace: str,
@@ -789,6 +795,73 @@ class SettingsService:
         )
 
         await self._publish_change(namespace, key, definition)
+
+    async def delete_namespace(self, namespace: str) -> int:
+        """Delete every DB override under *namespace*.
+
+        Reverts each affected key to the next source in its chain
+        (env, default).  Emits a single
+        :data:`SETTINGS_VALUE_DELETED` audit log carrying the namespace
+        and the affected count, then publishes per-key change
+        notifications for the **subset of registered keys whose DB
+        override was actually removed** so downstream caches /
+        listeners stay in sync.  Keys with no DB override (e.g.
+        defaults, env-only) do NOT republish -- otherwise every
+        registered key in the namespace would trigger phantom
+        reload / restart work even when only a single override row
+        was cleared.
+
+        Args:
+            namespace: Setting namespace to clear.
+
+        Returns:
+            Number of override rows actually removed.
+
+        Raises:
+            PersistenceError: If the persistence layer fails.
+        """
+        # Atomic delete-and-return-keys: the repository removes every
+        # override row under *namespace* in one transaction and returns
+        # exactly the keys whose row was actually removed.  This avoids
+        # the TOCTOU race the older ``get_namespace`` + ``delete_namespace``
+        # pair had -- a concurrent ``set`` between the snapshot and the
+        # delete would either drop a publish (key set after snapshot,
+        # then deleted) or fire a phantom one (key visible in snapshot,
+        # then unset before delete).
+        ns = NotBlankStr(namespace)
+        try:
+            removed_keys = await self._repository.delete_namespace_returning_keys(ns)
+        except Exception as exc:
+            logger.warning(
+                SETTINGS_DELETE_FAILED,
+                namespace=namespace,
+                phase="delete_namespace_returning_keys",
+                error_type=type(exc).__name__,
+            )
+            raise
+        deleted = len(removed_keys)
+
+        self._invalidate_namespace_cache(namespace)
+
+        # No-op short-circuit: a delete_namespace that removed zero rows
+        # must not fire the audit event or republish per-key change
+        # notifications.  Otherwise downstream subscribers (cache reload
+        # listeners, restart-required gates) react to a phantom change.
+        if deleted == 0:
+            return 0
+
+        logger.info(
+            SETTINGS_VALUE_DELETED,
+            namespace=namespace,
+            count=deleted,
+        )
+
+        removed_key_set = set(removed_keys)
+        for definition in self._registry.list_namespace(namespace):
+            if definition.key in removed_key_set:
+                await self._publish_change(namespace, definition.key, definition)
+
+        return deleted
 
     def get_schema(self, namespace: str | None = None) -> tuple[SettingDefinition, ...]:
         """Return setting definitions for schema introspection.

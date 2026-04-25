@@ -5,22 +5,27 @@ set provides O(1) sync lookups for the auth middleware hot path; the
 SQLite connection provides survival across restarts.
 """
 
+import asyncio
+import contextlib
 import datetime as _datetime_mod
+import sqlite3
 from datetime import UTC, datetime
 from typing import Any
 
-import aiosqlite  # noqa: TC002
+import aiosqlite
 
 from synthorg.api.auth.session import Session
 from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
-    API_SESSION_CREATED,
+    API_SESSION_CREATE_FAILED,
     API_SESSION_LIMIT_ENFORCED,
+    API_SESSION_REVOKE_FAILED,
     API_SESSION_REVOKED,
 )
+from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
@@ -65,8 +70,18 @@ class SQLiteSessionRepository:
         db: Open aiosqlite connection with ``row_factory`` set.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
         self._revoked: set[str] = set()
 
     async def load_revoked(self) -> None:
@@ -86,32 +101,41 @@ class SQLiteSessionRepository:
 
     async def create(self, session: Session) -> None:
         """Persist a new session."""
-        await self._db.execute(
-            "INSERT INTO sessions "
-            "(session_id, user_id, username, role, ip_address, "
-            "user_agent, created_at, last_active_at, expires_at, "
-            "revoked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                session.session_id,
-                session.user_id,
-                session.username,
-                session.role.value,
-                session.ip_address,
-                session.user_agent,
-                session.created_at.isoformat(),
-                session.last_active_at.isoformat(),
-                session.expires_at.isoformat(),
-                int(session.revoked),
-            ),
-        )
-        await self._db.commit()
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    "INSERT INTO sessions "
+                    "(session_id, user_id, username, role, ip_address, "
+                    "user_agent, created_at, last_active_at, expires_at, "
+                    "revoked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        session.session_id,
+                        session.user_id,
+                        session.username,
+                        session.role.value,
+                        session.ip_address,
+                        session.user_agent,
+                        session.created_at.isoformat(),
+                        session.last_active_at.isoformat(),
+                        session.expires_at.isoformat(),
+                        int(session.revoked),
+                    ),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to persist session {session.session_id!r}"
+                logger.warning(
+                    API_SESSION_CREATE_FAILED,
+                    session_id=session.session_id,
+                    user_id=session.user_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
         if session.revoked:
             self._revoked.add(session.session_id)
-        logger.debug(
-            API_SESSION_CREATED,
-            session_id=session.session_id,
-            user_id=session.user_id,
-        )
 
     async def get(self, session_id: str) -> Session | None:
         """Look up a session by ID."""
@@ -149,35 +173,76 @@ class SQLiteSessionRepository:
 
     async def revoke(self, session_id: str) -> bool:
         """Revoke a session by ID."""
-        cursor = await self._db.execute(
-            "UPDATE sessions SET revoked = 1 WHERE session_id = ? AND revoked = 0",
-            (session_id,),
-        )
-        await self._db.commit()
-        if cursor.rowcount > 0:
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "UPDATE sessions SET revoked = 1 "
+                    "WHERE session_id = ? AND revoked = 0",
+                    (session_id,),
+                )
+                await self._db.commit()
+                rowcount = cursor.rowcount
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to revoke session {session_id!r}"
+                logger.warning(
+                    API_SESSION_REVOKE_FAILED,
+                    session_id=session_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        if rowcount > 0:
             self._revoked.add(session_id)
             logger.info(API_SESSION_REVOKED, session_id=session_id)
             return True
         return False
 
     async def revoke_all_for_user(self, user_id: str) -> int:
-        """Revoke all active sessions for a user."""
+        """Revoke all active sessions for a user.
+
+        Captures the session-id snapshot BEFORE committing the UPDATE
+        so a SELECT failure cannot leave the DB committed-revoked
+        while ``self._revoked`` (in-memory set) stays unaware -- a
+        partial-success state would route the affected sessions
+        through the auth fast path until the next ``load_revoked``.
+        """
         now = datetime.now(UTC).isoformat()
-        cursor = await self._db.execute(
-            "UPDATE sessions SET revoked = 1 "
-            "WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
-            (user_id, now),
-        )
-        await self._db.commit()
-        count = cursor.rowcount
-        if count == 0:
-            return 0
-        cursor = await self._db.execute(
-            "SELECT session_id FROM sessions "
-            "WHERE user_id = ? AND revoked = 1 AND expires_at > ?",
-            (user_id, now),
-        )
-        rows = await cursor.fetchall()
+        async with self._write_lock:
+            try:
+                # SELECT first: capture the ids that WILL be revoked
+                # while they are still pending.  If this read fails we
+                # have not yet committed any change.
+                cursor = await self._db.execute(
+                    "SELECT session_id FROM sessions "
+                    "WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
+                    (user_id, now),
+                )
+                rows = await cursor.fetchall()
+                if not rows:
+                    return 0
+                cursor = await self._db.execute(
+                    "UPDATE sessions SET revoked = 1 "
+                    "WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
+                    (user_id, now),
+                )
+                count = cursor.rowcount
+                # Commit only after both the SELECT snapshot and the
+                # UPDATE succeeded; in-memory mutation only happens
+                # after a successful commit.
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to revoke sessions for user {user_id!r}"
+                logger.warning(
+                    API_SESSION_REVOKE_FAILED,
+                    user_id=user_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
         self._revoked.update(row["session_id"] for row in rows)
         logger.info(API_SESSION_REVOKED, user_id=user_id, count=count)
         return count
@@ -215,19 +280,32 @@ class SQLiteSessionRepository:
     async def cleanup_expired(self) -> int:
         """Remove expired sessions from the database."""
         now = datetime.now(UTC).isoformat()
-        cursor = await self._db.execute(
-            "SELECT session_id FROM sessions WHERE expires_at <= ?",
-            (now,),
-        )
-        rows = await cursor.fetchall()
-        ids = {row["session_id"] for row in rows}
-        if not ids:
-            return 0
-        await self._db.execute(
-            "DELETE FROM sessions WHERE expires_at <= ?",
-            (now,),
-        )
-        await self._db.commit()
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "SELECT session_id FROM sessions WHERE expires_at <= ?",
+                    (now,),
+                )
+                rows = await cursor.fetchall()
+                ids = {row["session_id"] for row in rows}
+                if not ids:
+                    return 0
+                await self._db.execute(
+                    "DELETE FROM sessions WHERE expires_at <= ?",
+                    (now,),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = "Failed to cleanup expired sessions"
+                logger.warning(
+                    API_SESSION_CLEANUP,
+                    phase="cleanup_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
         self._revoked -= ids
         logger.debug(API_SESSION_CLEANUP, removed=len(ids))
         return len(ids)

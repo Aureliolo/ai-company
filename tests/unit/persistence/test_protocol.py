@@ -14,31 +14,34 @@ from synthorg.hr.persistence_protocol import (
     LifecycleEventRepository,
     TaskMetricRepository,
 )
+from synthorg.persistence.agent_state_protocol import AgentStateRepository
+from synthorg.persistence.artifact_protocol import ArtifactRepository
+from synthorg.persistence.audit_protocol import AuditRepository
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
+from synthorg.persistence.cost_record_protocol import CostRecordRepository
+from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,
     PresetListRow,
     PresetRow,
 )
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.persistence.repositories import (
-    AgentStateRepository,
-    ApiKeyRepository,
-    ArtifactRepository,
-    AuditRepository,
-    CheckpointRepository,
-    CostRecordRepository,
-    DecisionRepository,
-    HeartbeatRepository,
-    MessageRepository,
-    ParkedContextRepository,
-    ProjectRepository,
-    SettingsRepository,
-    TaskRepository,
-    UserRepository,
-)
+from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
+from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.persistence.training_repos import (
     TrainingPlanRepository,
     TrainingResultRepository,
+)
+from synthorg.persistence.user_protocol import (
+    ApiKeyRepository,
+    UserRepository,
 )
 from synthorg.persistence.workflow_definition_repo import WorkflowDefinitionRepository
 from synthorg.persistence.workflow_execution_repo import WorkflowExecutionRepository
@@ -366,10 +369,16 @@ class _FakeSettingsRepository:
     async def delete_namespace(self, namespace: str) -> int:
         return 0
 
+    async def delete_namespace_returning_keys(
+        self,
+        namespace: str,
+    ) -> tuple[NotBlankStr, ...]:
+        return ()
+
 
 class _FakeArtifactRepository:
-    async def save(self, artifact: Artifact) -> None:
-        pass
+    async def save(self, artifact: Artifact) -> bool:
+        return True
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         return None
@@ -388,6 +397,12 @@ class _FakeArtifactRepository:
 
 
 class _FakeProjectRepository:
+    async def create(self, project: Project) -> None:
+        pass
+
+    async def update(self, project: Project) -> None:
+        pass
+
     async def save(self, project: Project) -> None:
         pass
 
@@ -403,6 +418,32 @@ class _FakeProjectRepository:
         return ()
 
     async def delete(self, project_id: NotBlankStr) -> bool:
+        return False
+
+
+class _FakeSsrfViolationRepository:
+    async def save(self, violation: Any) -> None:
+        pass
+
+    async def get(self, violation_id: NotBlankStr) -> Any | None:
+        return None
+
+    async def list_violations(
+        self,
+        *,
+        status: Any | None = None,
+        limit: int = 100,
+    ) -> tuple[Any, ...]:
+        return ()
+
+    async def update_status(
+        self,
+        violation_id: NotBlankStr,
+        *,
+        status: Any,
+        resolved_by: NotBlankStr,
+        resolved_at: AwareDatetime,
+    ) -> bool:
         return False
 
 
@@ -616,8 +657,14 @@ class _FakeBackend:
         return object()
 
     @property
-    def ssrf_violations(self) -> Any:
-        return object()
+    def ssrf_violations(self) -> _FakeSsrfViolationRepository:
+        # Real fake repo (not ``object()``) so backend-level contract
+        # access actually exposes an ``SsrfViolationRepository``-shaped
+        # object -- callers can exercise SSRF wiring without bypassing
+        # the protocol.  Return type is the concrete fake (not ``Any``)
+        # so the runtime-protocol check at the test site can verify
+        # the backend's exposure path against ``SsrfViolationRepository``.
+        return _FakeSsrfViolationRepository()
 
     @property
     def identity_versions(self) -> Any:
@@ -798,6 +845,14 @@ class TestProtocolCompliance:
 
     def test_fake_project_repo_is_project_repository(self) -> None:
         assert isinstance(_FakeProjectRepository(), ProjectRepository)
+
+    def test_fake_ssrf_violation_repo_is_ssrf_violation_repository(self) -> None:
+        # Route through the backend property so the test exercises the
+        # contract-fidelity path (backend.ssrf_violations -> repo) rather
+        # than constructing the fake directly -- catches regressions where
+        # ``_FakeBackend.ssrf_violations`` drifts back to ``object()``.
+        backend = _FakeBackend()
+        assert isinstance(backend.ssrf_violations, SsrfViolationRepository)
 
     def test_fake_preset_repo_is_personality_preset_repository(self) -> None:
         assert isinstance(

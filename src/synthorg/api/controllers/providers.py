@@ -57,6 +57,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_MODEL_OPERATION_FAILED,
     API_PROVIDER_HEALTH_QUERIED,
+    API_PROVIDER_USAGE_ENRICHMENT_FAILED,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
     API_SSE_PULL_MODEL_FAILED,
@@ -67,10 +68,12 @@ from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
     ProviderNotFoundError,
     ProviderValidationError,
+    RateLimitError,
 )
 from synthorg.providers.health import ProviderHealthSummary  # noqa: TC001
 from synthorg.providers.presets import ProviderPreset, get_preset, list_presets
 from synthorg.providers.probing import probe_preset_urls
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 logger = get_logger(__name__)
 
@@ -198,9 +201,28 @@ class ProviderController(Controller):
 
         caps_by_id: Mapping[str, ModelCapabilities | None] = {}
         if driver is not None:
-            caps_by_id = await driver.batch_get_capabilities(
-                tuple(m.id for m in provider.models),
-            )
+            try:
+                caps_by_id = await driver.batch_get_capabilities(
+                    tuple(m.id for m in provider.models),
+                )
+            except* (RetryExhaustedError, RateLimitError) as exc_group:
+                # ``BaseCompletionProvider.batch_get_capabilities``
+                # fans out via ``asyncio.TaskGroup``, which wraps any
+                # raised exception in an ``ExceptionGroup``.  ``except*``
+                # unpacks that wrapper so we still catch retry
+                # exhaustion regardless of how many sub-exceptions the
+                # group carries.  Retry exhaustion AND rate-limit
+                # exhaustion both signal provider-level unhealthiness
+                # rather than a per-model classification issue, so
+                # they should fall through to the static-model
+                # fallback ("no capability data") rather than a 500.
+                exc = exc_group.exceptions[0]
+                logger.warning(
+                    API_PROVIDER_USAGE_ENRICHMENT_FAILED,
+                    provider=name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
         results = tuple(
             to_provider_model_response(
                 model_config,

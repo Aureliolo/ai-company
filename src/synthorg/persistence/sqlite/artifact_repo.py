@@ -1,5 +1,6 @@
 """SQLite repository implementation for Artifact."""
 
+import asyncio
 import sqlite3
 from datetime import UTC, datetime
 
@@ -9,17 +10,15 @@ from pydantic import ValidationError
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_DELETE_FAILED,
-    PERSISTENCE_ARTIFACT_DELETED,
     PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
     PERSISTENCE_ARTIFACT_FETCH_FAILED,
     PERSISTENCE_ARTIFACT_FETCHED,
     PERSISTENCE_ARTIFACT_LIST_FAILED,
     PERSISTENCE_ARTIFACT_LISTED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
-    PERSISTENCE_ARTIFACT_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -60,59 +59,161 @@ class SQLiteArtifactRepository:
             set to ``aiosqlite.Row``.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Serialise write transactions on the shared
+        # ``aiosqlite.Connection`` -- without this lock, concurrent
+        # writes from this repo or any *sibling* repo that shares the
+        # same connection can interleave their ``execute`` + ``commit``
+        # calls inside the same connection-scoped transaction context,
+        # breaking atomicity (one commit / rollback affects the other's
+        # writes).  Inject the shared
+        # ``SQLitePersistenceBackend._shared_write_lock`` so every repo
+        # talking to the same connection serializes through one lock;
+        # fall back to a private lock when constructed standalone (e.g.
+        # in unit tests that build a single repo against an in-memory
+        # connection).
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
-    async def save(self, artifact: Artifact) -> None:
-        """Persist an artifact via upsert (insert or update on conflict).
+    async def _safe_rollback(
+        self,
+        failure_event: str = PERSISTENCE_ARTIFACT_SAVE_FAILED,
+    ) -> None:
+        """Best-effort rollback on the shared connection.
+
+        ``SQLiteArtifactRepository`` shares a single
+        :class:`aiosqlite.Connection` across requests.  When
+        ``execute()`` / ``commit()`` raises mid-write, leaving the
+        transaction open lets later calls inherit the failed state or
+        keep the DB locked.  Rolling back here clears the per-write
+        transaction without disturbing successful sibling repositories
+        that share the same connection.
+
+        The rollback itself is wrapped: a secondary failure (e.g. the
+        connection is already closed) must not mask the original error
+        the caller is propagating.  We DO log the rollback failure so
+        a tainted shared connection leaves a trail in observability
+        instead of silently degrading later writes.
+
+        Args:
+            failure_event: Event constant attributed to the rollback
+                failure log.  Defaults to ``PERSISTENCE_ARTIFACT_SAVE_FAILED``
+                so existing call sites stay valid; ``delete()`` should
+                pass ``PERSISTENCE_ARTIFACT_DELETE_FAILED`` so a
+                rollback-after-delete failure is filed against the
+                correct operation in dashboards.
+        """
+        try:
+            await self._db.rollback()
+        except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
+            logger.warning(
+                failure_event,
+                error_type=type(rollback_exc).__name__,
+                error=safe_error_description(rollback_exc),
+                rollback_failed=True,
+            )
+
+    async def save(self, artifact: Artifact) -> bool:
+        """Persist an artifact atomically; return whether it was inserted.
+
+        Implements the upsert as ``INSERT ... ON CONFLICT(id) DO
+        NOTHING`` followed by a conditional ``UPDATE``, both inside
+        one transaction.  The first ``INSERT``'s ``rowcount``
+        distinguishes the lifecycle outcome without a TOCTOU
+        ``get`` + ``save`` race -- concurrent writers can no longer
+        both observe "missing" and both report ``API_ARTIFACT_CREATED``.
+
+        ``ON CONFLICT(id) DO NOTHING`` (not ``INSERT OR IGNORE``)
+        narrows conflict resolution to the ``id`` primary key only.
+        Other constraint failures -- ``NOT NULL``, ``CHECK``, ``FOREIGN
+        KEY`` -- propagate as ``IntegrityError`` so a malformed
+        artifact does not silently sail past the insert and then update
+        zero rows ("save returned False" without anything actually
+        persisted).
 
         Args:
             artifact: Artifact model to persist.
 
+        Returns:
+            ``True`` when this call inserted a new row, ``False`` when
+            it updated an existing row in place.
+
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            await self._db.execute(
-                """\
+        created_at_iso = (
+            artifact.created_at.astimezone(UTC).isoformat()
+            if artifact.created_at is not None
+            else None
+        )
+        params = (
+            artifact.id,
+            artifact.type.value,
+            artifact.path,
+            artifact.task_id,
+            artifact.created_by,
+            artifact.description,
+            artifact.content_type,
+            artifact.size_bytes,
+            created_at_iso,
+            artifact.project_id,
+        )
+        async with self._write_lock:
+            try:
+                insert_cursor = await self._db.execute(
+                    """\
 INSERT INTO artifacts (id, type, path, task_id, created_by,
-                       description, content_type, size_bytes, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-    type=excluded.type,
-    path=excluded.path,
-    task_id=excluded.task_id,
-    created_by=excluded.created_by,
-    description=excluded.description,
-    content_type=excluded.content_type,
-    size_bytes=excluded.size_bytes,
-    created_at=excluded.created_at""",
-                (
-                    artifact.id,
-                    artifact.type.value,
-                    artifact.path,
-                    artifact.task_id,
-                    artifact.created_by,
-                    artifact.description,
-                    artifact.content_type,
-                    artifact.size_bytes,
-                    (
-                        artifact.created_at.astimezone(UTC).isoformat()
-                        if artifact.created_at is not None
-                        else None
-                    ),
-                ),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save artifact {artifact.id!r}"
-            logger.exception(
-                PERSISTENCE_ARTIFACT_SAVE_FAILED,
-                artifact_id=artifact.id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        logger.info(PERSISTENCE_ARTIFACT_SAVED, artifact_id=artifact.id)
+                       description, content_type, size_bytes,
+                       created_at, project_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO NOTHING""",
+                    params,
+                )
+                inserted = insert_cursor.rowcount > 0
+                if not inserted:
+                    await self._db.execute(
+                        """\
+UPDATE artifacts SET
+    type=?,
+    path=?,
+    task_id=?,
+    created_by=?,
+    description=?,
+    content_type=?,
+    size_bytes=?,
+    created_at=?,
+    project_id=?
+WHERE id=?""",
+                        (
+                            artifact.type.value,
+                            artifact.path,
+                            artifact.task_id,
+                            artifact.created_by,
+                            artifact.description,
+                            artifact.content_type,
+                            artifact.size_bytes,
+                            created_at_iso,
+                            artifact.project_id,
+                            artifact.id,
+                        ),
+                    )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback()
+                msg = f"Failed to save artifact {artifact.id!r}"
+                logger.warning(
+                    PERSISTENCE_ARTIFACT_SAVE_FAILED,
+                    artifact_id=artifact.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return inserted
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         """Retrieve an artifact by primary key.
@@ -133,10 +234,11 @@ ON CONFLICT(id) DO UPDATE SET
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch artifact {artifact_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_FETCH_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -148,10 +250,11 @@ ON CONFLICT(id) DO UPDATE SET
             artifact = _row_to_artifact(row)
         except (ValueError, ValidationError, KeyError) as exc:
             msg = f"Failed to deserialize artifact {artifact_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_ARTIFACT_FETCHED, artifact_id=artifact_id, found=True)
@@ -200,13 +303,21 @@ ON CONFLICT(id) DO UPDATE SET
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list artifacts"
-            logger.exception(PERSISTENCE_ARTIFACT_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_ARTIFACT_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         try:
             artifacts = tuple(_row_to_artifact(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
             msg = "Failed to deserialize artifacts"
-            logger.exception(PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_ARTIFACT_LISTED, count=len(artifacts))
         return artifacts
@@ -223,21 +334,21 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM artifacts WHERE id = ?", (artifact_id,)
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete artifact {artifact_id!r}"
-            logger.exception(
-                PERSISTENCE_ARTIFACT_DELETE_FAILED,
-                artifact_id=artifact_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        deleted = cursor.rowcount > 0
-        logger.info(
-            PERSISTENCE_ARTIFACT_DELETED, artifact_id=artifact_id, deleted=deleted
-        )
-        return deleted
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM artifacts WHERE id = ?", (artifact_id,)
+                )
+                await self._db.commit()
+                deleted = cursor.rowcount > 0
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback(PERSISTENCE_ARTIFACT_DELETE_FAILED)
+                msg = f"Failed to delete artifact {artifact_id!r}"
+                logger.warning(
+                    PERSISTENCE_ARTIFACT_DELETE_FAILED,
+                    artifact_id=artifact_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return deleted

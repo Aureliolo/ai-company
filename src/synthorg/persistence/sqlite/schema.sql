@@ -394,12 +394,14 @@ CREATE TABLE artifacts (
     description TEXT NOT NULL DEFAULT '',
     content_type TEXT NOT NULL DEFAULT '',
     size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (size_bytes >= 0),
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    project_id TEXT
 );
 
 CREATE INDEX idx_artifacts_task_id ON artifacts(task_id);
 CREATE INDEX idx_artifacts_created_by ON artifacts(created_by);
 CREATE INDEX idx_artifacts_type ON artifacts(type);
+CREATE INDEX idx_artifacts_project_id ON artifacts(project_id);
 
 -- ── Projects ─────────────────────────────────────────────────
 CREATE TABLE projects (

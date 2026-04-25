@@ -5,6 +5,10 @@ import pytest
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.errors import (
+    DuplicateRecordError,
+    RecordNotFoundError,
+)
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration
@@ -87,3 +91,33 @@ class TestProjectRepository:
 
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
         assert await backend.projects.delete(NotBlankStr("ghost")) is False
+
+    async def test_create_inserts_new_row(self, backend: PersistenceBackend) -> None:
+        await backend.projects.create(_project(project_id="p-create"))
+
+        fetched = await backend.projects.get(NotBlankStr("p-create"))
+        assert fetched is not None
+        assert fetched.id == "p-create"
+
+    async def test_create_rejects_duplicate(self, backend: PersistenceBackend) -> None:
+        await backend.projects.create(_project(project_id="p-dup"))
+
+        with pytest.raises(DuplicateRecordError):
+            await backend.projects.create(_project(project_id="p-dup"))
+
+    async def test_update_modifies_existing_row(
+        self, backend: PersistenceBackend
+    ) -> None:
+        original = _project(project_id="p-up", name="Original")
+        await backend.projects.create(original)
+
+        renamed = original.model_copy(update={"name": NotBlankStr("Renamed")})
+        await backend.projects.update(renamed)
+
+        fetched = await backend.projects.get(NotBlankStr("p-up"))
+        assert fetched is not None
+        assert fetched.name == "Renamed"
+
+    async def test_update_rejects_missing(self, backend: PersistenceBackend) -> None:
+        with pytest.raises(RecordNotFoundError):
+            await backend.projects.update(_project(project_id="p-ghost"))
