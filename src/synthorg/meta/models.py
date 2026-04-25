@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 # ── Enums ──────────────────────────────────────────────────────────
 
@@ -508,6 +508,54 @@ class RolloutResult(BaseModel):
         return self
 
 
+# ── Improvement cycle result ──────────────────────────────────────
+
+
+class ImprovementCycleResult(BaseModel):
+    """Outcome of an explicit ``trigger_cycle`` invocation.
+
+    Returned by :meth:`SelfImprovementService.trigger_cycle`. Wraps the
+    proposals produced by an in-process cycle plus run metadata so MCP
+    operators can identify the run, see how long it took, and inspect
+    the proposals without making a second call.
+
+    Attributes:
+        cycle_id: Stable identifier for this trigger invocation.
+        started_at: When the cycle began (UTC).
+        completed_at: When the cycle finished (UTC); always >= started_at.
+        proposals_count: Number of proposals returned (computed from
+            ``proposals``; surfaced for telemetry consumers).
+        proposals: Proposals produced by the cycle.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    cycle_id: NotBlankStr = Field(
+        default_factory=lambda: NotBlankStr(str(uuid4())),
+        description="Stable identifier for the trigger invocation",
+    )
+    started_at: AwareDatetime
+    completed_at: AwareDatetime
+    proposals: tuple[ImprovementProposal, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_completion_ordering(self) -> Self:
+        """Ensure completed_at is not earlier than started_at."""
+        if self.completed_at < self.started_at:
+            msg = (
+                f"completed_at ({self.completed_at}) must be at or after "
+                f"started_at ({self.started_at})"
+            )
+            raise ValueError(msg)
+        return self
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def proposals_count(self) -> int:
+        """Number of proposals produced by the cycle."""
+        return len(self.proposals)
+
+
 # ── Apply result ───────────────────────────────────────────────────
 
 
@@ -684,6 +732,7 @@ __all__ = [
     "EvolutionOutcomeSummary",
     "GuardResult",
     "GuardVerdict",
+    "ImprovementCycleResult",
     "ImprovementProposal",
     "MetricSummary",
     "OrgBudgetSummary",

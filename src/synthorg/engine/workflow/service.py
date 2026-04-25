@@ -27,6 +27,9 @@ from synthorg.observability.events.workflow_version import (
 from synthorg.persistence.errors import VersionConflictError
 
 if TYPE_CHECKING:
+    from synthorg.engine.workflow.validation_types import (
+        WorkflowValidationResult,
+    )
     from synthorg.persistence.version_repo import VersionRepository
     from synthorg.persistence.workflow_definition_repo import (
         WorkflowDefinitionRepository,
@@ -383,6 +386,34 @@ class WorkflowService:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+
+    async def validate_definition(
+        self,
+        definition: WorkflowDefinition,
+    ) -> WorkflowValidationResult:
+        """Run graph-level validation against a candidate definition.
+
+        Wraps the pure :func:`validate_workflow` topology checks in a
+        thin async surface so the MCP write facade can ``await`` it
+        through the same service it uses for create/update. Validation
+        failures are *valid* responses -- they return a result with
+        ``valid=False`` rather than raising -- since callers may use
+        this method to drive a UI that surfaces structural errors back
+        to the operator before submitting a real create/update.
+        """
+        # Local import: ``validate_workflow`` lives alongside the
+        # specialised graph checks and pulling it eagerly would create
+        # an import cycle through ``WorkflowDefinition``.
+        # ``validate_workflow`` itself already emits
+        # ``WORKFLOW_DEF_VALIDATED`` / ``WORKFLOW_DEF_VALIDATION_FAILED``
+        # at INFO / WARNING -- so this facade does not re-emit them
+        # here. A second emission would double-count validation traffic
+        # and force consumers to dedup on event payload shape.
+        from synthorg.engine.workflow.validation import (  # noqa: PLC0415
+            validate_workflow,
+        )
+
+        return validate_workflow(definition)
 
     async def delete_definition(
         self,

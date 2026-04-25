@@ -27,6 +27,7 @@ from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.inflight_config import (
     PerOpConcurrencyConfig,  # noqa: TC001
 )
+from synthorg.api.state_services_facades_mcp3 import _MetaMcp3FacadesMixin
 from synthorg.api.state_services_facades_mcp4 import _MetaMcp4FacadesMixin
 from synthorg.communication.meetings.service import MeetingService  # noqa: TC001
 from synthorg.communication.messages.service import MessageService  # noqa: TC001
@@ -84,20 +85,27 @@ from synthorg.organization.services import (
 )
 
 
-class _FacadesMixin(_MetaMcp4FacadesMixin):
+class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
     """Mixin hosting all facade-service accessors for :class:`AppState`.
 
     Must be combined with the rest of ``AppStateServicesMixin`` via
     multiple inheritance so the shared helper methods
     (``_require_service``, ``_set_once``) resolve at runtime.
 
+    The META-MCP-3 accessors (``workflow_service``,
+    ``workflow_execution_service``, ``workflow_version_service``,
+    ``subworkflow_service``, ``self_improvement_service``) live on
+    :class:`_MetaMcp3FacadesMixin`.
+
     The META-MCP-4 accessors (``activity_feed_service``,
     ``agent_health_service``, ``agent_version_service``,
     ``ceremony_policy_service``, ``coordination_service``,
     ``memory_service``, ``personality_service``,
     ``scaling_decision_service``) live on
-    :class:`_MetaMcp4FacadesMixin` to keep this module under the
-    800-line ceiling; they are composed in via inheritance.
+    :class:`_MetaMcp4FacadesMixin`.
+
+    Both mixins exist as separate files purely to keep this module
+    under the 800-line ceiling; they are composed in via inheritance.
     """
 
     _set_once: Any
@@ -159,6 +167,12 @@ class _FacadesMixin(_MetaMcp4FacadesMixin):
         self._memory_service = None
         self._personality_service = None
         self._scaling_decision_service = None
+        # META-MCP-3 facades (write-side services for workflows + meta).
+        self._workflow_service = None
+        self._workflow_execution_service = None
+        self._workflow_version_service = None
+        self._subworkflow_service = None
+        self._self_improvement_service = None
 
     # Slot attrs for facade services (populated on concrete AppState).
     _signals_service: SignalsService | None

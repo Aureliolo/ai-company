@@ -1,11 +1,19 @@
 """Meta (self-improvement) domain MCP handlers.
 
-5 tools.  Three are live -- ``list_mcp_tools`` reflects the registry,
-``get_mcp_server_config`` returns the server metadata, and
-``list_rules`` shims through :class:`CustomRulesService`.  The
-remaining two (``get_config`` and ``trigger_cycle``) require facades on
-``SelfImprovementService`` that have not been exposed on ``app_state``
-yet, so they return a ``capability_gap`` envelope.
+5 tools, all live as of META-MCP-3:
+
+- ``list_mcp_tools`` reflects the tool registry.
+- ``get_mcp_server_config`` returns the MCP server metadata.
+- ``list_rules`` shims through :class:`CustomRulesService`.
+- ``get_config`` returns the active :class:`SelfImprovementConfig`
+  with secrets redacted.
+- ``trigger_cycle`` runs an improvement cycle in-process and returns
+  the produced proposals.
+
+The two new live handlers fall back to ``capability_gap`` only when
+``self_improvement_service`` is not wired on AppState, matching the
+optional-service pattern other handlers (activity feed, agent health,
+etc.) already use.
 """
 
 import copy
@@ -17,7 +25,11 @@ if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.meta.rules.service import CustomRulesService
 
-from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.errors import SelfImprovementTriggerError
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -27,10 +39,16 @@ from synthorg.meta.mcp.handlers.common import (
     coerce_pagination,
     err,
     ok,
+    require_destructive_guardrails,
+)
+from synthorg.meta.mcp.handlers.common import (
+    actor_id as _actor_id,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
+    MCP_DESTRUCTIVE_OP_EXECUTED,
     MCP_HANDLER_ARGUMENT_INVALID,
+    MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
     MCP_HANDLER_LAZY_SERVICE_INIT,
@@ -39,13 +57,9 @@ from synthorg.observability.events.mcp import (
 logger = get_logger(__name__)
 
 
-_WHY_CONFIG = (
-    "self-improvement config read requires SelfImprovementService; "
-    "no facade on app_state yet"
-)
-_WHY_TRIGGER = (
-    "improvement-cycle triggering requires SelfImprovementService; "
-    "no facade on app_state yet"
+_WHY_SELF_IMPROVEMENT = (
+    "self-improvement service is not wired on app_state in this "
+    "deployment; enable the meta loop to use this tool"
 )
 
 
@@ -64,6 +78,14 @@ def _log_failed(tool: str, exc: Exception) -> None:
         tool_name=tool,
         error_type=type(exc).__name__,
         error=safe_error_description(exc),
+    )
+
+
+def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
+    logger.warning(
+        MCP_HANDLER_GUARDRAIL_VIOLATED,
+        tool_name=tool,
+        violation=exc.violation,
     )
 
 
@@ -112,11 +134,22 @@ def _rule_to_dict(rule: Any) -> dict[str, Any]:
 
 async def _meta_get_config(
     *,
-    app_state: Any,  # noqa: ARG001
+    app_state: Any,
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_meta_get_config", _WHY_CONFIG)
+    tool = "synthorg_meta_get_config"
+    if not getattr(app_state, "has_self_improvement_service", False):
+        return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
+    try:
+        config_dump = app_state.self_improvement_service.get_config()
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=config_dump)
 
 
 async def _meta_list_rules(
@@ -188,11 +221,45 @@ async def _meta_get_mcp_server_config(
 
 async def _meta_trigger_cycle(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    return capability_gap("synthorg_meta_trigger_cycle", _WHY_TRIGGER)
+    tool = "synthorg_meta_trigger_cycle"
+    # Capability-gap check runs first so deployments that haven't wired
+    # the self-improvement service surface the dedicated
+    # ``capability_gap`` envelope, not a guardrail violation. The
+    # destructive-op triple (identified actor + ``confirm=True`` +
+    # non-blank ``reason``) is mandatory because this tool is declared
+    # via ``admin_tool`` in ``meta/mcp/domains/meta.py``; we apply it
+    # immediately after confirming the tool can actually execute.
+    if not getattr(app_state, "has_self_improvement_service", False):
+        return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+    except GuardrailViolationError as exc:
+        _log_guardrail(tool, exc)
+        return err(exc)
+    actor_str = _actor_id(resolved_actor) or "mcp"
+    try:
+        result = await app_state.self_improvement_service.trigger_cycle()
+    except SelfImprovementTriggerError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="unavailable")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(
+        MCP_DESTRUCTIVE_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_str,
+        reason=reason,
+        target_id=str(result.cycle_id),
+    )
+    return ok(data=result.model_dump(mode="json"))
 
 
 META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

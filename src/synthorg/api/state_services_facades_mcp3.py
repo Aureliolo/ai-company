@@ -1,0 +1,195 @@
+"""AppState facade accessors for META-MCP-3 write-side services.
+
+Provides ``has_<service>`` / ``<service>`` / ``set_<service>`` triples
+for the five services META-MCP-3 introduces or wires onto AppState:
+
+- ``workflow_service`` -- workflow definition CRUD facade.
+- ``workflow_execution_service`` -- workflow execution lifecycle.
+- ``workflow_version_service`` -- workflow definition version reads.
+- ``subworkflow_service`` -- subworkflow control plane.
+- ``self_improvement_service`` -- meta-loop trigger and config readout.
+
+This is the META-MCP-3 mixin; the parallel META-MCP-4 mixin lives in
+``state_services_facades_mcp4.py``. Both follow the same conventions
+(audit event on attach, one-shot setter, ``ServiceUnavailableError`` on
+read when not wired) and exist as separate files purely so the parent
+``state_services_facades.py`` stays under the project's 800-line ceiling.
+"""
+
+from typing import Any
+
+from synthorg.engine.workflow.execution_service import (
+    WorkflowExecutionService,  # noqa: TC001
+)
+from synthorg.engine.workflow.service import WorkflowService  # noqa: TC001
+from synthorg.engine.workflow.subworkflow_service import (
+    SubworkflowService,  # noqa: TC001
+)
+from synthorg.engine.workflow.version_service import (
+    WorkflowVersionService,  # noqa: TC001
+)
+from synthorg.meta.service import SelfImprovementService  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_STATE_SERVICE_ATTACHED
+
+logger = get_logger(__name__)
+
+
+class _MetaMcp3FacadesMixin:
+    """Facade accessors for the five META-MCP-3 services."""
+
+    _set_once: Any
+
+    def _require_service[T](  # pragma: no cover
+        self, service: T | None, name: str
+    ) -> T:
+        raise NotImplementedError
+
+    def _attach_service(
+        self,
+        *,
+        slot: str,
+        service: Any,
+        name: str,
+    ) -> None:
+        self._set_once(slot, service, name)
+        logger.info(
+            API_STATE_SERVICE_ATTACHED,
+            slot=slot,
+            service_class=type(service).__name__,
+        )
+
+    # Slot attrs (declared on the concrete AppState; redeclared so
+    # mypy narrows access through the mixin).
+    _workflow_service: WorkflowService | None
+    _workflow_execution_service: WorkflowExecutionService | None
+    _workflow_version_service: WorkflowVersionService | None
+    _subworkflow_service: SubworkflowService | None
+    _self_improvement_service: SelfImprovementService | None
+
+    # ── WorkflowService ──────────────────────────────────────────
+
+    @property
+    def has_workflow_service(self) -> bool:
+        """Whether the workflow definition service has been attached."""
+        return self._workflow_service is not None
+
+    @property
+    def workflow_service(self) -> WorkflowService:
+        """Return the attached :class:`WorkflowService`."""
+        return self._require_service(
+            self._workflow_service,
+            "workflow_service",
+        )
+
+    def set_workflow_service(self, service: WorkflowService) -> None:
+        """Attach the workflow definition service (one-shot)."""
+        self._attach_service(
+            slot="_workflow_service",
+            service=service,
+            name="workflow_service",
+        )
+
+    # ── WorkflowExecutionService ─────────────────────────────────
+
+    @property
+    def has_workflow_execution_service(self) -> bool:
+        """Whether the workflow execution service has been attached."""
+        return self._workflow_execution_service is not None
+
+    @property
+    def workflow_execution_service(self) -> WorkflowExecutionService:
+        """Return the attached :class:`WorkflowExecutionService`."""
+        return self._require_service(
+            self._workflow_execution_service,
+            "workflow_execution_service",
+        )
+
+    def set_workflow_execution_service(
+        self,
+        service: WorkflowExecutionService,
+    ) -> None:
+        """Attach the workflow execution service (one-shot)."""
+        self._attach_service(
+            slot="_workflow_execution_service",
+            service=service,
+            name="workflow_execution_service",
+        )
+
+    # ── WorkflowVersionService ───────────────────────────────────
+
+    @property
+    def has_workflow_version_service(self) -> bool:
+        """Whether the workflow version service has been attached."""
+        return self._workflow_version_service is not None
+
+    @property
+    def workflow_version_service(self) -> WorkflowVersionService:
+        """Return the attached :class:`WorkflowVersionService`."""
+        return self._require_service(
+            self._workflow_version_service,
+            "workflow_version_service",
+        )
+
+    def set_workflow_version_service(
+        self,
+        service: WorkflowVersionService,
+    ) -> None:
+        """Attach the workflow version service (one-shot)."""
+        self._attach_service(
+            slot="_workflow_version_service",
+            service=service,
+            name="workflow_version_service",
+        )
+
+    # ── SubworkflowService ───────────────────────────────────────
+
+    @property
+    def has_subworkflow_service(self) -> bool:
+        """Whether the subworkflow service has been attached."""
+        return self._subworkflow_service is not None
+
+    @property
+    def subworkflow_service(self) -> SubworkflowService:
+        """Return the attached :class:`SubworkflowService`."""
+        return self._require_service(
+            self._subworkflow_service,
+            "subworkflow_service",
+        )
+
+    def set_subworkflow_service(self, service: SubworkflowService) -> None:
+        """Attach the subworkflow service (one-shot)."""
+        self._attach_service(
+            slot="_subworkflow_service",
+            service=service,
+            name="subworkflow_service",
+        )
+
+    # ── SelfImprovementService ───────────────────────────────────
+
+    @property
+    def has_self_improvement_service(self) -> bool:
+        """Whether the self-improvement service has been attached."""
+        return self._self_improvement_service is not None
+
+    @property
+    def self_improvement_service(self) -> SelfImprovementService:
+        """Return the attached :class:`SelfImprovementService`."""
+        return self._require_service(
+            self._self_improvement_service,
+            "self_improvement_service",
+        )
+
+    def set_self_improvement_service(
+        self,
+        service: SelfImprovementService,
+    ) -> None:
+        """Attach the self-improvement service (one-shot)."""
+        self._attach_service(
+            slot="_self_improvement_service",
+            service=service,
+            name="self_improvement_service",
+        )
+
+
+__all__ = ["_MetaMcp3FacadesMixin"]

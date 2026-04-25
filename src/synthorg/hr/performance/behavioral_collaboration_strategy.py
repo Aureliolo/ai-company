@@ -59,6 +59,16 @@ class BehavioralTelemetryStrategy:
         """Human-readable strategy name."""
         return "behavioral_telemetry"
 
+    def describe_weights(self) -> tuple[tuple[str, float], ...]:
+        """Return the strategy's published default weights.
+
+        Used by :meth:`PerformanceTracker.get_collaboration_calibration`
+        to expose a stable, ops-facing readout of the active strategy's
+        component weighting. Strategies that do not implement this
+        method get an empty weight tuple in the calibration payload.
+        """
+        return tuple(sorted(_DEFAULT_WEIGHTS.items()))
+
     async def score(
         self,
         *,

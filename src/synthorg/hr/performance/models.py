@@ -470,6 +470,60 @@ class WindowMetrics(BaseModel):
         return self
 
 
+class CollaborationCalibration(BaseModel):
+    """Stable, ops-facing readout of the collaboration scoring strategy.
+
+    Returned by ``PerformanceTracker.get_collaboration_calibration`` for
+    the MCP ``synthorg_collaboration_get_calibration`` tool. The shape
+    is intentionally curated -- callers see ``strategy_name`` and the
+    bounded ``component_weights`` tuple, but they do not see strategy-
+    private internals. Swapping the underlying
+    :class:`~synthorg.hr.performance.protocols.CollaborationScoringStrategy`
+    therefore does not change the envelope shape MCP consumers depend on.
+
+    Attributes:
+        agent_id: The agent the calibration was computed for.
+        strategy_name: Name of the active scoring strategy.
+        window_sizes: Rolling-window labels the strategy aggregates over.
+        component_weights: Ordered tuple of ``(component_name, weight)``
+            pairs, where ``component_name`` is a stable identifier like
+            ``"handoff_acceptance"``. A tuple-of-tuples (rather than a
+            dict) is used so the wire shape is fully ordered and stays
+            JSON-serialisable; callers that need lookup semantics should
+            convert via ``dict(component_weights)`` at the call site.
+        active_override: Currently-active human override, if any.
+        sample_size: Number of collaboration samples backing the active
+            window. ``0`` is valid (cold-start agents).
+        last_calibrated_at: Timestamp of the most recent calibration
+            sample, or ``None`` when no samples exist.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    agent_id: NotBlankStr = Field(description="Agent identifier")
+    strategy_name: NotBlankStr = Field(description="Active strategy name")
+    window_sizes: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Rolling-window labels aggregated over",
+    )
+    component_weights: tuple[tuple[NotBlankStr, float], ...] = Field(
+        default=(),
+        description="Per-component weights as (name, weight) pairs",
+    )
+    active_override: CollaborationOverride | None = Field(
+        default=None,
+        description="Active human override, when present",
+    )
+    sample_size: int = Field(
+        ge=0,
+        description="Number of collaboration samples available",
+    )
+    last_calibrated_at: AwareDatetime | None = Field(
+        default=None,
+        description="Timestamp of the most recent calibration sample",
+    )
+
+
 class AgentPerformanceSnapshot(BaseModel):
     """Complete performance snapshot for an agent at a point in time.
 

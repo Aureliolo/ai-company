@@ -174,10 +174,26 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "level": {
                 "type": "string",
                 "description": "New autonomy level",
-                "enum": ["NONE", "LIMITED", "SEMI", "FULL"],
+                "enum": ["full", "semi", "supervised", "locked"],
+            },
+            "reason": {
+                "type": "string",
+                "minLength": 3,
+                # The runtime validator on ``AutonomyUpdate.reason``
+                # rejects when ``len(reason.strip()) < 3``. Mirror
+                # that exactly here: leading/trailing whitespace is
+                # allowed, but the trimmed string must start and end
+                # with non-whitespace and span at least 3 characters.
+                # ``[\s\S]`` (vs ``.``) keeps the pattern correct
+                # under JSON Schema's ECMAScript regex semantics
+                # (where ``.`` excludes line terminators).
+                "pattern": r"^\s*\S[\s\S]{1,}\S\s*$",
+                "description": (
+                    "Why the change is requested (min 3 chars after strip)"
+                ),
             },
         },
-        required=("agent_id", "level"),
+        required=("agent_id", "level", "reason"),
     ),
     # --- Collaboration ---
     read_tool(

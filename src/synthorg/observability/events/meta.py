@@ -12,6 +12,14 @@ META_CYCLE_STARTED: Final[str] = "meta.cycle.started"
 META_CYCLE_COMPLETED: Final[str] = "meta.cycle.completed"
 META_CYCLE_NO_TRIGGERS: Final[str] = "meta.cycle.no_triggers"
 META_CYCLE_FAILED: Final[str] = "meta.cycle.failed"
+META_CYCLE_TRIGGERED: Final[str] = "meta.cycle.triggered"
+# Emitted when ``trigger_cycle`` cannot complete -- either because the
+# wired ``snapshot_builder`` is missing (fail-fast precondition) or
+# because the snapshot builder / cycle body raised. Always logged at
+# WARNING so direct facade callers (notably the ``synthorg_meta_trigger_cycle``
+# MCP tool) get a service-level failure record before the exception
+# propagates.
+META_CYCLE_TRIGGER_FAILED: Final[str] = "meta.cycle.trigger_failed"
 
 # -- Signal aggregation events ------------------------------------------
 
