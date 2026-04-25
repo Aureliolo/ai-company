@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -12,6 +13,53 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 )
+
+// withReleasesBetween installs a stub for the package-level releasesBetween
+// var and restores the real GitHub-API-backed implementation on cleanup.
+// Tests use it to drive runStableHighlightsWalk down its error and empty
+// branches without spinning up a fake server.
+func withReleasesBetween(t *testing.T, stub func(ctx context.Context, installed, target string, includeDev bool) ([]selfupdate.Release, error)) {
+	t.Helper()
+	prev := releasesBetween
+	releasesBetween = stub
+	t.Cleanup(func() { releasesBetween = prev })
+}
+
+// withCommitsBetween is the runDevCommitWalk counterpart of
+// withReleasesBetween.
+func withCommitsBetween(t *testing.T, stub func(ctx context.Context, base, head string) (selfupdate.CommitRange, error)) {
+	t.Helper()
+	prev := commitsBetween
+	commitsBetween = stub
+	t.Cleanup(func() { commitsBetween = prev })
+}
+
+// newWalkTestCmd returns a cobra.Command with a captured stdout/stderr
+// buffer and a non-prompting GlobalOpts that still carries Hints=always so
+// HintError lines render. Used by walk error-branch tests.
+func newWalkTestCmd(t *testing.T) (*cobra.Command, *bytes.Buffer) {
+	t.Helper()
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	// Yes:true skips bubbletea (the real walk would deadlock without a TTY)
+	// while still letting Warn / HintError render to the captured writer.
+	cmd.SetContext(SetGlobalOpts(context.Background(), &GlobalOpts{Yes: true, Hints: "always"}))
+	return cmd, &buf
+}
+
+// requireContains fails the test if any expected substring is missing from
+// got. It is a small helper because every walk-error test asserts the same
+// shape -- "warn line mentions versions, HintError mentions reason".
+func requireContains(t *testing.T, got string, wants ...string) {
+	t.Helper()
+	for _, w := range wants {
+		if !strings.Contains(got, w) {
+			t.Errorf("expected output to contain %q\n--- got ---\n%s", w, got)
+		}
+	}
+}
 
 func TestBatchReleases(t *testing.T) {
 	tests := []struct {
@@ -59,6 +107,23 @@ func TestFormatPublishedDate(t *testing.T) {
 		t.Run(tt.in, func(t *testing.T) {
 			if got := formatPublishedDate(tt.in); got != tt.want {
 				t.Errorf("formatPublishedDate(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeVersionRef(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"0.7.3-dev.11", "v0.7.3-dev.11"},
+		{"v0.7.3-dev.11", "v0.7.3-dev.11"},
+		{"0.7.5", "v0.7.5"},
+		{"v0.7.5", "v0.7.5"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := normalizeVersionRef(tt.in); got != tt.want {
+				t.Errorf("normalizeVersionRef(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
 	}
@@ -161,6 +226,110 @@ func TestPrintWalkSummary_listsAllVersions(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("summary missing %q\n--- got ---\n%s", want, got)
 		}
+	}
+}
+
+func TestRunStableHighlightsWalk_warnsOnReleasesBetweenError(t *testing.T) {
+	withReleasesBetween(t, func(_ context.Context, _, _ string, _ bool) ([]selfupdate.Release, error) {
+		return nil, errors.New("simulated GitHub 503")
+	})
+	cmd, buf := newWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.1", LatestVersion: "v0.7.5"}
+	state := config.DefaultState()
+
+	runStableHighlightsWalk(cmd.Context(), cmd, result, state)
+
+	got := buf.String()
+	requireContains(t, got,
+		"Could not load release list",
+		"v0.7.1..v0.7.5",
+		"simulated GitHub 503",
+		"Showing terse update notice",
+		"New version available: v0.7.5",
+	)
+}
+
+func TestRunStableHighlightsWalk_warnsOnEmptyRange(t *testing.T) {
+	withReleasesBetween(t, func(_ context.Context, _, _ string, _ bool) ([]selfupdate.Release, error) {
+		return nil, nil
+	})
+	cmd, buf := newWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.4", LatestVersion: "v0.7.5"}
+	state := config.DefaultState()
+
+	runStableHighlightsWalk(cmd.Context(), cmd, result, state)
+
+	got := buf.String()
+	requireContains(t, got,
+		"No releases found strictly between",
+		"v0.7.4",
+		"v0.7.5",
+		"check the GitHub releases page",
+		"New version available: v0.7.5",
+	)
+}
+
+func TestRunDevCommitWalk_warnsOnCompareError(t *testing.T) {
+	withCommitsBetween(t, func(_ context.Context, _, _ string) (selfupdate.CommitRange, error) {
+		return selfupdate.CommitRange{}, errors.New("404 Not Found")
+	})
+	cmd, buf := newWalkTestCmd(t)
+	// The reproduction case from the user report: installed version stamped
+	// without "v" prefix, target with "v". The walk must normalise both to
+	// "v0.7.3-dev.11..v0.7.3-dev.19" before passing to commitsBetween.
+	result := selfupdate.CheckResult{CurrentVersion: "0.7.3-dev.11", LatestVersion: "v0.7.3-dev.19"}
+
+	runDevCommitWalk(cmd.Context(), cmd, result)
+
+	got := buf.String()
+	requireContains(t, got,
+		"Could not fetch commit list",
+		"v0.7.3-dev.11..v0.7.3-dev.19",
+		"404 Not Found",
+		"installed dev pre-release tag was pruned",
+		"New version available: v0.7.3-dev.19",
+	)
+}
+
+func TestRunDevCommitWalk_warnsOnEmptyRange(t *testing.T) {
+	withCommitsBetween(t, func(_ context.Context, _, _ string) (selfupdate.CommitRange, error) {
+		return selfupdate.CommitRange{Commits: nil, TotalCommits: 0}, nil
+	})
+	cmd, buf := newWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.3-dev.18", LatestVersion: "v0.7.3-dev.19"}
+
+	runDevCommitWalk(cmd.Context(), cmd, result)
+
+	got := buf.String()
+	requireContains(t, got,
+		"GitHub returned 0 commits",
+		"v0.7.3-dev.18",
+		"v0.7.3-dev.19",
+		"New version available: v0.7.3-dev.19",
+	)
+}
+
+// TestRunDevCommitWalk_normalisesVersionRefs is the regression guard for
+// the original user report: a dev-channel installed version stamped without
+// the "v" prefix MUST be normalised to "vX.Y.Z-dev.N" before reaching
+// commitsBetween, otherwise GitHub's compare API returns 404 for every
+// invocation.
+func TestRunDevCommitWalk_normalisesVersionRefs(t *testing.T) {
+	var seenBase, seenHead string
+	withCommitsBetween(t, func(_ context.Context, base, head string) (selfupdate.CommitRange, error) {
+		seenBase, seenHead = base, head
+		return selfupdate.CommitRange{}, errors.New("stop here")
+	})
+	cmd, _ := newWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "0.7.3-dev.11", LatestVersion: "0.7.3-dev.19"}
+
+	runDevCommitWalk(cmd.Context(), cmd, result)
+
+	if seenBase != "v0.7.3-dev.11" {
+		t.Errorf("base passed to commitsBetween = %q, want %q", seenBase, "v0.7.3-dev.11")
+	}
+	if seenHead != "v0.7.3-dev.19" {
+		t.Errorf("head passed to commitsBetween = %q, want %q", seenHead, "v0.7.3-dev.19")
 	}
 }
 

@@ -23,6 +23,15 @@ import (
 // fit one block plus the key footer without forcing scroll.
 const walkBatchSize = 3
 
+// Function variables for the GitHub release/compare API calls. Tests swap
+// these via t.Cleanup to drive runStableHighlightsWalk and runDevCommitWalk
+// down their error and empty-range branches without spinning up a fake
+// GitHub server.
+var (
+	releasesBetween = selfupdate.ReleasesBetween
+	commitsBetween  = selfupdate.CommitsBetween
+)
+
 // runChangelogWalk renders the per-release Highlights walk (stable channel)
 // or the combined commit-list view (dev channel) before the install confirm
 // prompt in updateCLI. The walk is informational and never blocks the
@@ -52,14 +61,21 @@ func runStableHighlightsWalk(ctx context.Context, cmd *cobra.Command, result sel
 	opts := GetGlobalOpts(ctx)
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	releases, err := selfupdate.ReleasesBetween(ctx, result.CurrentVersion, result.LatestVersion, false)
+	releases, err := releasesBetween(ctx, result.CurrentVersion, result.LatestVersion, false)
 	if err != nil {
+		out.Warn(fmt.Sprintf("Could not load release list (%s..%s): %v",
+			normalizeVersionRef(result.CurrentVersion),
+			normalizeVersionRef(result.LatestVersion), err))
+		out.HintError("Showing terse update notice instead. Re-run later or check release notes manually.")
 		printOfflineNotice(cmd, result)
 		return
 	}
 	if len(releases) == 0 {
-		// Nothing strictly between installed and target. Fall through to
-		// the existing one-line notice so the user still sees the jump.
+		out.Warn(fmt.Sprintf(
+			"No releases found strictly between %s and %s -- the walk has nothing to show.",
+			normalizeVersionRef(result.CurrentVersion),
+			normalizeVersionRef(result.LatestVersion)))
+		out.HintError("This is unusual on the stable channel; check the GitHub releases page if a release was pruned.")
 		printOfflineNotice(cmd, result)
 		return
 	}
@@ -102,26 +118,61 @@ func runStableHighlightsWalk(ctx context.Context, cmd *cobra.Command, result sel
 // scrollable bubbletea program. Dev pre-releases have no Highlights blocks,
 // so a per-release walk is uninformative -- a flat commit list is what the
 // user actually wants to see.
+//
+// The GitHub compare endpoint requires both refs to be exact tag names, so
+// we normalise the version strings (which may lack the leading "v" -- the
+// CLI's own version.Version is set without it) before calling out. When
+// compare fails (e.g. the installed dev pre-release tag was pruned from
+// the remote, or the network call errors) we ALWAYS surface the failure
+// with a warning explaining why the rich walk did not render -- silent
+// fallbacks have repeatedly bitten users who could not tell whether the
+// changelog was missing because of an empty range or a real error.
 func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate.CheckResult) {
 	opts := GetGlobalOpts(ctx)
-	commitRange, err := selfupdate.CommitsBetween(ctx, result.CurrentVersion, result.LatestVersion)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+
+	base := normalizeVersionRef(result.CurrentVersion)
+	head := normalizeVersionRef(result.LatestVersion)
+	commitRange, err := commitsBetween(ctx, base, head)
 	if err != nil {
+		out.Warn(fmt.Sprintf("Could not fetch commit list for %s..%s: %v", base, head, err))
+		out.HintError(
+			"This usually means the installed dev pre-release tag was pruned from GitHub " +
+				"(dev releases are auto-rolled). Showing terse update notice instead.")
+		printOfflineNotice(cmd, result)
+		return
+	}
+	if len(commitRange.Commits) == 0 {
+		out.Warn(fmt.Sprintf(
+			"GitHub returned 0 commits between %s and %s -- range looks empty.", base, head))
 		printOfflineNotice(cmd, result)
 		return
 	}
 	width, height := terminalSize(cmd)
 	if _, err := ui.RunCommitWalk(ctx, ui.CommitWalkInput{
-		Installed: result.CurrentVersion,
-		Target:    result.LatestVersion,
+		Installed: base,
+		Target:    head,
 		Commits:   commitRange,
 		Width:     width,
 		Height:    height,
 		Options:   opts.UIOptions(),
 		Output:    cmd.OutOrStdout(),
 	}); err != nil {
-		out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-		out.Warn(fmt.Sprintf("commit walk: %v", err))
+		out.Warn(fmt.Sprintf("commit walk failed: %v", err))
+		printOfflineNotice(cmd, result)
 	}
+}
+
+// normalizeVersionRef ensures a version string carries the leading "v"
+// expected by GitHub release tags. The CLI's own `version.Version` is set
+// without the "v" by GoReleaser ldflags, so callers that pass it straight
+// to the GitHub compare/refs API would otherwise hit 404. Empty input is
+// returned unchanged.
+func normalizeVersionRef(v string) string {
+	if v == "" || strings.HasPrefix(v, "v") {
+		return v
+	}
+	return "v" + v
 }
 
 // shouldShowWalk reports whether the walk UI should run for this invocation.
@@ -164,7 +215,8 @@ func terminalSize(cmd *cobra.Command) (int, int) {
 func printWalkSummary(out *ui.UI, releases []selfupdate.Release, result selfupdate.CheckResult) {
 	out.Section(fmt.Sprintf("Walking %d release%s: %s -> %s",
 		len(releases), pluralS(len(releases)),
-		result.CurrentVersion, result.LatestVersion,
+		normalizeVersionRef(result.CurrentVersion),
+		normalizeVersionRef(result.LatestVersion),
 	))
 	for _, r := range releases {
 		_, hasHighlights := selfupdate.ExtractHighlights(r.Body)
@@ -233,11 +285,17 @@ func batchReleases(releases []selfupdate.Release, size int) [][]selfupdate.Relea
 // notes URL hint for non-interactive contexts and offline / rate-limited
 // fallbacks. Existing call sites (the original updateCLI Step output) are
 // replaced by this so we never print the version-jump twice.
+//
+// Both versions are normalised to the canonical "vX.Y.Z[-dev.N]" form so
+// the line never reads "v0.7.3-dev.19 (current: 0.7.3-dev.11)" -- the
+// installed version is stamped without the "v" prefix at build time, but
+// the user-facing notice should match the GitHub release tag style.
 func printOfflineNotice(cmd *cobra.Command, result selfupdate.CheckResult) {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-	out.Step(fmt.Sprintf("New version available: %s (current: %s)",
-		result.LatestVersion, result.CurrentVersion))
-	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/v%s",
-		version.RepoURL, strings.TrimPrefix(result.LatestVersion, "v")))
+	current := normalizeVersionRef(result.CurrentVersion)
+	latest := normalizeVersionRef(result.LatestVersion)
+	out.Step(fmt.Sprintf("New version available: %s (current: %s)", latest, current))
+	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/%s",
+		version.RepoURL, latest))
 }
