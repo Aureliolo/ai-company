@@ -1,6 +1,7 @@
 """SQLite repository implementation for checkpoint persistence."""
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
+import asyncio
 import sqlite3
 
 import aiosqlite
@@ -29,15 +30,26 @@ class SQLiteCheckpointRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, checkpoint: Checkpoint) -> None:
         """Persist a checkpoint (upsert)."""
-        try:
-            data = checkpoint.model_dump(mode="json")
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                data = checkpoint.model_dump(mode="json")
+                await self._db.execute(
+                    """\
 INSERT OR REPLACE INTO checkpoints (
     id, execution_id, agent_id, task_id, turn_number,
     context_json, created_at
@@ -45,17 +57,17 @@ INSERT OR REPLACE INTO checkpoints (
     :id, :execution_id, :agent_id, :task_id, :turn_number,
     :context_json, :created_at
 )""",
-                data,
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save checkpoint {checkpoint.id!r}"
-            logger.exception(
-                PERSISTENCE_CHECKPOINT_SAVE_FAILED,
-                checkpoint_id=checkpoint.id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+                    data,
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save checkpoint {checkpoint.id!r}"
+                logger.exception(
+                    PERSISTENCE_CHECKPOINT_SAVE_FAILED,
+                    checkpoint_id=checkpoint.id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get_latest(
         self,
@@ -125,21 +137,22 @@ INSERT OR REPLACE INTO checkpoints (
 
     async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
         """Delete all checkpoints for an execution."""
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM checkpoints WHERE execution_id = ?",
-                (execution_id,),
-            )
-            count = cursor.rowcount
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete checkpoints for execution {execution_id!r}"
-            logger.exception(
-                PERSISTENCE_CHECKPOINT_DELETE_FAILED,
-                execution_id=execution_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM checkpoints WHERE execution_id = ?",
+                    (execution_id,),
+                )
+                count = cursor.rowcount
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete checkpoints for execution {execution_id!r}"
+                logger.exception(
+                    PERSISTENCE_CHECKPOINT_DELETE_FAILED,
+                    execution_id=execution_id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
         return count
 
     def _row_to_model(self, row: dict[str, object]) -> Checkpoint:

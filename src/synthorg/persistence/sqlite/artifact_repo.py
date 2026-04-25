@@ -110,12 +110,20 @@ class SQLiteArtifactRepository:
     async def save(self, artifact: Artifact) -> bool:
         """Persist an artifact atomically; return whether it was inserted.
 
-        Implements the upsert as ``INSERT OR IGNORE`` followed by a
-        conditional ``UPDATE``, both inside one transaction.  The
-        first ``INSERT OR IGNORE``'s ``rowcount`` distinguishes the
-        lifecycle outcome without a TOCTOU ``get`` + ``save`` race --
-        concurrent writers can no longer both observe "missing" and
-        both report ``API_ARTIFACT_CREATED``.
+        Implements the upsert as ``INSERT ... ON CONFLICT(id) DO
+        NOTHING`` followed by a conditional ``UPDATE``, both inside
+        one transaction.  The first ``INSERT``'s ``rowcount``
+        distinguishes the lifecycle outcome without a TOCTOU
+        ``get`` + ``save`` race -- concurrent writers can no longer
+        both observe "missing" and both report ``API_ARTIFACT_CREATED``.
+
+        ``ON CONFLICT(id) DO NOTHING`` (not ``INSERT OR IGNORE``)
+        narrows conflict resolution to the ``id`` primary key only.
+        Other constraint failures -- ``NOT NULL``, ``CHECK``, ``FOREIGN
+        KEY`` -- propagate as ``IntegrityError`` so a malformed
+        artifact does not silently sail past the insert and then update
+        zero rows ("save returned False" without anything actually
+        persisted).
 
         Args:
             artifact: Artifact model to persist.
@@ -148,10 +156,11 @@ class SQLiteArtifactRepository:
             try:
                 insert_cursor = await self._db.execute(
                     """\
-INSERT OR IGNORE INTO artifacts (id, type, path, task_id, created_by,
-                                 description, content_type, size_bytes,
-                                 created_at, project_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+INSERT INTO artifacts (id, type, path, task_id, created_by,
+                       description, content_type, size_bytes,
+                       created_at, project_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO NOTHING""",
                     params,
                 )
                 inserted = insert_cursor.rowcount > 0

@@ -1,5 +1,6 @@
 """SQLite-backed ontology entity repository."""
 
+import asyncio
 import json
 import sqlite3
 from collections.abc import Iterable  # noqa: TC003
@@ -38,8 +39,18 @@ class SQLiteOntologyEntityRepository:
         db: Open aiosqlite connection with ``row_factory`` set.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     @property
     def backend_name(self) -> NotBlankStr:
@@ -97,27 +108,28 @@ class SQLiteOntologyEntityRepository:
     async def register(self, entity: EntityDefinition) -> None:
         """Register a new entity definition."""
         params = self._entity_to_params(entity)
-        try:
-            await self._db.execute(
-                """INSERT INTO entity_definitions
-                   (name, tier, source, definition, fields, constraints,
-                    disambiguation, relationships, created_by,
-                    created_at, updated_at)
-                   VALUES (:name, :tier, :source, :definition, :fields,
-                           :constraints, :disambiguation, :relationships,
-                           :created_by, :created_at, :updated_at)""",
-                params,
-            )
-            await self._db.commit()
-        except sqlite3.IntegrityError as exc:
-            await self._db.rollback()
-            msg = f"Entity '{entity.name}' already exists"
-            logger.warning(
-                ONTOLOGY_ENTITY_DUPLICATE,
-                entity_name=entity.name,
-                error=str(exc),
-            )
-            raise OntologyDuplicateError(msg) from exc
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    """INSERT INTO entity_definitions
+                       (name, tier, source, definition, fields, constraints,
+                        disambiguation, relationships, created_by,
+                        created_at, updated_at)
+                       VALUES (:name, :tier, :source, :definition, :fields,
+                               :constraints, :disambiguation, :relationships,
+                               :created_by, :created_at, :updated_at)""",
+                    params,
+                )
+                await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                await self._db.rollback()
+                msg = f"Entity '{entity.name}' already exists"
+                logger.warning(
+                    ONTOLOGY_ENTITY_DUPLICATE,
+                    entity_name=entity.name,
+                    error=str(exc),
+                )
+                raise OntologyDuplicateError(msg) from exc
         logger.info(
             ONTOLOGY_ENTITY_REGISTERED,
             entity_name=entity.name,
@@ -140,38 +152,40 @@ class SQLiteOntologyEntityRepository:
     async def update(self, entity: EntityDefinition) -> None:
         """Update an existing entity definition."""
         params = self._entity_to_params(entity)
-        cursor = await self._db.execute(
-            """UPDATE entity_definitions
-               SET tier = :tier, source = :source,
-                   definition = :definition, fields = :fields,
-                   constraints = :constraints,
-                   disambiguation = :disambiguation,
-                   relationships = :relationships,
-                   updated_at = :updated_at
-               WHERE name = :name""",
-            params,
-        )
-        if cursor.rowcount == 0:
-            msg = f"Entity '{entity.name}' not found"
-            logger.warning(
-                ONTOLOGY_ENTITY_NOT_FOUND,
-                entity_name=entity.name,
-                op="update",
+        async with self._write_lock:
+            cursor = await self._db.execute(
+                """UPDATE entity_definitions
+                   SET tier = :tier, source = :source,
+                       definition = :definition, fields = :fields,
+                       constraints = :constraints,
+                       disambiguation = :disambiguation,
+                       relationships = :relationships,
+                       updated_at = :updated_at
+                   WHERE name = :name""",
+                params,
             )
-            raise OntologyNotFoundError(msg)
-        await self._db.commit()
+            if cursor.rowcount == 0:
+                msg = f"Entity '{entity.name}' not found"
+                logger.warning(
+                    ONTOLOGY_ENTITY_NOT_FOUND,
+                    entity_name=entity.name,
+                    op="update",
+                )
+                raise OntologyNotFoundError(msg)
+            await self._db.commit()
 
     async def delete(self, name: str) -> None:
         """Delete an entity definition by name."""
-        cursor = await self._db.execute(
-            "DELETE FROM entity_definitions WHERE name = :name",
-            {"name": name},
-        )
-        if cursor.rowcount == 0:
-            msg = f"Entity '{name}' not found"
-            logger.warning(ONTOLOGY_ENTITY_NOT_FOUND, entity_name=name, op="delete")
-            raise OntologyNotFoundError(msg)
-        await self._db.commit()
+        async with self._write_lock:
+            cursor = await self._db.execute(
+                "DELETE FROM entity_definitions WHERE name = :name",
+                {"name": name},
+            )
+            if cursor.rowcount == 0:
+                msg = f"Entity '{name}' not found"
+                logger.warning(ONTOLOGY_ENTITY_NOT_FOUND, entity_name=name, op="delete")
+                raise OntologyNotFoundError(msg)
+            await self._db.commit()
 
     async def list_entities(
         self,

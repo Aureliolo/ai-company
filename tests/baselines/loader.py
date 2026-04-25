@@ -141,12 +141,19 @@ def load_baseline_snapshot(path: Path) -> BaselineSnapshot | None:  # noqa: PLR0
         # instead of returning a half-populated snapshot that silently
         # disables the count-based check.
         return None
-    per_test_ms = positive_finite_float(baseline.get("per_test_ms"))
 
-    # When the baseline omits ``per_test_ms`` derive it from
-    # ``unit_suite_seconds * 1000 / test_count``; both fields stay in
-    # the JSON so operators can read absolute numbers at a glance.
-    if per_test_ms is None:
+    # ``per_test_ms`` is explicit-or-derive: if the JSON names the
+    # field, the value MUST be valid (typo defence).  Only when the
+    # key is absent do we derive from ``unit_suite_seconds``.
+    # Without this guard, a baseline like
+    # ``"per_test_ms": "fast"`` silently falls through to the derive
+    # path, masking the typo and using a possibly-stale
+    # ``unit_suite_seconds`` for the rail.
+    if "per_test_ms" in baseline:
+        per_test_ms = positive_finite_float(baseline.get("per_test_ms"))
+        if per_test_ms is None:
+            return None
+    else:
         baseline_secs = positive_finite_float(baseline.get("unit_suite_seconds"))
         if baseline_secs is None:
             return None

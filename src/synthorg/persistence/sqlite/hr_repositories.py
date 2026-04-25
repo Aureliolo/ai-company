@@ -3,6 +3,7 @@
 LifecycleEvent, TaskMetric, and CollaborationMetric repositories.
 """
 
+import asyncio
 import json
 import sqlite3
 from typing import TYPE_CHECKING
@@ -46,15 +47,26 @@ class SQLiteLifecycleEventRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, event: AgentLifecycleEvent) -> None:
         """Persist a lifecycle event."""
-        try:
-            data = event.model_dump(mode="json")
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                data = event.model_dump(mode="json")
+                await self._db.execute(
+                    """\
 INSERT INTO lifecycle_events (
     id, agent_id, agent_name, event_type, timestamp,
     initiated_by, details, metadata
@@ -62,17 +74,17 @@ INSERT INTO lifecycle_events (
     :id, :agent_id, :agent_name, :event_type, :timestamp,
     :initiated_by, :details, :metadata
 )""",
-                {**data, "metadata": json.dumps(data["metadata"])},
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save lifecycle event {event.id!r}"
-            logger.exception(
-                PERSISTENCE_LIFECYCLE_EVENT_SAVE_FAILED,
-                event_id=str(event.id),
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+                    {**data, "metadata": json.dumps(data["metadata"])},
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save lifecycle event {event.id!r}"
+                logger.exception(
+                    PERSISTENCE_LIFECYCLE_EVENT_SAVE_FAILED,
+                    event_id=str(event.id),
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
     def _row_to_event(self, row: aiosqlite.Row) -> AgentLifecycleEvent:
         """Reconstruct a lifecycle event from a database row."""
@@ -144,15 +156,26 @@ class SQLiteTaskMetricRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, record: TaskMetricRecord) -> None:
         """Persist a task metric record."""
-        try:
-            data = record.model_dump(mode="json")
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                data = record.model_dump(mode="json")
+                await self._db.execute(
+                    """\
 INSERT INTO task_metrics (
     id, agent_id, task_id, task_type, completed_at,
     is_success, duration_seconds, cost, currency, turns_used,
@@ -162,17 +185,17 @@ INSERT INTO task_metrics (
     :is_success, :duration_seconds, :cost, :currency, :turns_used,
     :tokens_used, :quality_score, :complexity
 )""",
-                data,
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save task metric {record.id!r}"
-            logger.exception(
-                PERSISTENCE_TASK_METRIC_SAVE_FAILED,
-                metric_id=str(record.id),
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+                    data,
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save task metric {record.id!r}"
+                logger.exception(
+                    PERSISTENCE_TASK_METRIC_SAVE_FAILED,
+                    metric_id=str(record.id),
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
     def _row_to_record(self, row: aiosqlite.Row) -> TaskMetricRecord:
         """Reconstruct a task metric record from a database row."""
@@ -240,15 +263,26 @@ class SQLiteCollaborationMetricRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, record: CollaborationMetricRecord) -> None:
         """Persist a collaboration metric record."""
-        try:
-            data = record.model_dump(mode="json")
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                data = record.model_dump(mode="json")
+                await self._db.execute(
+                    """\
 INSERT INTO collaboration_metrics (
     id, agent_id, recorded_at, delegation_success,
     delegation_response_seconds, conflict_constructiveness,
@@ -258,17 +292,17 @@ INSERT INTO collaboration_metrics (
     :delegation_response_seconds, :conflict_constructiveness,
     :meeting_contribution, :loop_triggered, :handoff_completeness
 )""",
-                data,
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save collaboration metric {record.id!r}"
-            logger.exception(
-                PERSISTENCE_COLLAB_METRIC_SAVE_FAILED,
-                metric_id=str(record.id),
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+                    data,
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save collaboration metric {record.id!r}"
+                logger.exception(
+                    PERSISTENCE_COLLAB_METRIC_SAVE_FAILED,
+                    metric_id=str(record.id),
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
     def _row_to_record(self, row: aiosqlite.Row) -> CollaborationMetricRecord:
         """Reconstruct a collaboration metric record from a database row."""

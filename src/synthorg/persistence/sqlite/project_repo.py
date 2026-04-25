@@ -30,6 +30,31 @@ logger = get_logger(__name__)
 
 _MAX_LIST_ROWS: int = 10_000
 
+_UNIQUE_CONSTRAINT_NAMES: frozenset[str] = frozenset(
+    {
+        "SQLITE_CONSTRAINT_UNIQUE",
+        "SQLITE_CONSTRAINT_PRIMARYKEY",
+    }
+)
+
+
+def _is_unique_constraint_error(exc: sqlite3.IntegrityError) -> bool:
+    """Return True when ``exc`` is a UNIQUE / PRIMARY KEY violation.
+
+    Mirrors the helper in ``decision_repo.py``.  Uses
+    ``sqlite_errorname`` (Python 3.11+) as the authoritative signal
+    rather than brittle substring matching on the error message;
+    project targets Python 3.14+ so the attribute is always present.
+
+    Other ``IntegrityError`` flavours -- ``NOT NULL``, ``CHECK``,
+    ``FOREIGN KEY``, ``TRIGGER`` -- represent schema-level invariants,
+    not lifecycle conflicts.  Mapping them to ``DuplicateRecordError``
+    would mask real bugs (e.g. an API caller leaving a NOT NULL field
+    blank) as if a duplicate already existed; surface them as
+    ``QueryError`` instead so the failure mode matches the cause.
+    """
+    return exc.sqlite_errorname in _UNIQUE_CONSTRAINT_NAMES
+
 
 def _row_to_project(row: aiosqlite.Row) -> Project:
     """Reconstruct a ``Project`` from a database row.
@@ -125,9 +150,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     project_id=project.id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
+                    sqlite_errorname=getattr(exc, "sqlite_errorname", None),
                 )
-                msg = f"Project with id {project.id!r} already exists"
-                raise DuplicateRecordError(msg) from exc
+                if _is_unique_constraint_error(exc):
+                    msg = f"Project with id {project.id!r} already exists"
+                    raise DuplicateRecordError(msg) from exc
+                # NOT NULL / CHECK / FOREIGN KEY / TRIGGER: real
+                # invariant violation, not a lifecycle conflict.
+                msg = f"Failed to create project {project.id!r}"
+                raise QueryError(msg) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = f"Failed to create project {project.id!r}"

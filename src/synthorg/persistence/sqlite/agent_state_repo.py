@@ -1,5 +1,6 @@
 """SQLite repository implementation for agent runtime state persistence."""
 
+import asyncio
 import sqlite3
 
 import aiosqlite
@@ -31,15 +32,26 @@ class SQLiteAgentStateRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, state: AgentRuntimeState) -> None:
         """Persist an agent runtime state (upsert by agent_id)."""
-        try:
-            data = state.model_dump(mode="json")
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                data = state.model_dump(mode="json")
+                await self._db.execute(
+                    """\
 INSERT OR REPLACE INTO agent_states (
     agent_id, execution_id, task_id, status, turn_count,
     accumulated_cost, currency, last_activity_at, started_at
@@ -47,17 +59,17 @@ INSERT OR REPLACE INTO agent_states (
     :agent_id, :execution_id, :task_id, :status, :turn_count,
     :accumulated_cost, :currency, :last_activity_at, :started_at
 )""",
-                data,
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save agent state for {state.agent_id!r}"
-            logger.exception(
-                PERSISTENCE_AGENT_STATE_SAVE_FAILED,
-                agent_id=state.agent_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+                    data,
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save agent state for {state.agent_id!r}"
+                logger.exception(
+                    PERSISTENCE_AGENT_STATE_SAVE_FAILED,
+                    agent_id=state.agent_id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get(self, agent_id: NotBlankStr) -> AgentRuntimeState | None:
         """Retrieve an agent runtime state by agent ID."""
@@ -123,21 +135,22 @@ INSERT OR REPLACE INTO agent_states (
 
     async def delete(self, agent_id: NotBlankStr) -> bool:
         """Delete an agent runtime state by agent ID."""
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM agent_states WHERE agent_id = ?",
-                (agent_id,),
-            )
-            deleted = cursor.rowcount > 0
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete agent state for {agent_id!r}"
-            logger.exception(
-                PERSISTENCE_AGENT_STATE_DELETE_FAILED,
-                agent_id=agent_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM agent_states WHERE agent_id = ?",
+                    (agent_id,),
+                )
+                deleted = cursor.rowcount > 0
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete agent state for {agent_id!r}"
+                logger.exception(
+                    PERSISTENCE_AGENT_STATE_DELETE_FAILED,
+                    agent_id=agent_id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
         if not deleted:
             logger.debug(
                 PERSISTENCE_AGENT_STATE_NOT_FOUND,

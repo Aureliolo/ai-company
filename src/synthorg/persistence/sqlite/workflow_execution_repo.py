@@ -1,5 +1,6 @@
 """SQLite repository implementation for WorkflowExecution."""
 
+import asyncio
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -135,8 +136,18 @@ class SQLiteWorkflowExecutionRepository:
             set to ``aiosqlite.Row``.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, execution: WorkflowExecution) -> None:
         """Persist a workflow execution (insert or update).
@@ -188,96 +199,101 @@ class SQLiteWorkflowExecutionRepository:
     async def _insert(self, execution: WorkflowExecution) -> None:
         """Insert a new workflow execution row."""
         params = self._serialize_execution(execution)
-        try:
-            cursor = await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    """\
 INSERT INTO workflow_executions
     (id, definition_id, definition_revision, status, node_executions,
      activated_by, project, created_at, updated_at, completed_at,
      error, version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                params,
-            )
-            if cursor.rowcount == 0:
-                msg = f"Workflow execution {execution.id!r} already exists"
-                logger.warning(
-                    PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                    execution_id=execution.id,
-                    error=msg,
+                    params,
                 )
-                raise DuplicateRecordError(msg)
-            await self._db.commit()
-        except sqlite3.IntegrityError as exc:
-            await self._db.rollback()
-            err_text = str(exc).lower()
-            if "unique" in err_text or "primary key" in err_text:
+                if cursor.rowcount == 0:
+                    msg = f"Workflow execution {execution.id!r} already exists"
+                    logger.warning(
+                        PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                        execution_id=execution.id,
+                        error=msg,
+                    )
+                    raise DuplicateRecordError(msg)
+                await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                await self._db.rollback()
+                err_text = str(exc).lower()
+                if "unique" in err_text or "primary key" in err_text:
+                    msg = (
+                        f"Workflow execution {execution.id!r} already exists "
+                        "(duplicate ID)"
+                    )
+                    logger.warning(
+                        PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                        execution_id=execution.id,
+                        error=msg,
+                    )
+                    raise DuplicateRecordError(msg) from exc
                 msg = (
-                    f"Workflow execution {execution.id!r} already exists (duplicate ID)"
+                    f"Integrity error saving workflow execution {execution.id!r}: {exc}"
                 )
                 logger.warning(
                     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                     execution_id=execution.id,
                     error=msg,
                 )
-                raise DuplicateRecordError(msg) from exc
-            msg = f"Integrity error saving workflow execution {execution.id!r}: {exc}"
-            logger.warning(
-                PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                execution_id=execution.id,
-                error=msg,
-            )
-            raise QueryError(msg) from exc
-        except sqlite3.Error as exc:
-            await self._db.rollback()
-            msg = f"Failed to save workflow execution {execution.id!r}"
-            logger.exception(
-                PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                execution_id=execution.id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+                raise QueryError(msg) from exc
+            except sqlite3.Error as exc:
+                await self._db.rollback()
+                msg = f"Failed to save workflow execution {execution.id!r}"
+                logger.exception(
+                    PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                    execution_id=execution.id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def _update(self, execution: WorkflowExecution) -> None:
         """Update an existing workflow execution with version check."""
         params = self._serialize_execution(execution)
-        try:
-            cursor = await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    """\
 UPDATE workflow_executions SET
     definition_id=?, definition_revision=?, status=?,
     node_executions=?, activated_by=?, project=?,
     created_at=?, updated_at=?, completed_at=?,
     error=?, version=?
 WHERE id = ? AND version = ?""",
-                (
-                    *params[1:],  # skip id (it's in WHERE)
-                    execution.id,
-                    execution.version - 1,
-                ),
-            )
-            if cursor.rowcount == 0:
-                await self._db.rollback()
-                msg = (
-                    f"Version conflict saving workflow execution"
-                    f" {execution.id!r}: expected version"
-                    f" {execution.version - 1}, not found"
+                    (
+                        *params[1:],  # skip id (it's in WHERE)
+                        execution.id,
+                        execution.version - 1,
+                    ),
                 )
-                logger.warning(
+                if cursor.rowcount == 0:
+                    await self._db.rollback()
+                    msg = (
+                        f"Version conflict saving workflow execution"
+                        f" {execution.id!r}: expected version"
+                        f" {execution.version - 1}, not found"
+                    )
+                    logger.warning(
+                        PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                        execution_id=execution.id,
+                        error=msg,
+                    )
+                    raise VersionConflictError(msg)
+                await self._db.commit()
+            except sqlite3.Error as exc:
+                await self._db.rollback()
+                msg = f"Failed to save workflow execution {execution.id!r}"
+                logger.exception(
                     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                     execution_id=execution.id,
-                    error=msg,
+                    error=str(exc),
                 )
-                raise VersionConflictError(msg)
-            await self._db.commit()
-        except sqlite3.Error as exc:
-            await self._db.rollback()
-            msg = f"Failed to save workflow execution {execution.id!r}"
-            logger.exception(
-                PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                execution_id=execution.id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+                raise QueryError(msg) from exc
 
     async def get(
         self,
@@ -478,20 +494,21 @@ WHERE id = ? AND version = ?""",
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM workflow_executions WHERE id = ?",
-                (execution_id,),
-            )
-            await self._db.commit()
-        except sqlite3.Error as exc:
-            await self._db.rollback()
-            msg = f"Failed to delete workflow execution {execution_id!r}"
-            logger.exception(
-                PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,
-                execution_id=execution_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM workflow_executions WHERE id = ?",
+                    (execution_id,),
+                )
+                await self._db.commit()
+            except sqlite3.Error as exc:
+                await self._db.rollback()
+                msg = f"Failed to delete workflow execution {execution_id!r}"
+                logger.exception(
+                    PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,
+                    execution_id=execution_id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
         return cursor.rowcount > 0

@@ -5,6 +5,7 @@ table.  Bound to an open ``aiosqlite.Connection`` at construction;
 the persistence backend owns connection lifecycle.
 """
 
+import asyncio
 from datetime import UTC, datetime
 
 import aiosqlite  # noqa: TC002
@@ -33,28 +34,39 @@ def _parse_timestamp(raw: str | datetime) -> datetime:
 class SQLiteMcpInstallationRepository:
     """SQLite implementation of :class:`McpInstallationRepository`."""
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, installation: McpInstallation) -> None:
         """Upsert an installation row (idempotent on catalog_entry_id)."""
         installed_at_iso = installation.installed_at.astimezone(UTC).isoformat()
-        await self._db.execute(
-            """
-            INSERT INTO mcp_installations (
-                catalog_entry_id, connection_name, installed_at
-            ) VALUES (?, ?, ?)
-            ON CONFLICT(catalog_entry_id) DO UPDATE SET
-                connection_name = excluded.connection_name,
-                installed_at = excluded.installed_at
-            """,
-            (
-                installation.catalog_entry_id,
-                installation.connection_name,
-                installed_at_iso,
-            ),
-        )
-        await self._db.commit()
+        async with self._write_lock:
+            await self._db.execute(
+                """
+                INSERT INTO mcp_installations (
+                    catalog_entry_id, connection_name, installed_at
+                ) VALUES (?, ?, ?)
+                ON CONFLICT(catalog_entry_id) DO UPDATE SET
+                    connection_name = excluded.connection_name,
+                    installed_at = excluded.installed_at
+                """,
+                (
+                    installation.catalog_entry_id,
+                    installation.connection_name,
+                    installed_at_iso,
+                ),
+            )
+            await self._db.commit()
         logger.info(
             MCP_SERVER_INSTALLED,
             catalog_entry_id=installation.catalog_entry_id,
@@ -105,12 +117,13 @@ class SQLiteMcpInstallationRepository:
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete an installation.  Returns ``True`` if a row was removed."""
-        cursor = await self._db.execute(
-            "DELETE FROM mcp_installations WHERE catalog_entry_id = ?",
-            (catalog_entry_id,),
-        )
-        deleted = cursor.rowcount > 0
-        await self._db.commit()
+        async with self._write_lock:
+            cursor = await self._db.execute(
+                "DELETE FROM mcp_installations WHERE catalog_entry_id = ?",
+                (catalog_entry_id,),
+            )
+            deleted = cursor.rowcount > 0
+            await self._db.commit()
         if deleted:
             logger.info(
                 MCP_SERVER_UNINSTALLED,

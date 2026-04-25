@@ -5,6 +5,7 @@ set provides O(1) sync lookups for the auth middleware hot path; the
 SQLite connection provides survival across restarts.
 """
 
+import asyncio
 import datetime as _datetime_mod
 from datetime import UTC, datetime
 from typing import Any
@@ -64,8 +65,18 @@ class SQLiteSessionRepository:
         db: Open aiosqlite connection with ``row_factory`` set.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
         self._revoked: set[str] = set()
 
     async def load_revoked(self) -> None:
@@ -85,25 +96,26 @@ class SQLiteSessionRepository:
 
     async def create(self, session: Session) -> None:
         """Persist a new session."""
-        await self._db.execute(
-            "INSERT INTO sessions "
-            "(session_id, user_id, username, role, ip_address, "
-            "user_agent, created_at, last_active_at, expires_at, "
-            "revoked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                session.session_id,
-                session.user_id,
-                session.username,
-                session.role.value,
-                session.ip_address,
-                session.user_agent,
-                session.created_at.isoformat(),
-                session.last_active_at.isoformat(),
-                session.expires_at.isoformat(),
-                int(session.revoked),
-            ),
-        )
-        await self._db.commit()
+        async with self._write_lock:
+            await self._db.execute(
+                "INSERT INTO sessions "
+                "(session_id, user_id, username, role, ip_address, "
+                "user_agent, created_at, last_active_at, expires_at, "
+                "revoked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    session.session_id,
+                    session.user_id,
+                    session.username,
+                    session.role.value,
+                    session.ip_address,
+                    session.user_agent,
+                    session.created_at.isoformat(),
+                    session.last_active_at.isoformat(),
+                    session.expires_at.isoformat(),
+                    int(session.revoked),
+                ),
+            )
+            await self._db.commit()
         if session.revoked:
             self._revoked.add(session.session_id)
 
@@ -143,11 +155,12 @@ class SQLiteSessionRepository:
 
     async def revoke(self, session_id: str) -> bool:
         """Revoke a session by ID."""
-        cursor = await self._db.execute(
-            "UPDATE sessions SET revoked = 1 WHERE session_id = ? AND revoked = 0",
-            (session_id,),
-        )
-        await self._db.commit()
+        async with self._write_lock:
+            cursor = await self._db.execute(
+                "UPDATE sessions SET revoked = 1 WHERE session_id = ? AND revoked = 0",
+                (session_id,),
+            )
+            await self._db.commit()
         if cursor.rowcount > 0:
             self._revoked.add(session_id)
             logger.info(API_SESSION_REVOKED, session_id=session_id)
@@ -157,21 +170,22 @@ class SQLiteSessionRepository:
     async def revoke_all_for_user(self, user_id: str) -> int:
         """Revoke all active sessions for a user."""
         now = datetime.now(UTC).isoformat()
-        cursor = await self._db.execute(
-            "UPDATE sessions SET revoked = 1 "
-            "WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
-            (user_id, now),
-        )
-        await self._db.commit()
-        count = cursor.rowcount
-        if count == 0:
-            return 0
-        cursor = await self._db.execute(
-            "SELECT session_id FROM sessions "
-            "WHERE user_id = ? AND revoked = 1 AND expires_at > ?",
-            (user_id, now),
-        )
-        rows = await cursor.fetchall()
+        async with self._write_lock:
+            cursor = await self._db.execute(
+                "UPDATE sessions SET revoked = 1 "
+                "WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
+                (user_id, now),
+            )
+            await self._db.commit()
+            count = cursor.rowcount
+            if count == 0:
+                return 0
+            cursor = await self._db.execute(
+                "SELECT session_id FROM sessions "
+                "WHERE user_id = ? AND revoked = 1 AND expires_at > ?",
+                (user_id, now),
+            )
+            rows = await cursor.fetchall()
         self._revoked.update(row["session_id"] for row in rows)
         logger.info(API_SESSION_REVOKED, user_id=user_id, count=count)
         return count
@@ -209,19 +223,20 @@ class SQLiteSessionRepository:
     async def cleanup_expired(self) -> int:
         """Remove expired sessions from the database."""
         now = datetime.now(UTC).isoformat()
-        cursor = await self._db.execute(
-            "SELECT session_id FROM sessions WHERE expires_at <= ?",
-            (now,),
-        )
-        rows = await cursor.fetchall()
-        ids = {row["session_id"] for row in rows}
-        if not ids:
-            return 0
-        await self._db.execute(
-            "DELETE FROM sessions WHERE expires_at <= ?",
-            (now,),
-        )
-        await self._db.commit()
+        async with self._write_lock:
+            cursor = await self._db.execute(
+                "SELECT session_id FROM sessions WHERE expires_at <= ?",
+                (now,),
+            )
+            rows = await cursor.fetchall()
+            ids = {row["session_id"] for row in rows}
+            if not ids:
+                return 0
+            await self._db.execute(
+                "DELETE FROM sessions WHERE expires_at <= ?",
+                (now,),
+            )
+            await self._db.commit()
         self._revoked -= ids
         logger.debug(API_SESSION_CLEANUP, removed=len(ids))
         return len(ids)

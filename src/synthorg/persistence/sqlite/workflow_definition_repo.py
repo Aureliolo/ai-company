@@ -1,5 +1,6 @@
 """SQLite repository implementation for WorkflowDefinition."""
 
+import asyncio
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -124,8 +125,18 @@ class SQLiteWorkflowDefinitionRepository:
             set to ``aiosqlite.Row``.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     def _require_valid_revision(self, definition: WorkflowDefinition) -> None:
         """Reject obviously-invalid revisions before hitting the DB.
@@ -170,65 +181,66 @@ class SQLiteWorkflowDefinitionRepository:
         outputs_json = json.dumps(
             [o.model_dump(mode="json") for o in definition.outputs],
         )
-        try:
-            cursor = await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    """\
 UPDATE workflow_definitions SET
     name=?, description=?, workflow_type=?, version=?, inputs=?, outputs=?,
     is_subworkflow=?, nodes=?, edges=?, updated_at=?, revision=?
 WHERE id = ? AND revision = ?""",
-                (
-                    definition.name,
-                    definition.description,
-                    definition.workflow_type.value,
-                    definition.version,
-                    inputs_json,
-                    outputs_json,
-                    1 if definition.is_subworkflow else 0,
-                    nodes_json,
-                    edges_json,
-                    definition.updated_at.astimezone(UTC).isoformat(),
-                    definition.revision,
-                    definition.id,
-                    definition.revision - 1,
-                ),
-            )
-            if cursor.rowcount == 0:
-                # Distinguish "row missing" from "row exists with a
-                # different revision" so callers get a precise error.
-                probe = await self._db.execute(
-                    "SELECT revision FROM workflow_definitions WHERE id = ?",
-                    (definition.id,),
+                    (
+                        definition.name,
+                        definition.description,
+                        definition.workflow_type.value,
+                        definition.version,
+                        inputs_json,
+                        outputs_json,
+                        1 if definition.is_subworkflow else 0,
+                        nodes_json,
+                        edges_json,
+                        definition.updated_at.astimezone(UTC).isoformat(),
+                        definition.revision,
+                        definition.id,
+                        definition.revision - 1,
+                    ),
                 )
-                existing = await probe.fetchone()
-                await self._db.rollback()
-                if existing is None:
-                    return False
-                current = existing["revision"]
-                msg = (
-                    f"Version conflict updating workflow definition"
-                    f" {definition.id!r}: current revision is {current},"
-                    f" incoming revision is {definition.revision}"
-                )
+                if cursor.rowcount == 0:
+                    # Distinguish "row missing" from "row exists with a
+                    # different revision" so callers get a precise error.
+                    probe = await self._db.execute(
+                        "SELECT revision FROM workflow_definitions WHERE id = ?",
+                        (definition.id,),
+                    )
+                    existing = await probe.fetchone()
+                    await self._db.rollback()
+                    if existing is None:
+                        return False
+                    current = existing["revision"]
+                    msg = (
+                        f"Version conflict updating workflow definition"
+                        f" {definition.id!r}: current revision is {current},"
+                        f" incoming revision is {definition.revision}"
+                    )
+                    logger.warning(
+                        PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                        definition_id=definition.id,
+                        error=msg,
+                    )
+                    raise VersionConflictError(msg)
+                await self._db.commit()
+            except sqlite3.Error as exc:
+                # Roll back the aiosqlite transaction so the shared
+                # connection cannot be poisoned for the next borrower.
+                await _rollback_quietly(self._db)
+                msg = f"Failed to update workflow definition {definition.id!r}"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
                     definition_id=definition.id,
-                    error=msg,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                raise VersionConflictError(msg)
-            await self._db.commit()
-        except sqlite3.Error as exc:
-            # Roll back the aiosqlite transaction so the shared
-            # connection cannot be poisoned for the next borrower.
-            await _rollback_quietly(self._db)
-            msg = f"Failed to update workflow definition {definition.id!r}"
-            logger.warning(
-                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=definition.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+                raise QueryError(msg) from exc
         return True
 
     async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
@@ -249,43 +261,44 @@ WHERE id = ? AND revision = ?""",
         outputs_json = json.dumps(
             [o.model_dump(mode="json") for o in definition.outputs],
         )
-        try:
-            cursor = await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    """\
 INSERT INTO workflow_definitions
     (id, name, description, workflow_type, version, inputs, outputs,
      is_subworkflow, nodes, edges, created_by, created_at, updated_at,
      revision)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO NOTHING""",
-                (
-                    definition.id,
-                    definition.name,
-                    definition.description,
-                    definition.workflow_type.value,
-                    definition.version,
-                    inputs_json,
-                    outputs_json,
-                    1 if definition.is_subworkflow else 0,
-                    nodes_json,
-                    edges_json,
-                    definition.created_by,
-                    definition.created_at.astimezone(UTC).isoformat(),
-                    definition.updated_at.astimezone(UTC).isoformat(),
-                    definition.revision,
-                ),
-            )
-            await self._db.commit()
-        except sqlite3.Error as exc:
-            await _rollback_quietly(self._db)
-            msg = f"Failed to create workflow definition {definition.id!r}"
-            logger.warning(
-                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=definition.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+                    (
+                        definition.id,
+                        definition.name,
+                        definition.description,
+                        definition.workflow_type.value,
+                        definition.version,
+                        inputs_json,
+                        outputs_json,
+                        1 if definition.is_subworkflow else 0,
+                        nodes_json,
+                        edges_json,
+                        definition.created_by,
+                        definition.created_at.astimezone(UTC).isoformat(),
+                        definition.updated_at.astimezone(UTC).isoformat(),
+                        definition.revision,
+                    ),
+                )
+                await self._db.commit()
+            except sqlite3.Error as exc:
+                await _rollback_quietly(self._db)
+                msg = f"Failed to create workflow definition {definition.id!r}"
+                logger.warning(
+                    PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                    definition_id=definition.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
         return cursor.rowcount > 0
 
     async def save(self, definition: WorkflowDefinition) -> None:
@@ -316,9 +329,10 @@ ON CONFLICT(id) DO NOTHING""",
         outputs_json = json.dumps(
             [o.model_dump(mode="json") for o in definition.outputs],
         )
-        try:
-            cursor = await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    """\
 INSERT INTO workflow_definitions
     (id, name, description, workflow_type, version, inputs, outputs,
      is_subworkflow, nodes, edges, created_by, created_at, updated_at,
@@ -337,57 +351,57 @@ ON CONFLICT(id) DO UPDATE SET
     updated_at=excluded.updated_at,
     revision=excluded.revision
 WHERE workflow_definitions.revision = excluded.revision - 1""",
-                (
-                    definition.id,
-                    definition.name,
-                    definition.description,
-                    definition.workflow_type.value,
-                    definition.version,
-                    inputs_json,
-                    outputs_json,
-                    1 if definition.is_subworkflow else 0,
-                    nodes_json,
-                    edges_json,
-                    definition.created_by,
-                    definition.created_at.astimezone(UTC).isoformat(),
-                    definition.updated_at.astimezone(UTC).isoformat(),
-                    definition.revision,
-                ),
-            )
-            if cursor.rowcount == 0:
-                # Zero rows affected means the ON CONFLICT WHERE clause
-                # did not match -- the existing row has a different
-                # revision than expected.
-                check = await self._db.execute(
-                    "SELECT revision FROM workflow_definitions WHERE id = ?",
-                    (definition.id,),
+                    (
+                        definition.id,
+                        definition.name,
+                        definition.description,
+                        definition.workflow_type.value,
+                        definition.version,
+                        inputs_json,
+                        outputs_json,
+                        1 if definition.is_subworkflow else 0,
+                        nodes_json,
+                        edges_json,
+                        definition.created_by,
+                        definition.created_at.astimezone(UTC).isoformat(),
+                        definition.updated_at.astimezone(UTC).isoformat(),
+                        definition.revision,
+                    ),
                 )
-                existing = await check.fetchone()
-                await self._db.rollback()
-                current = existing["revision"] if existing else "N/A"
-                msg = (
-                    f"Version conflict saving workflow definition"
-                    f" {definition.id!r}: current revision is"
-                    f" {current}, incoming revision is"
-                    f" {definition.revision}"
-                )
+                if cursor.rowcount == 0:
+                    # Zero rows affected means the ON CONFLICT WHERE clause
+                    # did not match -- the existing row has a different
+                    # revision than expected.
+                    check = await self._db.execute(
+                        "SELECT revision FROM workflow_definitions WHERE id = ?",
+                        (definition.id,),
+                    )
+                    existing = await check.fetchone()
+                    await self._db.rollback()
+                    current = existing["revision"] if existing else "N/A"
+                    msg = (
+                        f"Version conflict saving workflow definition"
+                        f" {definition.id!r}: current revision is"
+                        f" {current}, incoming revision is"
+                        f" {definition.revision}"
+                    )
+                    logger.warning(
+                        PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                        definition_id=definition.id,
+                        error=msg,
+                    )
+                    raise VersionConflictError(msg)
+                await self._db.commit()
+            except sqlite3.Error as exc:
+                await _rollback_quietly(self._db)
+                msg = f"Failed to save workflow definition {definition.id!r}"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
                     definition_id=definition.id,
-                    error=msg,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                raise VersionConflictError(msg)
-            await self._db.commit()
-        except sqlite3.Error as exc:
-            await _rollback_quietly(self._db)
-            msg = f"Failed to save workflow definition {definition.id!r}"
-            logger.warning(
-                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=definition.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+                raise QueryError(msg) from exc
 
     async def get(
         self,
@@ -497,21 +511,22 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM workflow_definitions WHERE id = ?",
-                (definition_id,),
-            )
-            await self._db.commit()
-        except sqlite3.Error as exc:
-            await _rollback_quietly(self._db)
-            msg = f"Failed to delete workflow definition {definition_id!r}"
-            logger.warning(
-                PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
-                definition_id=definition_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM workflow_definitions WHERE id = ?",
+                    (definition_id,),
+                )
+                await self._db.commit()
+            except sqlite3.Error as exc:
+                await _rollback_quietly(self._db)
+                msg = f"Failed to delete workflow definition {definition_id!r}"
+                logger.warning(
+                    PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
+                    definition_id=definition_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
 
         return cursor.rowcount > 0

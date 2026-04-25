@@ -181,9 +181,18 @@ class SQLiteOrgFactRepository:
         db: Open aiosqlite connection with ``row_factory`` set.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
-        self._write_lock = asyncio.Lock()
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def _append_to_operation_log(  # noqa: PLR0913
         self,

@@ -17,6 +17,7 @@ Example::
     )
 """
 
+import asyncio
 import json
 import re
 import sqlite3
@@ -76,6 +77,7 @@ class SQLiteVersionRepository[T: BaseModel]:
         table_name: str,
         serialize_snapshot: Callable[[T], str],
         deserialize_snapshot: Callable[[str], T],
+        write_lock: asyncio.Lock | None = None,
     ) -> None:
         if not _TABLE_NAME_RE.match(table_name):
             msg = f"Invalid table name: {table_name!r} (must match [a-z][a-z0-9_]*)"
@@ -84,6 +86,11 @@ class SQLiteVersionRepository[T: BaseModel]:
         self._table = table_name
         self._serialize = serialize_snapshot
         self._deserialize = deserialize_snapshot
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
         _t = self._table
         _c = _SELECT_COLUMNS
         self._insert_sql = (
@@ -203,32 +210,33 @@ class SQLiteVersionRepository[T: BaseModel]:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        try:
-            cursor = await self._db.execute(
-                self._insert_sql,
-                (
-                    version.entity_id,
-                    version.version,
-                    version.content_hash,
-                    serialized,
-                    version.saved_by,
-                    version.saved_at.isoformat(),
-                ),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = (
-                f"Failed to save version {version.version} "
-                f"for {version.entity_id!r} in {self._table}"
-            )
-            logger.exception(
-                VERSION_SAVE_FAILED,
-                table=self._table,
-                entity_id=version.entity_id,
-                version=version.version,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    self._insert_sql,
+                    (
+                        version.entity_id,
+                        version.version,
+                        version.content_hash,
+                        serialized,
+                        version.saved_by,
+                        version.saved_at.isoformat(),
+                    ),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = (
+                    f"Failed to save version {version.version} "
+                    f"for {version.entity_id!r} in {self._table}"
+                )
+                logger.exception(
+                    VERSION_SAVE_FAILED,
+                    table=self._table,
+                    entity_id=version.entity_id,
+                    version=version.version,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
         return cursor.rowcount > 0
 
     async def get_version(
@@ -362,17 +370,18 @@ class SQLiteVersionRepository[T: BaseModel]:
 
     async def delete_versions_for_entity(self, entity_id: NotBlankStr) -> int:
         """Delete all version snapshots for an entity."""
-        try:
-            cursor = await self._db.execute(self._delete_sql, (entity_id,))
-            await self._db.commit()
-            count = cursor.rowcount
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete versions for {entity_id!r}"
-            logger.exception(
-                VERSION_DELETE_FAILED,
-                table=self._table,
-                entity_id=entity_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(self._delete_sql, (entity_id,))
+                await self._db.commit()
+                count = cursor.rowcount
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete versions for {entity_id!r}"
+                logger.exception(
+                    VERSION_DELETE_FAILED,
+                    table=self._table,
+                    entity_id=entity_id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
         return count

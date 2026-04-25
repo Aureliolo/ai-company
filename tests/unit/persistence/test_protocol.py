@@ -658,7 +658,11 @@ class _FakeBackend:
 
     @property
     def ssrf_violations(self) -> Any:
-        return object()
+        # Real fake repo (not ``object()``) so backend-level contract
+        # access actually exposes an ``SsrfViolationRepository``-shaped
+        # object -- callers can exercise SSRF wiring without bypassing
+        # the protocol.
+        return _FakeSsrfViolationRepository()
 
     @property
     def identity_versions(self) -> Any:

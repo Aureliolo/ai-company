@@ -1,5 +1,6 @@
 """SQLite repository implementation for parked agent execution contexts."""
 
+import asyncio
 import json
 import sqlite3
 
@@ -27,15 +28,26 @@ class SQLiteParkedContextRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, context: ParkedContext) -> None:
         """Persist a parked context."""
-        try:
-            data = context.model_dump(mode="json")
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                data = context.model_dump(mode="json")
+                await self._db.execute(
+                    """\
 INSERT OR REPLACE INTO parked_contexts (
     id, execution_id, agent_id, task_id, approval_id,
     parked_at, context_json, metadata
@@ -43,17 +55,17 @@ INSERT OR REPLACE INTO parked_contexts (
     :id, :execution_id, :agent_id, :task_id, :approval_id,
     :parked_at, :context_json, :metadata
 )""",
-                {**data, "metadata": json.dumps(data["metadata"])},
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save parked context {context.id!r}"
-            logger.exception(
-                PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
-                parked_id=context.id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+                    {**data, "metadata": json.dumps(data["metadata"])},
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save parked context {context.id!r}"
+                logger.exception(
+                    PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
+                    parked_id=context.id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get(self, parked_id: str) -> ParkedContext | None:
         """Retrieve a parked context by ID."""
@@ -138,20 +150,21 @@ INSERT OR REPLACE INTO parked_contexts (
 
     async def delete(self, parked_id: str) -> bool:
         """Delete a parked context by ID."""
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM parked_contexts WHERE id = ?",
-                (parked_id,),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete parked context {parked_id!r}"
-            logger.exception(
-                PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
-                parked_id=parked_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM parked_contexts WHERE id = ?",
+                    (parked_id,),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete parked context {parked_id!r}"
+                logger.exception(
+                    PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
+                    parked_id=parked_id,
+                    error=str(exc),
+                )
+                raise QueryError(msg) from exc
 
         return cursor.rowcount > 0
 

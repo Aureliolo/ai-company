@@ -1,5 +1,6 @@
 """SQLite repository implementation for approval items."""
 
+import asyncio
 import json
 import sqlite3
 from datetime import datetime
@@ -123,9 +124,19 @@ class SQLiteApprovalRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
         self._db.row_factory = aiosqlite.Row
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, item: ApprovalItem) -> None:
         """Upsert an approval item.
@@ -159,32 +170,33 @@ class SQLiteApprovalRepository:
             evidence_json,
             json.dumps(item.metadata),
         )
-        try:
-            await self._db.execute(_APPROVALS_UPSERT_SQL, params)
-            await self._db.commit()
-        except sqlite3.IntegrityError as exc:
-            await self._db.rollback()
-            msg = f"Constraint violation saving approval {item.id!r}"
-            logger.warning(
-                API_APPROVAL_REPO_FAILED,
-                approval_id=item.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ConstraintViolationError(
-                msg,
-                constraint=str(exc),
-            ) from exc
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._db.rollback()
-            msg = f"Failed to save approval {item.id!r}"
-            logger.warning(
-                API_APPROVAL_REPO_FAILED,
-                approval_id=item.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                await self._db.execute(_APPROVALS_UPSERT_SQL, params)
+                await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                await self._db.rollback()
+                msg = f"Constraint violation saving approval {item.id!r}"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    approval_id=item.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise ConstraintViolationError(
+                    msg,
+                    constraint=str(exc),
+                ) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._db.rollback()
+                msg = f"Failed to save approval {item.id!r}"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    approval_id=item.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID.
@@ -290,17 +302,18 @@ class SQLiteApprovalRepository:
             QueryError: If the database operation fails.
         """
         sql = "DELETE FROM approvals WHERE id = ?"
-        try:
-            cursor = await self._db.execute(sql, (approval_id,))
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._db.rollback()
-            msg = f"Failed to delete approval {approval_id!r}"
-            logger.warning(
-                API_APPROVAL_REPO_FAILED,
-                approval_id=approval_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(sql, (approval_id,))
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._db.rollback()
+                msg = f"Failed to delete approval {approval_id!r}"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    approval_id=approval_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
         return cursor.rowcount > 0

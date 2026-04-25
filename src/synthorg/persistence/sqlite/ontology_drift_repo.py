@@ -1,5 +1,6 @@
 """SQLite-backed drift report repository."""
 
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -50,10 +51,20 @@ def _row_to_report(row: Any) -> DriftReport:
 class SQLiteOntologyDriftReportRepository:
     """SQLite implementation of ``OntologyDriftReportRepository``."""
 
-    __slots__ = ("_db",)
+    __slots__ = ("_db", "_write_lock")
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialise with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def store_report(self, report: DriftReport) -> None:
         """Persist a drift report."""
@@ -67,28 +78,29 @@ class SQLiteOntologyDriftReportRepository:
                 for a in report.divergent_agents
             ],
         )
-        try:
-            await self._db.execute(
-                "INSERT INTO drift_reports "
-                "(entity_name, divergence_score, canonical_version, "
-                "recommendation, divergent_agents) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (
-                    report.entity_name,
-                    report.divergence_score,
-                    report.canonical_version,
-                    report.recommendation.value,
-                    agents_json,
-                ),
-            )
-            await self._db.commit()
-        except Exception:
-            logger.error(
-                ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
-                entity_name=report.entity_name,
-                exc_info=True,
-            )
-            raise
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    "INSERT INTO drift_reports "
+                    "(entity_name, divergence_score, canonical_version, "
+                    "recommendation, divergent_agents) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (
+                        report.entity_name,
+                        report.divergence_score,
+                        report.canonical_version,
+                        report.recommendation.value,
+                        agents_json,
+                    ),
+                )
+                await self._db.commit()
+            except Exception:
+                logger.error(
+                    ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
+                    entity_name=report.entity_name,
+                    exc_info=True,
+                )
+                raise
 
     async def get_latest(
         self,
