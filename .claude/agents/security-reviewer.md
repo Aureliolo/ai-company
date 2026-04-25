@@ -126,6 +126,31 @@ If you find a CRITICAL vulnerability:
 
 **IMMEDIATELY:** production incidents, dependency CVEs, user security reports, before major releases.
 
+## Severity Levels
+
+- **CRITICAL**: Exploitable RCE, auth bypass, data exfiltration, missing SEC-1 fences on attacker-controlled prompt content
+- **HIGH**: XSS, SSRF, injection, privilege escalation, secret-log redaction violations on credential paths
+- **MEDIUM**: Information disclosure, missing hardening, vendor-name leaks, regional-defaults violations
+- **LOW**: Defense-in-depth improvements, minor hardening
+
+## Report Format
+
+For each finding:
+
+```text
+[SEVERITY] file:line -- Vulnerability class
+  Risk: What an attacker could do
+  Fix: Specific remediation (description; do not edit)
+```
+
+Group by severity. End with summary count per severity level.
+
+## Approval Criteria
+
+- **Approve**: No CRITICAL or HIGH issues
+- **Warning**: MEDIUM issues only
+- **Block**: CRITICAL or HIGH issues found
+
 ## Bash Tool Guidance
 
 Read-only diagnostics only. Never write files via Bash. Never `cd` or `git -C` to the current working directory. Allowed: `git diff`, `git log`, `uv run pre-commit run gitleaks`, `uv run pre-commit run check-forbidden-literals`, `grep` via the Grep tool.

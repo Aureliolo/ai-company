@@ -255,7 +255,7 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `pr-review-toolkit:pr-test-analyzer` |
 | **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `pr-review-toolkit:silent-failure-hunter` |
 | **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `pr-review-toolkit:comment-analyzer` |
-| **type-design-analyzer** | Diff contains `class ` definitions, `BaseModel`, `TypedDict`, type aliases | `pr-review-toolkit:type-design-analyzer` |
+| **type-design-analyzer** | Diff contains `class` definitions, `BaseModel`, `TypedDict`, type aliases | `pr-review-toolkit:type-design-analyzer` |
 | **logging-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **resilience-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **conventions-enforcer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |

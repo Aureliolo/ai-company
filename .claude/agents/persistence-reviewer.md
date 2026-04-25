@@ -118,6 +118,12 @@ Renames are atomic. No aliasing the old name, no `_legacy` passthroughs. Flag re
 - Money fields suffixed `_usd`
 - Hardcoded ISO 4217 codes outside the allowlist
 
+## Severity Levels
+
+- **HIGH**: SQL injection, transaction safety, persistence-boundary violations, migration discipline violations, schema drift between backends, missing currency fields on cost-bearing models
+- **MEDIUM**: Schema design (types/constraints), query efficiency, repo-side logging, missing indexes
+- **LOW**: Minor optimization, naming conventions
+
 ## Review Output Format
 
 ```text
