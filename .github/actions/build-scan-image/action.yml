@@ -90,6 +90,22 @@ inputs:
     required: false
     default: "false"
 
+outputs:
+  ref_amd64:
+    description: |
+      Local docker image reference for the amd64 build (loaded into the
+      runner's Docker daemon). On PR events: `ghcr.io/<owner>/synthorg-<image-name>:sha-<short-sha>`.
+      On non-PR events: `ghcr.io/<owner>/synthorg-<image-name>:scan-<full-sha>-amd64`.
+      Used by smoke-test composite actions that need to `docker run`
+      the just-built image.
+    value: ${{ steps.scan-ref.outputs.ref_amd64 }}
+  ref_arm64:
+    description: |
+      Local docker image reference for the arm64 build. Empty string on
+      PR events (arm64 is non-PR-only). Same naming convention as
+      ref_amd64 with `-arm64` suffix.
+    value: ${{ steps.scan-ref.outputs.ref_arm64 }}
+
 runs:
   using: composite
   steps:

@@ -50,10 +50,16 @@ runs:
         # The image's setup wizard falls back to ephemeral SQLite when
         # no DATABASE_URL is provided -- sufficient for a liveness
         # smoke without provisioning external state.
-        CID=$(docker run -d --rm -p "${PORT}:${PORT}" "$IMAGE")
+        # NOTE: deliberately NO --rm. If the container crashes
+        # immediately at startup, --rm would have docker remove it
+        # before the trap's `docker logs` could read it, leaving no
+        # forensic trail. We `docker rm -f` explicitly in the trap
+        # AFTER the logs are dumped so the postmortem still works.
+        CID=$(docker run -d -p "${PORT}:${PORT}" "$IMAGE")
         # Always dump the last 50 lines of container logs on exit so
-        # flake postmortems have something to look at.
-        trap 'docker logs "$CID" 2>&1 | tail -50; docker stop "$CID" >/dev/null 2>&1 || true' EXIT
+        # flake postmortems have something to look at, then force-rm
+        # the container so the runner does not leak it.
+        trap 'docker logs "$CID" 2>&1 | tail -50; docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
 
         PROBE_URL="http://localhost:${PORT}${PROBE_PATH}"
         echo "Polling $PROBE_URL (deadline ${DEADLINE}s)"
