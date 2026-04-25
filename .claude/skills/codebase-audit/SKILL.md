@@ -1,12 +1,12 @@
 ---
-description: "Full codebase audit: launches 153 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
+description: "Full codebase audit: launches 152 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
 argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only]"
 allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
 # /codebase-audit -- Full Codebase Audit
 
-Launch 153 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
+Launch 152 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
 
 ## Key Principles
 
@@ -25,7 +25,7 @@ Launch 153 specialized agents to audit the entire codebase (or a targeted scope)
 
 | Argument | Directories | Agents |
 |----------|-------------|-------------|
-| `full` (default) | All | 01-153 (active agents only -- agent 98 is retired but slot reserved; 152 launched) |
+| `full` (default) | All | All 152 agents |
 | `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153 |
 | `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123, 126, 131, 137-138, 141-145, 147, 149-150 |
 | `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123, 130, 134, 142 |
@@ -175,7 +175,7 @@ Launch agents in 17 batches (A-Q). Most batches are ~10 agents each; batches M (
 | P | 141-150 (second half of Wave 28) |
 | Q | 151-153 (Waves 29 + 30) |
 
-Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is computed from the resolved launch plan for the current scope after excluding retired slots (152 for `full` since agent 98 is retired; fewer for scoped runs).
+Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is the total number of agents launched for the current scope (152 for `full`, fewer for scoped runs).
 
 ---
 
@@ -1585,9 +1585,7 @@ Scope: src/synthorg/ AND web/src/.
 Severity: high.
 ```
 
-### Wave 19: Test Quality (4 agents)
-
-**Agent 98 -- tests-without-assertions** [RETIRED 2026-04-20 -- moved to retirement table below; regex-based detection produced ~93% false positives against Python test patterns (helper-function assertions, pytest guards that raise, Pydantic model construction). Keep the slot reserved to preserve numbering.]
+### Wave 19: Test Quality (3 agents)
 
 **Agent 99 -- tests-with-sleeps** (haiku)
 File: `_audit/latest/findings/99-tests-with-sleeps.md`
@@ -2705,7 +2703,7 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 **Required on every run.** Validation runs on all findings -- critical, high, medium, low, and info -- with no opt-out and no severity threshold. This skill is for huge audits; the false-positive filter must apply uniformly across severities so INDEX.md is not contaminated by un-validated noise.
 
-After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (152 for `full` since agent 98 is retired; fewer for scoped runs).
+After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (152 for `full`, fewer for scoped runs).
 
 ### Process
 
@@ -3020,7 +3018,7 @@ Optional, best-effort. Each agent can have a golden-input test:
 
 A new command `/codebase-audit self-test` runs each agent against its golden input and verifies it finds the seeded issue. Catches prompt rot.
 
-Bootstrap: not all 153 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
+Bootstrap: not all 152 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
 
 If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 
