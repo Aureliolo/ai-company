@@ -13,6 +13,8 @@ from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
+
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.errors import (
     TaskMutationError,
@@ -27,6 +29,7 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     capability_gap,
     coerce_pagination,
     dump_many,
@@ -197,19 +200,47 @@ async def _tasks_get(
 
 async def _tasks_create(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    # CreateTaskData requires type/priority/complexity/budget_limit/created_by
-    # that the current MCP schema does not expose; promoting task creation
-    # to a first-class MCP tool is a separate design task.
-    return capability_gap(
-        "synthorg_tasks_create",
-        "task creation requires the full CreateTaskData schema "
-        "(type, priority, complexity, budget_limit); use the "
-        "tasks REST API until an MCP-native schema is designed",
+    tool = "synthorg_tasks_create"
+    try:
+        task_data = require_arg(arguments, "task_data", dict)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    # Validate full CreateTaskData via Pydantic so callers get a precise
+    # error envelope instead of a runtime TaskMutationError on missing
+    # / mistyped fields.  Local import keeps the meta handlers from
+    # eagerly pulling the engine module on every import.
+    from synthorg.engine.task_engine_models import (  # noqa: PLC0415
+        CreateTaskData,
     )
+
+    try:
+        data = CreateTaskData.model_validate(task_data)
+    except ValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+
+    requested_by = _actor_id(actor) or "system"
+    try:
+        task = await app_state.task_engine.create_task(
+            data,
+            requested_by=requested_by,
+        )
+    except TaskMutationError as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=task.model_dump(mode="json"))
 
 
 async def _tasks_update(
@@ -378,17 +409,53 @@ async def _tasks_cancel(
     return ok(data=task.model_dump(mode="json"))
 
 
+_WHY_ACTIVITY = (
+    "activity feed is assembled in hr.activity module but the "
+    "ActivityFeedService is not wired on app_state in this deployment"
+)
+
+
 async def _activities_list(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap(
-        "synthorg_activities_list",
-        "activity feed is assembled in hr.activity module; no streaming "
-        "endpoint is exposed on app_state",
-    )
+    tool = "synthorg_activities_list"
+    arg_project = "project"
+    arg_task_id = "task_id"
+    try:
+        offset, limit = coerce_pagination(arguments)
+        project_raw = arguments.get(arg_project)
+        task_id_raw = arguments.get(arg_task_id)
+        if project_raw is not None and (
+            not isinstance(project_raw, str) or not project_raw.strip()
+        ):
+            raise invalid_argument(arg_project, _TY_NON_BLANK)
+        if task_id_raw is not None and (
+            not isinstance(task_id_raw, str) or not task_id_raw.strip()
+        ):
+            raise invalid_argument(arg_task_id, _TY_NON_BLANK)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_activity_feed_service", False):
+        return capability_gap(tool, _WHY_ACTIVITY)
+    try:
+        events, total = await app_state.activity_feed_service.list_recent_activity(
+            project=project_raw.strip() if project_raw is not None else None,
+            task_id=task_id_raw.strip() if task_id_raw is not None else None,
+            offset=offset,
+            limit=limit,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(events), pagination=meta)
 
 
 TASK_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

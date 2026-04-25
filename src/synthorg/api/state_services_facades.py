@@ -27,6 +27,7 @@ from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.inflight_config import (
     PerOpConcurrencyConfig,  # noqa: TC001
 )
+from synthorg.api.state_services_facades_mcp3 import _MetaMcp3FacadesMixin
 from synthorg.api.state_services_facades_mcp4 import _MetaMcp4FacadesMixin
 from synthorg.communication.meetings.service import MeetingService  # noqa: TC001
 from synthorg.communication.messages.service import MessageService  # noqa: TC001
@@ -84,7 +85,7 @@ from synthorg.organization.services import (
 )
 
 
-class _FacadesMixin(_MetaMcp4FacadesMixin):
+class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
     """Mixin hosting all facade-service accessors for :class:`AppState`.
 
     Must be combined with the rest of ``AppStateServicesMixin`` via
@@ -159,6 +160,12 @@ class _FacadesMixin(_MetaMcp4FacadesMixin):
         self._memory_service = None
         self._personality_service = None
         self._scaling_decision_service = None
+        # META-MCP-3 facades (write-side services for workflows + meta).
+        self._workflow_service = None
+        self._workflow_execution_service = None
+        self._workflow_version_service = None
+        self._subworkflow_service = None
+        self._self_improvement_service = None
 
     # Slot attrs for facade services (populated on concrete AppState).
     _signals_service: SignalsService | None

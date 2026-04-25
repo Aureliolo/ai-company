@@ -1,19 +1,16 @@
 """Workflow domain MCP handlers.
 
 16 tools spanning workflow definitions, subworkflows, executions, and
-versions.  Reads on the core definitions shim to
-:class:`synthorg.engine.workflow.service.WorkflowService` via the
-persistence repos on ``app_state.persistence``.  Subworkflows,
-executions, and versions do not currently have an orchestration
-service exposed on ``app_state``; they return ``capability_gap`` so the
-tool stays registered and visible to ops until a dedicated service
-lands.
+versions. Every tool routes through a service facade on AppState
+(``workflow_service``, ``subworkflow_service``,
+``workflow_execution_service``, ``workflow_version_service``); when a
+service is not wired the handler returns a ``capability_gap`` envelope
+identifying the missing facade.
 
-Destructive ops: ``workflows_delete``, ``subworkflows_delete``, and
-``workflow_executions_cancel`` all require the full destructive-op
-guardrail.  ``workflows_delete`` is live; the other two return
-``capability_gap`` for now but still enforce the guardrail at the
-schema layer.
+Destructive ops -- ``workflows_delete``, ``subworkflows_delete``, and
+``workflow_executions_cancel`` -- enforce the full guardrail
+(``confirm=True`` + non-blank ``reason`` + non-``None`` ``actor``) and
+emit ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
 """
 
 import copy
@@ -21,9 +18,32 @@ from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
+
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import (
+    SubworkflowDepthExceededError,
+    SubworkflowIOError,
+    SubworkflowNotFoundError,
+    WorkflowDefinitionInvalidError,
+    WorkflowExecutionError,
+    WorkflowExecutionNotFoundError,
+)
+from synthorg.engine.workflow.execution_service import (
+    WorkflowExecutionService,  # noqa: TC001 -- runtime annotation in helper
+)
 from synthorg.engine.workflow.service import (
+    WorkflowDefinitionExistsError,
     WorkflowDefinitionNotFoundError,
+    WorkflowDefinitionRevisionMismatchError,
     WorkflowService,
+)
+from synthorg.engine.workflow.subworkflow_service import (
+    SubworkflowHasParentsError,
+    SubworkflowService,
+)
+from synthorg.engine.workflow.version_service import (
+    WorkflowVersionService,  # noqa: TC001 -- runtime annotation in helper
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -34,12 +54,14 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     capability_gap,
     coerce_pagination,
     dump_many,
     err,
     ok,
     paginate_sequence,
+    require_arg,
     require_destructive_guardrails,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -58,20 +80,22 @@ logger = get_logger(__name__)
 
 
 _TY_NON_BLANK = "non-blank string"
+_TY_INT = "integer"
 _ARG_DEF_ID = "workflow_id"
+_ARG_EXEC_ID = "execution_id"
+_ARG_SUB_ID = "subworkflow_id"
+_ARG_VERSION = "version"
+_ARG_REVISION = "revision"
 
 
-_WHY_SUBWORKFLOWS = (
-    "subworkflow repository is reached via the subworkflows controller; "
-    "no service facade is attached to app_state"
+_WHY_SUBWORKFLOW_SERVICE = (
+    "subworkflow_service is not wired on app_state in this deployment"
 )
-_WHY_EXECUTIONS = (
-    "workflow execution orchestration lives behind the engine loop; "
-    "no execution store is attached to app_state"
+_WHY_EXECUTION_SERVICE = (
+    "workflow_execution_service is not wired on app_state in this deployment"
 )
-_WHY_VERSIONS_LIST = (
-    "workflow version snapshots are reached via workflow_versions "
-    "controller; no service is attached to app_state"
+_WHY_VERSION_SERVICE = (
+    "workflow_version_service is not wired on app_state in this deployment"
 )
 
 
@@ -118,6 +142,29 @@ def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
     if not isinstance(raw, str) or not raw.strip():
         raise invalid_argument(key, _TY_NON_BLANK)
     return raw.strip()
+
+
+def _require_int(arguments: dict[str, Any], key: str) -> int:
+    """Extract a strictly-positive integer arg; raise on miss/wrong-type."""
+    raw = arguments.get(key)
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        raise invalid_argument(key, _TY_INT)
+    return raw
+
+
+def _execution_service(app_state: Any) -> WorkflowExecutionService | None:
+    """Return the wired execution service, or ``None`` to trigger gap."""
+    return getattr(app_state, "workflow_execution_service", None)
+
+
+def _subworkflow_service(app_state: Any) -> SubworkflowService | None:
+    """Return the wired subworkflow service, or ``None`` to trigger gap."""
+    return getattr(app_state, "subworkflow_service", None)
+
+
+def _version_service(app_state: Any) -> WorkflowVersionService | None:
+    """Return the wired version service, or ``None`` to trigger gap."""
+    return getattr(app_state, "workflow_version_service", None)
 
 
 def _service(app_state: Any) -> WorkflowService:
@@ -205,28 +252,87 @@ async def _workflows_get(
 
 async def _workflows_create(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    return capability_gap(
-        "synthorg_workflows_create",
-        "workflow definition creation requires the full "
-        "WorkflowDefinition schema; use the REST API",
+    tool = "synthorg_workflows_create"
+    try:
+        definition_dict = require_arg(arguments, "definition", dict)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    from synthorg.engine.workflow.definition import (  # noqa: PLC0415
+        WorkflowDefinition,
     )
+
+    try:
+        definition = WorkflowDefinition.model_validate(definition_dict)
+    except ValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+
+    saved_by = _actor_id(actor) or "mcp"
+    try:
+        created = await _service(app_state).create_definition(
+            definition,
+            saved_by=saved_by,
+        )
+    except WorkflowDefinitionExistsError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="already_exists")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=created.model_dump(mode="json"))
 
 
 async def _workflows_update(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    return capability_gap(
-        "synthorg_workflows_update",
-        "workflow definition updates need the full WorkflowDefinition "
-        "with optimistic-concurrency revision; use the REST API",
+    tool = "synthorg_workflows_update"
+    try:
+        definition_dict = require_arg(arguments, "definition", dict)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    from synthorg.engine.workflow.definition import (  # noqa: PLC0415
+        WorkflowDefinition,
     )
+
+    try:
+        definition = WorkflowDefinition.model_validate(definition_dict)
+    except ValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+
+    saved_by = _actor_id(actor) or "mcp"
+    try:
+        updated = await _service(app_state).update_definition(
+            definition,
+            saved_by=saved_by,
+        )
+    except WorkflowDefinitionNotFoundError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="not_found")
+    except WorkflowDefinitionRevisionMismatchError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="conflict")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=updated.model_dump(mode="json"))
 
 
 async def _workflows_delete(
@@ -274,113 +380,369 @@ async def _workflows_delete(
 
 async def _workflows_validate(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap(
-        "synthorg_workflows_validate",
-        "workflow validation runs inside the validation middleware; "
-        "no standalone validator is exposed on app_state",
+    tool = "synthorg_workflows_validate"
+    try:
+        definition_dict = require_arg(arguments, "definition", dict)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    from synthorg.engine.workflow.definition import (  # noqa: PLC0415
+        WorkflowDefinition,
     )
+
+    try:
+        definition = WorkflowDefinition.model_validate(definition_dict)
+    except ValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+
+    try:
+        result = await _service(app_state).validate_definition(definition)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=result.model_dump(mode="json"))
 
 
 # --- subworkflows ---------------------------------------------------------
 
 
-async def _subworkflow_placeholder(tool_name: str) -> str:
-    return capability_gap(tool_name, _WHY_SUBWORKFLOWS)
-
-
 async def _subworkflows_list(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return await _subworkflow_placeholder("synthorg_subworkflows_list")
+    tool = "synthorg_subworkflows_list"
+    service = _subworkflow_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
+    try:
+        offset, limit = coerce_pagination(arguments)
+        arg_query = "query"
+        query_raw = arguments.get(arg_query)
+        if query_raw is not None and not isinstance(query_raw, str):
+            raise invalid_argument(arg_query, _TY_NON_BLANK)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    try:
+        page, total = await service.list(
+            offset=offset,
+            limit=limit,
+            query=query_raw,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(page), pagination=meta)
 
 
 async def _subworkflows_get(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return await _subworkflow_placeholder("synthorg_subworkflows_get")
+    tool = "synthorg_subworkflows_get"
+    service = _subworkflow_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
+    try:
+        sub_id = _require_non_blank(arguments, _ARG_SUB_ID)
+        version_raw = arguments.get(_ARG_VERSION)
+        if version_raw is not None and (
+            not isinstance(version_raw, str) or not version_raw.strip()
+        ):
+            raise invalid_argument(_ARG_VERSION, _TY_NON_BLANK)
+        version = NotBlankStr(version_raw.strip()) if version_raw is not None else None
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    try:
+        defn = await service.get(NotBlankStr(sub_id), version)
+    except SubworkflowNotFoundError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="not_found")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=defn.model_dump(mode="json"))
 
 
 async def _subworkflows_create(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    return await _subworkflow_placeholder("synthorg_subworkflows_create")
+    tool = "synthorg_subworkflows_create"
+    service = _subworkflow_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
+    try:
+        definition_dict = require_arg(arguments, "definition", dict)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    from synthorg.engine.workflow.definition import (  # noqa: PLC0415
+        WorkflowDefinition,
+    )
+
+    try:
+        definition = WorkflowDefinition.model_validate(definition_dict)
+    except ValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+
+    saved_by = _actor_id(actor) or "mcp"
+    try:
+        created = await service.create(definition, saved_by=saved_by)
+    except SubworkflowIOError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=created.model_dump(mode="json"))
 
 
-async def _subworkflows_delete(
+async def _subworkflows_delete(  # noqa: PLR0911 -- error mapping fans out
     *,
-    app_state: Any,  # noqa: ARG001
+    app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_subworkflows_delete"
+    # Run the destructive-op guardrails first so the standard
+    # parametrised destructive-op test sweep (which does not seed
+    # ``version``) sees the guardrail violation before any field
+    # validation.  Field-level validation runs after the guardrail.
     try:
-        require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return capability_gap(tool, _WHY_SUBWORKFLOWS)
+    try:
+        sub_id = _require_non_blank(arguments, _ARG_SUB_ID)
+        version = _require_non_blank(arguments, _ARG_VERSION)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    service = _subworkflow_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
+    try:
+        await service.delete(
+            NotBlankStr(sub_id),
+            NotBlankStr(version),
+            reason=reason,
+            actor_id=_actor_id(resolved_actor) or "mcp",
+        )
+    except SubworkflowHasParentsError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="conflict")
+    except SubworkflowNotFoundError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="not_found")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(
+        MCP_DESTRUCTIVE_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=_actor_id(resolved_actor),
+        reason=reason,
+        target_id=f"{sub_id}@{version}",
+    )
+    return ok()
 
 
 # --- workflow executions --------------------------------------------------
 
 
-async def _executions_placeholder(tool_name: str) -> str:
-    return capability_gap(tool_name, _WHY_EXECUTIONS)
-
-
 async def _workflow_executions_list(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return await _executions_placeholder("synthorg_workflow_executions_list")
+    tool = "synthorg_workflow_executions_list"
+    service = _execution_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_EXECUTION_SERVICE)
+    try:
+        def_id = _require_non_blank(arguments, _ARG_DEF_ID)
+        offset, limit = coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    try:
+        executions = await service.list_executions(def_id)
+        page, meta = paginate_sequence(executions, offset=offset, limit=limit)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(page), pagination=meta)
 
 
 async def _workflow_executions_get(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return await _executions_placeholder("synthorg_workflow_executions_get")
+    tool = "synthorg_workflow_executions_get"
+    service = _execution_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_EXECUTION_SERVICE)
+    try:
+        execution_id = _require_non_blank(arguments, _ARG_EXEC_ID)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    try:
+        execution = await service.get_execution(execution_id)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if execution is None:
+        missing = WorkflowExecutionNotFoundError(
+            f"Workflow execution {execution_id!r} not found",
+        )
+        _log_failed(tool, missing)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=execution.model_dump(mode="json"))
 
 
-async def _workflow_executions_start(
+async def _workflow_executions_start(  # noqa: C901, PLR0911 -- error mapping
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    return await _executions_placeholder("synthorg_workflow_executions_start")
+    tool = "synthorg_workflow_executions_start"
+    service = _execution_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_EXECUTION_SERVICE)
+    try:
+        def_id = _require_non_blank(arguments, _ARG_DEF_ID)
+        arg_project = "project"
+        arg_context = "context"
+        ty_object = "object"
+        project_raw = arguments.get(arg_project) or "default"
+        if not isinstance(project_raw, str) or not project_raw.strip():
+            raise invalid_argument(arg_project, _TY_NON_BLANK)
+        project = project_raw.strip()
+        context_raw = arguments.get(arg_context, {})
+        if not isinstance(context_raw, dict):
+            raise invalid_argument(arg_context, ty_object)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    activated_by = _actor_id(actor) or "mcp"
+    try:
+        execution = await service.activate(
+            def_id,
+            project=project,
+            activated_by=activated_by,
+            context=context_raw,
+        )
+    except WorkflowExecutionNotFoundError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="not_found")
+    except WorkflowDefinitionInvalidError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+    except SubworkflowDepthExceededError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+    except WorkflowExecutionError as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=execution.model_dump(mode="json"))
 
 
-async def _workflow_executions_cancel(
+async def _workflow_executions_cancel(  # noqa: PLR0911 -- error mapping
     *,
-    app_state: Any,  # noqa: ARG001
+    app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_workflow_executions_cancel"
     try:
-        require_destructive_guardrails(arguments, actor)
+        execution_id = _require_non_blank(arguments, _ARG_EXEC_ID)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return capability_gap(tool, _WHY_EXECUTIONS)
+    service = _execution_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_EXECUTION_SERVICE)
+    cancelled_by = _actor_id(resolved_actor) or "mcp"
+    try:
+        execution = await service.cancel_execution(
+            execution_id,
+            cancelled_by=cancelled_by,
+        )
+    except WorkflowExecutionNotFoundError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="not_found")
+    except WorkflowExecutionError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="conflict")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(
+        MCP_DESTRUCTIVE_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=cancelled_by,
+        reason=reason,
+        target_id=execution_id,
+    )
+    return ok(data=execution.model_dump(mode="json"))
 
 
 # --- workflow version history --------------------------------------------
@@ -388,20 +750,67 @@ async def _workflow_executions_cancel(
 
 async def _workflow_versions_list(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_workflow_versions_list", _WHY_VERSIONS_LIST)
+    tool = "synthorg_workflow_versions_list"
+    service = _version_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_VERSION_SERVICE)
+    try:
+        def_id = _require_non_blank(arguments, _ARG_DEF_ID)
+        offset, limit = coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    try:
+        page, total = await service.list_versions(
+            NotBlankStr(def_id),
+            offset=offset,
+            limit=limit,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(page), pagination=meta)
 
 
 async def _workflow_versions_get(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_workflow_versions_get", _WHY_VERSIONS_LIST)
+    tool = "synthorg_workflow_versions_get"
+    service = _version_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_VERSION_SERVICE)
+    try:
+        def_id = _require_non_blank(arguments, _ARG_DEF_ID)
+        revision = _require_int(arguments, _ARG_REVISION)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    try:
+        snapshot = await service.get_version(NotBlankStr(def_id), revision)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if snapshot is None:
+        missing = WorkflowDefinitionNotFoundError(
+            f"Workflow definition {def_id!r} revision {revision!r} not found",
+        )
+        _log_failed(tool, missing)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=snapshot.model_dump(mode="json"))
 
 
 WORKFLOW_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

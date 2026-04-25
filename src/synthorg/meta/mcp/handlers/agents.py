@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import (
+    AgentAlreadyRegisteredError,
     AgentNotFoundError,
     PersonalityNotFoundError,
     TrainingSessionNotFoundError,
@@ -70,15 +71,6 @@ _TY_NON_BLANK = "non-blank string"
 _ARG_AGENT_NAME = "agent_name"
 _ARG_AGENT_ID = "agent_id"
 
-_WHY_CREATE = (
-    "synthorg_agents_create requires the full AgentIdentity schema "
-    "(personality/model/memory/tools/authority); use the hiring "
-    "service API for end-to-end agent creation"
-)
-_WHY_UPDATE = (
-    "synthorg_agents_update requires a typed diff; use the "
-    "agent-identity versioning endpoints for arbitrary mutation"
-)
 _WHY_ACTIVITY = (
     "activity feed derivation lives in hr.activity module; no "
     "streaming endpoint on app_state"
@@ -99,14 +91,6 @@ _WHY_TRAINING_LIST = (
 _WHY_TRAINING_START = (
     "training_service.execute() requires a TrainingPlan -- not "
     "representable in the current MCP tool schema"
-)
-_WHY_AUTONOMY_UPDATE = (
-    "autonomy_level mutation goes through agent-identity evolution; "
-    "no field-level mutator on agent_registry"
-)
-_WHY_COLLAB_CALIBRATION = (
-    "collaboration calibration data is computed per-run; no direct "
-    "query method on performance_tracker"
 )
 
 
@@ -218,20 +202,77 @@ async def _agents_get(
 
 async def _agents_create(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    return capability_gap("synthorg_agents_create", _WHY_CREATE)
+    tool = "synthorg_agents_create"
+    try:
+        identity_dict = require_arg(arguments, "identity", dict)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    # Local import: AgentIdentity transitively pulls heavy core modules
+    # whose runtime cost we don't want to pay on every handler import.
+    from synthorg.core.agent import AgentIdentity as _AgentIdentity  # noqa: PLC0415
+
+    try:
+        identity = _AgentIdentity.model_validate(identity_dict)
+    except ValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+
+    saved_by = _actor_id(actor) or "mcp"
+    try:
+        await app_state.agent_registry.register(identity, saved_by=saved_by)
+    except AgentAlreadyRegisteredError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="already_exists")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=identity.model_dump(mode="json"))
 
 
 async def _agents_update(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    return capability_gap("synthorg_agents_update", _WHY_UPDATE)
+    tool = "synthorg_agents_update"
+    try:
+        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
+        updates = require_arg(arguments, "updates", dict)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    saved_by = _actor_id(actor) or "mcp"
+    try:
+        updated = await app_state.agent_registry.apply_identity_update(
+            NotBlankStr(agent_id),
+            updates,
+            saved_by=saved_by,
+        )
+    except AgentNotFoundError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="not_found")
+    except ValueError as exc:
+        # Blocked-field rejection from the registry surfaces here.
+        _log_invalid(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=updated.model_dump(mode="json"))
 
 
 async def _agents_delete(
@@ -669,11 +710,63 @@ async def _autonomy_get(
 
 async def _autonomy_update(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    return capability_gap("synthorg_autonomy_update", _WHY_AUTONOMY_UPDATE)
+    tool = "synthorg_autonomy_update"
+    arg_reason = "reason"
+    try:
+        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
+        level_raw = _require_non_blank(arguments, "level")
+        reason_raw = arguments.get(arg_reason)
+        if not isinstance(reason_raw, str) or not reason_raw.strip():
+            raise invalid_argument(arg_reason, _TY_NON_BLANK)
+        reason = reason_raw.strip()
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    # Local imports: keep the meta handlers from eagerly pulling
+    # security and Pydantic dependency graphs into every handler import.
+    from synthorg.core.enums import AutonomyLevel as _AutonomyLevel  # noqa: PLC0415
+    from synthorg.security.autonomy.models import (  # noqa: PLC0415
+        AutonomyUpdate as _AutonomyUpdate,
+    )
+
+    try:
+        level = _AutonomyLevel(level_raw)
+    except ValueError as exc:
+        _log_invalid(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+
+    try:
+        update = _AutonomyUpdate(
+            requested_level=level,
+            reason=reason,
+            requested_by=NotBlankStr(_actor_id(actor)) if _actor_id(actor) else None,
+        )
+    except ValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc, domain_code="invalid_argument")
+
+    approval_store = getattr(app_state, "approval_store", None)
+    try:
+        result = await app_state.agent_registry.update_autonomy(
+            NotBlankStr(agent_id),
+            update,
+            approval_store=approval_store,
+        )
+    except AgentNotFoundError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="not_found")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=result.model_dump(mode="json"))
 
 
 # --- Collaboration --------------------------------------------------------
@@ -714,14 +807,27 @@ async def _collaboration_get_score(
 
 async def _collaboration_get_calibration(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap(
-        "synthorg_collaboration_get_calibration",
-        _WHY_COLLAB_CALIBRATION,
-    )
+    tool = "synthorg_collaboration_get_calibration"
+    try:
+        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    try:
+        calibration = await app_state.performance_tracker.get_collaboration_calibration(
+            NotBlankStr(agent_id),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=calibration.model_dump(mode="json"))
 
 
 AGENT_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

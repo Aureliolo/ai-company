@@ -1,11 +1,19 @@
 """Meta (self-improvement) domain MCP handlers.
 
-5 tools.  Three are live -- ``list_mcp_tools`` reflects the registry,
-``get_mcp_server_config`` returns the server metadata, and
-``list_rules`` shims through :class:`CustomRulesService`.  The
-remaining two (``get_config`` and ``trigger_cycle``) require facades on
-``SelfImprovementService`` that have not been exposed on ``app_state``
-yet, so they return a ``capability_gap`` envelope.
+5 tools, all live as of META-MCP-3:
+
+- ``list_mcp_tools`` reflects the tool registry.
+- ``get_mcp_server_config`` returns the MCP server metadata.
+- ``list_rules`` shims through :class:`CustomRulesService`.
+- ``get_config`` returns the active :class:`SelfImprovementConfig`
+  with secrets redacted.
+- ``trigger_cycle`` runs an improvement cycle in-process and returns
+  the produced proposals.
+
+The two new live handlers fall back to ``capability_gap`` only when
+``self_improvement_service`` is not wired on AppState, matching the
+optional-service pattern other handlers (activity feed, agent health,
+etc.) already use.
 """
 
 import copy
@@ -17,6 +25,7 @@ if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.meta.rules.service import CustomRulesService
 
+from synthorg.meta.errors import SelfImprovementTriggerError
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -39,13 +48,9 @@ from synthorg.observability.events.mcp import (
 logger = get_logger(__name__)
 
 
-_WHY_CONFIG = (
-    "self-improvement config read requires SelfImprovementService; "
-    "no facade on app_state yet"
-)
-_WHY_TRIGGER = (
-    "improvement-cycle triggering requires SelfImprovementService; "
-    "no facade on app_state yet"
+_WHY_SELF_IMPROVEMENT = (
+    "self-improvement service is not wired on app_state in this "
+    "deployment; enable the meta loop to use this tool"
 )
 
 
@@ -112,11 +117,22 @@ def _rule_to_dict(rule: Any) -> dict[str, Any]:
 
 async def _meta_get_config(
     *,
-    app_state: Any,  # noqa: ARG001
+    app_state: Any,
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_meta_get_config", _WHY_CONFIG)
+    tool = "synthorg_meta_get_config"
+    if not getattr(app_state, "has_self_improvement_service", False):
+        return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
+    try:
+        config_dump = app_state.self_improvement_service.get_config()
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=config_dump)
 
 
 async def _meta_list_rules(
@@ -188,11 +204,25 @@ async def _meta_get_mcp_server_config(
 
 async def _meta_trigger_cycle(
     *,
-    app_state: Any,  # noqa: ARG001
+    app_state: Any,
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_meta_trigger_cycle", _WHY_TRIGGER)
+    tool = "synthorg_meta_trigger_cycle"
+    if not getattr(app_state, "has_self_improvement_service", False):
+        return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
+    try:
+        result = await app_state.self_improvement_service.trigger_cycle()
+    except SelfImprovementTriggerError as exc:
+        _log_failed(tool, exc)
+        return err(exc, domain_code="unavailable")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=result.model_dump(mode="json"))
 
 
 META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
