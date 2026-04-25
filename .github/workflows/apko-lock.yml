@@ -35,7 +35,7 @@ jobs:
         run: |
           for config in docker/*/apko.yaml; do
             echo "Updating lockfile for ${config}..."
-            apko lock --update "${config}"
+            apko lock "${config}"
           done
 
       - name: Check for changes
