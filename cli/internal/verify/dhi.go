@@ -70,7 +70,7 @@ var dhiPinnedIndexDigests = map[string]string{
 	// renovate: datasource=docker depName=dhi.io/postgres
 	"dhi.io/postgres:18-debian13": "sha256:e2f2beada5e76f69453d5533153909f875b48fb021f092df73e182b8325ff2d3",
 	// renovate: datasource=docker depName=dhi.io/nats
-	"dhi.io/nats:2.12-debian13": "sha256:45876e0c090615cf847129ace248649d7da79b40c5863b321493e5970e0eec4f",
+	"dhi.io/nats:2.12-debian13": "sha256:33f3b26c651c15669d50da0d88ccd1fea1f3c9782e38dcf70c4ae1584e9cc5ca",
 }
 
 // DHIPinnedIndexDigest returns the pinned index digest for a DHI image.
