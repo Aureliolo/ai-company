@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.7.3](https://github.com/Aureliolo/synthorg/compare/v0.7.2...v0.7.3) (2026-04-25)
+
+
+### Features
+
+* **cli:** per-version Highlights walk on upgrade + dev-channel commit list ([#1564](https://github.com/Aureliolo/synthorg/issues/1564)) ([#1572](https://github.com/Aureliolo/synthorg/issues/1572)) ([2416fd4](https://github.com/Aureliolo/synthorg/commit/2416fd444806233178aba67a48e36f1670a9f2a4))
+* expand codebase-audit skill from 123 to 153 agents ([#1582](https://github.com/Aureliolo/synthorg/issues/1582)) ([282f49c](https://github.com/Aureliolo/synthorg/commit/282f49ccb652628652fb63ec8e16030abdfb47d2))
+* META-MCP-3 -- live CRUD write facades for agents / tasks / workflows / meta (17 capability_gap sites) ([#1574](https://github.com/Aureliolo/synthorg/issues/1574)) ([214cf5e](https://github.com/Aureliolo/synthorg/commit/214cf5e065be333b887dff4c3714b463ce2c14bb))
+* META-MCP-4 observability + memory + coordination facades (19 capability_gap sites) ([#1558](https://github.com/Aureliolo/synthorg/issues/1558)) ([5a4e672](https://github.com/Aureliolo/synthorg/commit/5a4e67295ef10d8e42cc5ca125303ca8c3c4d6cb))
+* **web:** hygiene sweep -- API double-prefix fix + dashboard UX pass ([#1563](https://github.com/Aureliolo/synthorg/issues/1563)) ([3b0e18a](https://github.com/Aureliolo/synthorg/commit/3b0e18a8854e4f268a973ca870f50d938eea66db))
+
+
+### Bug Fixes
+
+* **async:** TOCTOU races + resource leaks in lifecycle and bus paths ([#1545](https://github.com/Aureliolo/synthorg/issues/1545)) ([13f3db6](https://github.com/Aureliolo/synthorg/commit/13f3db679a6ad9933bdca7b27b8c61d6b4a2258d))
+* **ci:** jq sort-keys + CLA bot exempt + client-id migration + PAT sunset ([#1566](https://github.com/Aureliolo/synthorg/issues/1566)) ([cf962a9](https://github.com/Aureliolo/synthorg/commit/cf962a94bdc7677016f6f135548e9424d54022b3))
+* **ci:** move artifact smoke tests to build time + delete release-events spam ([#1580](https://github.com/Aureliolo/synthorg/issues/1580)) ([7eb238c](https://github.com/Aureliolo/synthorg/commit/7eb238cc151565edbf7cccee7b4f1eb126ba01b0))
+* **ci:** quote hex colors in labels.yml + make sync-labels manual-only ([#1589](https://github.com/Aureliolo/synthorg/issues/1589)) ([83d2210](https://github.com/Aureliolo/synthorg/commit/83d22106b923185039384049978beb248b699bae))
+* **ci:** release-runner-setup composite action parse error (main hotfix) ([#1565](https://github.com/Aureliolo/synthorg/issues/1565)) ([cb49c7d](https://github.com/Aureliolo/synthorg/commit/cb49c7d1cc7490b45e52e54925861745b41ee21c))
+* **ci:** set GH_REPO env in release-events to fix chronic post-merge failure ([#1577](https://github.com/Aureliolo/synthorg/issues/1577)) ([c207a25](https://github.com/Aureliolo/synthorg/commit/c207a2548023a82e33ba8b5531d88bddc576a704))
+* **ci:** unblock dev releases + surface workflow_run failures + harden notification sinks ([#1576](https://github.com/Aureliolo/synthorg/issues/1576)) ([f682328](https://github.com/Aureliolo/synthorg/commit/f682328053a343bed259e4ef3b138e40d1939c61))
+* **cli:** never silently fall back during synthorg update ([#1581](https://github.com/Aureliolo/synthorg/issues/1581)) ([97c0f83](https://github.com/Aureliolo/synthorg/commit/97c0f8326a183a5fd3282db6a06b1b67efa10e9e))
+* **cli:** render update walk as inline section, not full screen ([#1584](https://github.com/Aureliolo/synthorg/issues/1584)) ([3075c17](https://github.com/Aureliolo/synthorg/commit/3075c17ae333702018b6bd983d0e7ab7912f4756))
+* drop openapi.json from sitemap and improve reference.html SEO ([#1575](https://github.com/Aureliolo/synthorg/issues/1575)) ([fbbfb3e](https://github.com/Aureliolo/synthorg/commit/fbbfb3e74a6ffe73c76c34bea4f331162ff33841))
+
+
+### Refactoring
+
+* **ci:** fork-friendly CI + preflight setup checker ([#1586](https://github.com/Aureliolo/synthorg/issues/1586)) ([fed4aee](https://github.com/Aureliolo/synthorg/commit/fed4aeecae3da8e3fa8843e0e83b582e00d55d08))
+* **ci:** GitHub App + full release-pipeline rework ([#1561](https://github.com/Aureliolo/synthorg/issues/1561)) ([5b11979](https://github.com/Aureliolo/synthorg/commit/5b119795653c0c11311e45d4cff7960771f958b7))
+* pagination + N+1 + dedup + small CLI/data cleanups ([#1551](https://github.com/Aureliolo/synthorg/issues/1551)) ([284a00c](https://github.com/Aureliolo/synthorg/commit/284a00c07be4e1f127fe0b0954d7369e3e34595b))
+* platform hygiene ([#1562](https://github.com/Aureliolo/synthorg/issues/1562) + [#1557](https://github.com/Aureliolo/synthorg/issues/1557) + [#1552](https://github.com/Aureliolo/synthorg/issues/1552)) ([#1573](https://github.com/Aureliolo/synthorg/issues/1573)) ([5c35697](https://github.com/Aureliolo/synthorg/commit/5c35697e8733337953f0f459dd460b2a69988260))
+
+
+### Maintenance
+
+* Lock file maintenance ([#1571](https://github.com/Aureliolo/synthorg/issues/1571)) ([6979f1d](https://github.com/Aureliolo/synthorg/commit/6979f1d190508a5f521b663c7a6a5b700f452abd))
+* portable everything-claude-code reviewer agents ([#1583](https://github.com/Aureliolo/synthorg/issues/1583)) ([df5fee2](https://github.com/Aureliolo/synthorg/commit/df5fee2bb7b50ec1544f0d1fd6d730139517f062))
+* trim CLAUDE.md deep-dives to docs/reference, fix em-dash hook ([#1560](https://github.com/Aureliolo/synthorg/issues/1560)) ([6f7f6fd](https://github.com/Aureliolo/synthorg/commit/6f7f6fd0d763dcf14d62354c06dbc802e33081e0))
+* Update Container dependencies ([#1567](https://github.com/Aureliolo/synthorg/issues/1567)) ([9c731bd](https://github.com/Aureliolo/synthorg/commit/9c731bd9317bc8321b5c8c444e93c4e98c077718))
+* Update dependency cryptography to v47 ([#1570](https://github.com/Aureliolo/synthorg/issues/1570)) ([f2d25c4](https://github.com/Aureliolo/synthorg/commit/f2d25c4df144aeb2fb341a0f7a6f47bb673cd563))
+* Update Python dependencies ([#1568](https://github.com/Aureliolo/synthorg/issues/1568)) ([573fa84](https://github.com/Aureliolo/synthorg/commit/573fa845d3fc5c118e294f048d682ad968671606))
+
 ## [0.7.2](https://github.com/Aureliolo/synthorg/compare/v0.7.1...v0.7.2) (2026-04-24)
 
 
