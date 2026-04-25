@@ -37,6 +37,18 @@ if "SYNTHORG_DB_PATH" not in os.environ:
     os.environ["SYNTHORG_DB_PATH"] = ":memory:"
     os.environ.pop("SYNTHORG_DATABASE_URL", None)
 
+# Cursor-secret boot guard parity: synthorg.api.app.create_app refuses
+# to start with an ephemeral pagination cursor secret -- dev, pre-release,
+# and prod all share the same posture.  Build-time schema export must
+# supply a stable value too, so pre-import setdefault keeps this script
+# usable in CI and local previews without requiring the operator to set
+# the env var explicitly.  Real deployments inject their own secret via
+# the compose env block.
+os.environ.setdefault(
+    "SYNTHORG_PAGINATION_CURSOR_SECRET",
+    "openapi-export-stable-cursor-secret-not-a-real-secret",
+)
+
 # Pinned for stability; update after testing newer releases in local preview.
 # When bumping SCALAR_VERSION, recompute SCALAR_SRI:
 #   curl -sL "https://cdn.jsdelivr.net/npm/@scalar/api-reference@<VERSION>" \

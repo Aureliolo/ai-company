@@ -45,6 +45,13 @@ services:
       SYNTHORG_LOG_LEVEL: "debug"
       SYNTHORG_JWT_SECRET: "test-secret-value"
       SYNTHORG_SETTINGS_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+      # HMAC signing key for opaque pagination cursor tokens. The
+      # backend refuses to start without one (see synthorg.api.app
+      # create_app); rotating it would invalidate every outstanding
+      # cursor on every restart. Treat as permanent for the life of
+      # the install. The boot guard is the same in dev, pre-release,
+      # and prod -- there is no env-marker exception.
+      SYNTHORG_PAGINATION_CURSOR_SECRET: "test-cursor-secret-stable-value"
     # Image sets USER 65532 (docker/backend/Dockerfile); no compose
     # override needed.
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)

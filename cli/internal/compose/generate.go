@@ -383,22 +383,28 @@ func validateParams(p Params) error {
 			return fmt.Errorf("postgres password must be >= 32 characters, got %d", len(p.PostgresPassword))
 		}
 	}
-	// Cross-validate secrets: if one is set, both must be set.
-	// Both-empty is valid for development/testing (template omits env vars).
+	// Cross-validate secrets: if any is set, all three must be set.
+	// Both-empty is valid for development/testing (template omits env vars
+	// and the backend stays unwired). Once any production secret is in
+	// play, the backend boot guard (synthorg.api.app create_app) refuses
+	// to start without a stable pagination cursor secret on every channel,
+	// so emitting a partially-configured compose.yml would produce a
+	// boot loop on `synthorg start`.
 	hasJWT := strings.TrimSpace(p.JWTSecret) != ""
 	hasKey := strings.TrimSpace(p.SettingsKey) != ""
+	cursor := strings.TrimSpace(p.CursorSecret)
+	hasCursor := cursor != ""
 	if hasJWT && !hasKey {
 		return fmt.Errorf("SYNTHORG_SETTINGS_KEY is required when JWT secret is set")
 	}
 	if hasKey && !hasJWT {
 		return fmt.Errorf("JWT secret is required when SYNTHORG_SETTINGS_KEY is set")
 	}
-	// Pagination cursor secret: when set, it must be at least 16 bytes so the
-	// backend boot guard (synthorg.api.app create_app) accepts it. Empty is
-	// permitted at template level for back-compat with upgrade flows that
-	// migrate older installs; init.go always generates one for fresh installs.
-	if cs := strings.TrimSpace(p.CursorSecret); cs != "" && len(cs) < 16 {
-		return fmt.Errorf("SYNTHORG_PAGINATION_CURSOR_SECRET must be >= 16 bytes, got %d", len(cs))
+	if (hasJWT || hasKey) && !hasCursor {
+		return fmt.Errorf("SYNTHORG_PAGINATION_CURSOR_SECRET is required when JWT/SettingsKey are set: backend refuses to start without it")
+	}
+	if hasCursor && len(cursor) < 16 {
+		return fmt.Errorf("SYNTHORG_PAGINATION_CURSOR_SECRET must be >= 16 bytes, got %d", len(cursor))
 	}
 	for name, d := range p.DigestPins {
 		if !verify.IsValidDigest(d) {
