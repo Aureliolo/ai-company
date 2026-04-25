@@ -74,8 +74,14 @@ runs:
         envs_block=""
         envs_status="OK"
         envs_skipped=false
-        if existing_envs_json=$(gh api "repos/$GH_REPO/environments" --jq '[.environments[]?.name]' 2>/dev/null \
-            || (sleep 1 && gh api "repos/$GH_REPO/environments" --jq '[.environments[]?.name]')); then
+        # Paginate via `--paginate` so a repo with more than 30
+        # environments enumerates fully. Realistically this repo has
+        # 7, but a fork that has added custom environments should not
+        # see false-positive "missing" entries because we only saw
+        # the first page.
+        if existing_envs_json=$(gh api "repos/$GH_REPO/environments" --paginate --jq '[.environments[]?.name]' 2>/dev/null \
+            | jq -s 'add // []' \
+            || (sleep 1 && gh api "repos/$GH_REPO/environments" --paginate --jq '[.environments[]?.name]' | jq -s 'add // []')); then
           missing_envs=()
           for env in "${EXPECTED_ENVS[@]}"; do
             if jq -e --arg n "$env" 'index($n) != null' <<<"$existing_envs_json" >/dev/null; then
@@ -97,9 +103,15 @@ runs:
             envs_block+=$'\n'"See [Fork Setup Guide section 2](../blob/HEAD/docs/guides/fork-setup.md) for branch policies and which workflows consume each environment."
           fi
         else
+          # Skipping a blocking check is treated as inconclusive, not
+          # as passing: flip `gaps_found` to true so the tracking
+          # issue stays open and the caller knows the audit could not
+          # complete. Otherwise a permanently-permission-denied token
+          # would silently green-light a broken fork.
           envs_skipped=true
-          envs_status="skipped"
-          envs_block="_Could not enumerate environments (token lacks permission). Skipped._"
+          envs_status="skipped (cannot enumerate)"
+          envs_block="_Could not enumerate environments (token lacks permission). Inconclusive -- treated as a gap until verifiable._"
+          gaps_found=true
           # When we cannot enumerate, treat every env as "unknown" so
           # the conditional setup section below still renders -- a fork
           # without environments needs the instructions even if we
@@ -110,9 +122,15 @@ runs:
         fi
 
         # ── Labels ────────────────────────────────────────────────
+        # `gh label list` defaults to 30 results; this repo has 75+
+        # labels in production, so a default-limit call would silently
+        # drop the alphabetically-later ones (e.g. `type:ci`) and
+        # false-flag them as missing. Paginate via `gh api` to fetch
+        # every label regardless of total count.
         labels_block=""
         labels_status="OK"
-        if existing_labels_json=$(gh label list --json name --jq '[.[].name]' 2>/dev/null); then
+        if existing_labels_json=$(gh api "repos/$GH_REPO/labels" --paginate --jq '[.[].name]' 2>/dev/null \
+            | jq -s 'add // []'); then
           missing_labels=()
           for label in "${EXPECTED_LABELS[@]}"; do
             if ! jq -e --arg n "$label" 'index($n) != null' <<<"$existing_labels_json" >/dev/null; then
@@ -130,8 +148,10 @@ runs:
             done
           fi
         else
-          labels_status="skipped"
-          labels_block="_Could not enumerate labels (token lacks permission). Skipped._"
+          # Same inconclusive-is-a-gap rule as the environments check.
+          labels_status="skipped (cannot enumerate)"
+          labels_block="_Could not enumerate labels (token lacks permission). Inconclusive -- treated as a gap until verifiable._"
+          gaps_found=true
         fi
 
         # ── Branch protection on main (informational) ─────────────

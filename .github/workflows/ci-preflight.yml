@@ -37,8 +37,20 @@ jobs:
         with:
           gh-token: ${{ github.token }}
 
+      # Skip the issue-write paths on pull_request runs whose head
+      # branch lives in a forked repository. GitHub silently downgrades
+      # GITHUB_TOKEN to read-only for those runs regardless of what
+      # the workflow declares under `permissions:`, so any write API
+      # call would 403. Posting the tracking issue is also unhelpful
+      # in that context: the audit ran in upstream's repo, not the
+      # fork, and upstream is already configured. The fork's own runs
+      # (when the fork user pushes to their own fork) have full write
+      # perms and post normally.
       - name: Open / update tracking issue
-        if: steps.check.outputs.gaps-found == 'true'
+        if: >-
+          steps.check.outputs.gaps-found == 'true'
+          && (github.event_name != 'pull_request'
+              || github.event.pull_request.head.repo.full_name == github.repository)
         uses: ./.github/actions/post-tracking-issue
         with:
           title: "CI setup incomplete -- please configure the following"
@@ -48,7 +60,10 @@ jobs:
           gh-token: ${{ github.token }}
 
       - name: Close tracking issue when all checks pass
-        if: steps.check.outputs.gaps-found == 'false'
+        if: >-
+          steps.check.outputs.gaps-found == 'false'
+          && (github.event_name != 'pull_request'
+              || github.event.pull_request.head.repo.full_name == github.repository)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

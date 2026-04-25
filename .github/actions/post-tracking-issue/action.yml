@@ -8,17 +8,21 @@ description: |
   Behaviour:
     1. Search open issues by title alone (no label filter) so issues
        created via the label-less fallback below remain discoverable
-       and the next failure comments on them instead of opening a
+       and the next failure updates them instead of opening a
        duplicate tracker.
-    2. If a match is found -> append a comment with the supplied body.
+    2. If a match is found -> edit the body in place. The body is
+       authoritative state, so an edit avoids accumulating stale
+       snapshots in the comment chain.
     3. Otherwise -> create a new issue with the supplied labels. If the
        labelled create fails (e.g., a referenced label has been deleted
        from the repo), retry without labels and emit a workflow
        warning so the missing-label condition surfaces in the run UI.
-    4. If `pin: true` (default), best-effort pin the issue. Pin
-       failures (3-issue cap, race, permissions) emit a warning but do
-       NOT fail the action -- the comment / create above is the
-       primary signal.
+    4. If `pin: true` (default), best-effort pin the issue via the
+       GraphQL `pinIssue` mutation (GitHub never shipped a REST
+       endpoint for this). Pin failures (3-issue cap, race, "already
+       pinned", permissions) emit a warning with the actual GraphQL
+       error message but do NOT fail the action -- the create / edit
+       above is the primary signal.
 
   Caller contract:
     - The job invoking this action must declare `permissions:
@@ -42,23 +46,29 @@ inputs:
       labels so dedup works even if a label gets deleted.
     required: true
   body:
-    description: 'Issue body (on create) / comment body (on update). Markdown.'
+    description: 'Markdown body. On a fresh issue this is the initial body. On an existing match it overwrites the body in place.'
     required: true
   pin:
-    description: 'Pin the issue after create / comment. Best-effort -- failures degrade to a warning. default: true'
+    description: 'Pin the issue after create / edit. Best-effort -- failures degrade to a warning. default: true'
     required: false
     default: 'true'
   gh-token:
     description: >-
       GitHub token with `issues: write` scope on the workflow's own
       repository. The workflow's default github.token is sufficient
-      for every current caller. The action is single-repo: it always
+      for callers running on push, schedule, workflow_dispatch, or
+      same-repo pull_request events. It is NOT sufficient for
+      pull_request events whose head ref lives in a forked
+      repository -- GitHub silently downgrades GITHUB_TOKEN to
+      read-only for those runs regardless of what the workflow
+      declares under `permissions:`, and any issue-write call here
+      will 403. Callers that may run from fork PRs must gate this
+      step on `github.event.pull_request.head.repo.full_name ==
+      github.repository`. The action is single-repo: it always
       targets the calling workflow's github.repository for both
       issue lookup/create and pinning, which means it correctly
-      self-targets a fork when the workflow runs in a fork. To open
-      a tracking issue in a *different* repo, the action would need
-      a `repository` input plumbed through both `GH_REPO` and the
-      pin URL -- out of scope until a real cross-repo caller appears.
+      self-targets a fork when the workflow runs in the fork itself
+      (push events from the fork's own collaborators).
     required: true
 
 runs:
@@ -111,14 +121,20 @@ runs:
           ISSUE_NUMBER="${ISSUE_URL##*/}"
           echo "Created tracking issue #$ISSUE_NUMBER"
         else
-          gh issue comment "$ISSUE_NUMBER" --body "$BODY"
-          echo "Commented on tracking issue #$ISSUE_NUMBER"
+          # Edit the body in place rather than appending a comment.
+          # The body is regenerated from current state on every
+          # preflight run, so a comment chain would just accumulate
+          # stale snapshots of past gaps and pollute the issue feed.
+          # An edit keeps the issue clean: title is the dedup key,
+          # body always reflects current state.
+          gh issue edit "$ISSUE_NUMBER" --body "$BODY"
+          echo "Updated tracking issue #$ISSUE_NUMBER"
         fi
 
         if [ "$PIN" = "true" ]; then
           # Best-effort pin. A repo can hold at most 3 pinned issues;
           # quota / race / permission failures degrade to a warning so
-          # the comment / create above remains the primary signal.
+          # the create / edit above remains the primary signal.
           #
           # GitHub never shipped a REST endpoint for pinning -- the
           # `PUT /repos/.../issues/.../pin` URL the prior version used
