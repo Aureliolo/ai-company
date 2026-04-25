@@ -242,4 +242,5 @@ uv run zensical serve                      # preview at http://127.0.0.1:8000
 ## See Also
 
 - [Developer Setup](../getting_started.md) -- environment setup
+- [Fork Setup](fork-setup.md) -- configure CI on a fresh fork (environments, labels, branch protection, release-bot App)
 - [CONTRIBUTING.md](https://github.com/Aureliolo/synthorg/blob/main/.github/CONTRIBUTING.md) -- formal contributing guidelines

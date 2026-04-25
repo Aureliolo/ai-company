@@ -151,6 +151,8 @@ SynthOrg vs [44 agent frameworks](https://synthorg.io/compare/) across 14 dimens
 | [Roadmap](https://synthorg.io/docs/roadmap/) | Current status, open questions, future vision |
 
 > **Contributors:** Start with the [Design Specification](https://synthorg.io/docs/design/) before implementing any feature. See [`DESIGN_SPEC.md`](docs/DESIGN_SPEC.md) for the full design set.
+>
+> **Forking?** CI runs out of the box for code changes; the release pipeline needs setup (environments, labels, branch protection, a release-bot GitHub App). On your first push, the **CI Preflight** workflow opens a tracking issue listing exactly what is missing -- see [Fork Setup](https://synthorg.io/docs/guides/fork-setup/) for the long-form walkthrough.
 
 ## License
 
