@@ -333,7 +333,7 @@ func TestRunDevCommitWalk_normalisesVersionRefs(t *testing.T) {
 	}
 }
 
-func TestRunChangelogWalk_quietPrintsOfflineNotice(t *testing.T) {
+func TestRunChangelogWalk_jsonSuppressesOutput(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.SetContext(SetGlobalOpts(context.Background(), &GlobalOpts{Quiet: false, JSON: true})) // JSON suppresses walk
 	var buf bytes.Buffer

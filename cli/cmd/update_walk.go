@@ -61,11 +61,16 @@ func runStableHighlightsWalk(ctx context.Context, cmd *cobra.Command, result sel
 	opts := GetGlobalOpts(ctx)
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	releases, err := releasesBetween(ctx, result.CurrentVersion, result.LatestVersion, false)
+	// Normalise to vX.Y.Z[-dev.N] so release/compare API failures and the
+	// user-facing range labels stay consistent with the dev-channel path.
+	// selfupdate.ReleasesBetween itself accepts both forms, but we prefer
+	// passing the canonical shape so any future stricter validation does
+	// not silently regress.
+	base := normalizeVersionRef(result.CurrentVersion)
+	head := normalizeVersionRef(result.LatestVersion)
+	releases, err := releasesBetween(ctx, base, head, false)
 	if err != nil {
-		out.Warn(fmt.Sprintf("Could not load release list (%s..%s): %v",
-			normalizeVersionRef(result.CurrentVersion),
-			normalizeVersionRef(result.LatestVersion), err))
+		out.Warn(fmt.Sprintf("Could not load release list (%s..%s): %v", base, head, err))
 		out.HintError("Showing terse update notice instead. Re-run later or check release notes manually.")
 		printOfflineNotice(cmd, result)
 		return
@@ -73,8 +78,7 @@ func runStableHighlightsWalk(ctx context.Context, cmd *cobra.Command, result sel
 	if len(releases) == 0 {
 		out.Warn(fmt.Sprintf(
 			"No releases found strictly between %s and %s -- the walk has nothing to show.",
-			normalizeVersionRef(result.CurrentVersion),
-			normalizeVersionRef(result.LatestVersion)))
+			base, head))
 		out.HintError("This is unusual on the stable channel; check the GitHub releases page if a release was pruned.")
 		printOfflineNotice(cmd, result)
 		return
