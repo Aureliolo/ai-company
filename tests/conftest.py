@@ -1,6 +1,5 @@
 """Root test configuration and shared fixtures."""
 
-import contextlib
 import json
 import logging
 import os
@@ -169,30 +168,6 @@ _BASELINE_PATH = Path(__file__).parent / "baselines" / "unit_timing.json"
 _suite_start: float | None = None
 
 
-def _compute_max_allowed(
-    baseline_secs: float,
-    baseline_count: int,
-    unit_count: int,
-    threshold_secs: float,
-) -> float:
-    """Scale absolute threshold by test-count growth.
-
-    When a PR adds tests, expected wall-clock grows proportionally.
-    The absolute threshold is scaled so legitimate test additions
-    do not trip the guard when per-test cost is unchanged.
-    """
-    if baseline_count > 0 and unit_count > baseline_count:
-        count_ratio = unit_count / baseline_count
-        max_allowed = baseline_secs * count_ratio + threshold_secs
-    else:
-        max_allowed = baseline_secs + threshold_secs
-    env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
-    if env_override is not None:
-        with contextlib.suppress(ValueError):
-            max_allowed = float(env_override)
-    return max_allowed
-
-
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Record suite start time for regression detection."""
@@ -200,96 +175,102 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     _suite_start = time.monotonic()
 
 
+def _load_baseline_for_conftest() -> tuple[float, int, float] | None:
+    """Return ``(baseline_secs, baseline_count, threshold_ratio)`` or ``None``.
+
+    Returns ``None`` when the baseline is missing or malformed --
+    callers skip the regression check rather than blocking the run.
+    """
+    if not _BASELINE_PATH.exists():
+        return None
+    try:
+        baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
+        baseline_secs = float(baseline["unit_suite_seconds"])
+        baseline_count = int(baseline.get("test_count", 0))
+        threshold_ratio = float(baseline.get("regression_threshold_ratio", 1.3))
+    except json.JSONDecodeError, KeyError, ValueError, OSError:
+        return None
+    return baseline_secs, baseline_count, threshold_ratio
+
+
+def _emit_regression_banner(
+    *,
+    elapsed: float,
+    unit_count: int,
+    baseline_secs: float,
+    baseline_count: int,
+    threshold_ratio: float,
+) -> None:
+    """Print the regression banner to stderr."""
+    baseline_per_test_ms = baseline_secs * 1000.0 / baseline_count
+    current_per_test_ms = elapsed * 1000.0 / unit_count
+    border = "!" * 60
+    msg = (
+        f"\n{border}\n"
+        f"REGRESSION DETECTED: per-test cost "
+        f"{current_per_test_ms:.2f}ms exceeds "
+        f"{baseline_per_test_ms * threshold_ratio:.2f}ms "
+        f"(baseline {baseline_per_test_ms:.2f}ms, "
+        f"ratio cap {threshold_ratio:.2f}x).\n"
+        f"Suite: {elapsed:.0f}s across {unit_count} tests "
+        f"(baseline {baseline_secs:.0f}s across {baseline_count}).\n"
+        f"Run A/B against origin/main before fixing anything.\n"
+        f"Do NOT delete tests or use --no-verify.\n"
+        f"If the new baseline is intentional, update "
+        f"tests/baselines/unit_timing.json.\n"
+        f"{border}\n"
+    )
+    print(msg, file=sys.stderr)  # noqa: T201
+
+
 @pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(
     session: pytest.Session,
     exitstatus: int,
 ) -> None:
-    """Fail the suite hard if it regressed beyond the baseline.
+    """Fail the suite hard if per-test cost regressed beyond the baseline.
 
-    Only small increases (a few seconds, ``regression_threshold_secs``
-    in the baseline file) are tolerated.  Larger regressions are a
-    real bug -- either in source code or in test infrastructure --
-    and the suite must exit with a non-zero status so CI and
-    pre-push hooks block the change.
+    The metric is per-test milliseconds (``elapsed * 1000 /
+    unit_count``) compared against the baseline's per-test cost
+    multiplied by ``regression_threshold_ratio`` (default 1.3).
+    Mechanical test-count growth (PRs adding tests) does not move this
+    metric, so the baseline stays valid until per-test cost actually
+    drifts.  See ``tests/baselines/README.md`` for schema.
     """
     if _suite_start is None or _FUZZ_PROFILE_ACTIVE:
         return
-    # Only check when running unit tests (not integration/e2e-only).
     if not any(item.get_closest_marker("unit") for item in session.items):
         return
-    elapsed = time.monotonic() - _suite_start
-    if not _BASELINE_PATH.exists():
+    loaded = _load_baseline_for_conftest()
+    if loaded is None:
         return
-    try:
-        baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
-        baseline_secs = float(baseline["unit_suite_seconds"])
-        baseline_count = int(baseline.get("test_count", 0))
-        # Two complementary tolerances:
-        # - ``regression_threshold_secs`` bounds small absolute drift
-        #   (runner noise, single flaky test).
-        # - ``regression_threshold_ratio`` bounds per-test cost growth,
-        #   so a PR adding a few hundred legitimate tests does not
-        #   trip the guard just because total wall-clock grew.
-        threshold_secs = float(baseline.get("regression_threshold_secs", 10))
-        threshold_ratio = float(baseline.get("regression_threshold_ratio", 1.3))
-    except json.JSONDecodeError, KeyError, ValueError, OSError:
-        return  # Malformed baseline -- skip check, don't block.
+    baseline_secs, baseline_count, threshold_ratio = loaded
+    unit_count = sum(1 for item in session.items if item.get_closest_marker("unit"))
+    non_unit_count = len(session.items) - unit_count
     # Only compare against baseline when the session is (roughly) the
     # full unit suite and nothing else.  The baseline measures unit-
     # test time only; ``elapsed`` is total wall-clock including
-    # integration/conformance/e2e tests when they are mixed in via
-    # ``pytest tests/``.  Skip the check if either:
-    #   1. the unit count is well below the baseline (partial run), or
-    #   2. non-unit tests were collected alongside unit tests.
-    unit_count = sum(1 for item in session.items if item.get_closest_marker("unit"))
-    non_unit_count = len(session.items) - unit_count
-    if baseline_count and unit_count < baseline_count * 0.8:
+    # integration/conformance/e2e tests when mixed in.
+    partial_run = bool(baseline_count) and unit_count < baseline_count * 0.8
+    cannot_compute = baseline_count <= 0 or unit_count <= 0
+    if partial_run or non_unit_count > 0 or cannot_compute:
         return
-    if non_unit_count > 0:
+    elapsed = time.monotonic() - _suite_start
+    baseline_per_test_ms = baseline_secs * 1000.0 / baseline_count
+    current_per_test_ms = elapsed * 1000.0 / unit_count
+    if current_per_test_ms <= baseline_per_test_ms * threshold_ratio:
         return
-    # Per-test cost is the primary regression signal.  It is immune to
-    # runner noise (pre-push thermal throttling, parallel mypy, etc.)
-    # and scales naturally with test-count growth.  The absolute
-    # threshold is a fallback only when per-test cost cannot be
-    # computed (no baseline count or no unit tests collected).
-    can_compare_per_test = baseline_count > 0 and unit_count > 0
-    if can_compare_per_test:
-        baseline_per_test = baseline_secs / baseline_count
-        current_per_test = elapsed / unit_count
-        regression = current_per_test > baseline_per_test * threshold_ratio
-    else:
-        max_allowed = _compute_max_allowed(
-            baseline_secs,
-            baseline_count,
-            unit_count,
-            threshold_secs,
-        )
-        regression = elapsed > max_allowed
-    if regression:
-        delta = elapsed - baseline_secs
-        baseline_per_test = baseline_secs / max(baseline_count, 1)
-        current_per_test = elapsed / max(unit_count, 1)
-        border = "!" * 60
-        msg = (
-            f"\n{border}\n"
-            f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
-            f"baseline is {baseline_secs:.0f}s (+{delta:.0f}s, "
-            f"tolerance {threshold_secs:.0f}s)\n"
-            f"Per-test cost: {current_per_test * 1000:.1f}ms vs "
-            f"baseline {baseline_per_test * 1000:.1f}ms "
-            f"(ratio cap {threshold_ratio:.2f}x)\n"
-            f"Run A/B against origin/main before fixing anything.\n"
-            f"Do NOT delete tests or use --no-verify.\n"
-            f"If the new baseline is intentional, update "
-            f"tests/baselines/unit_timing.json.\n"
-            f"{border}\n"
-        )
-        print(msg, file=sys.stderr)  # noqa: T201
-        # Hard fail: exit status 3 signals test-level failure to CI
-        # and pre-push hooks.  This is intentional -- regressions
-        # beyond the tolerance must block the change, not just warn.
-        session.exitstatus = 3
+    _emit_regression_banner(
+        elapsed=elapsed,
+        unit_count=unit_count,
+        baseline_secs=baseline_secs,
+        baseline_count=baseline_count,
+        threshold_ratio=threshold_ratio,
+    )
+    # Hard fail: exit status 3 signals test-level failure to CI
+    # and pre-push hooks.  This is intentional; regressions
+    # beyond the tolerance must block the change, not just warn.
+    session.exitstatus = 3
 
 
 def clear_logging_state() -> None:

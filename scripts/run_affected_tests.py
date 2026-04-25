@@ -181,14 +181,24 @@ def _parse_test_count(pytest_output: str) -> int | None:
 class _BaselineSnapshot:
     """Validated numeric view of ``tests/baselines/unit_timing.json``.
 
-    ``threshold_ratio`` and ``test_count`` are ``None`` when the baseline
-    does not carry the per-test rail data, which flips the caller to
-    the absolute-seconds fallback.
+    The primary regression metric is ``per_test_ms`` -- per-test cost in
+    milliseconds, derived from ``unit_suite_seconds * 1000 /
+    test_count`` at parse time.  Absolute-seconds checks are gone:
+    mechanical test-count growth (PRs adding new tests) was firing the
+    old absolute threshold without representing a real slowdown, so
+    operators were forced to refresh the baseline every time upstream
+    landed new tests.  Per-test cost is dimension-correct -- it
+    normalizes against population size and only fires when individual
+    tests actually slow down.
+
+    ``baseline_test_count`` is retained for the partial-run guard in
+    ``tests/conftest.py::pytest_sessionfinish`` (skip the check when
+    the collected unit count is well below the full suite, e.g. the
+    user ran a single test file).  It is NOT used in ratio computation.
     """
 
-    baseline_secs: float
-    threshold_secs: float
-    threshold_ratio: float | None
+    per_test_ms: float
+    threshold_ratio: float
     baseline_test_count: int | None
 
 
@@ -222,10 +232,10 @@ def _positive_int(raw: object) -> int | None:
 def _load_baseline_snapshot() -> _BaselineSnapshot | None:
     """Parse and validate the baseline file.
 
-    Returns ``None`` when the file is missing, malformed, or carries
-    non-finite / non-positive numbers that would make the per-test
-    rail meaningless (e.g. ``regression_threshold_ratio: 0`` would
-    flag every run as a regression).
+    Returns ``None`` when the file is missing, malformed, or missing
+    the required fields (``unit_suite_seconds`` + ``test_count``, OR
+    a directly-provided ``per_test_ms``). ``regression_threshold_ratio``
+    defaults to 1.3 if absent.
     """
     if not _BASELINE_PATH.exists():
         return None
@@ -234,30 +244,34 @@ def _load_baseline_snapshot() -> _BaselineSnapshot | None:
     except json.JSONDecodeError, OSError:
         return None
     # ``json.loads`` happily returns a bare list/str/number for any
-    # syntactically-valid JSON, so guard the shape before indexing --
-    # otherwise a malformed baseline crashes the hook instead of
+    # syntactically-valid JSON, so guard the shape before indexing.
+    # Otherwise a malformed baseline crashes the hook instead of
     # cleanly disabling the regression check.
     if not isinstance(baseline, dict):
         return None
-    try:
-        baseline_secs = float(baseline["unit_suite_seconds"])
-        threshold_secs = float(baseline.get("regression_threshold_secs", 10))
-    except KeyError, TypeError, ValueError:
-        return None
-    if (
-        not math.isfinite(baseline_secs)
-        or baseline_secs <= 0
-        or not math.isfinite(threshold_secs)
-        or threshold_secs < 0
-    ):
-        return None
+
+    test_count = _positive_int(baseline.get("test_count"))
+    per_test_ms = _positive_finite_float(baseline.get("per_test_ms"))
+
+    # When the baseline omits ``per_test_ms`` derive it from
+    # ``unit_suite_seconds * 1000 / test_count``; both fields stay in
+    # the JSON so operators can read absolute numbers at a glance.
+    if per_test_ms is None:
+        baseline_secs = _positive_finite_float(baseline.get("unit_suite_seconds"))
+        if baseline_secs is None or test_count is None:
+            return None
+        per_test_ms = baseline_secs * 1000.0 / test_count
+
+    threshold_ratio = _positive_finite_float(
+        baseline.get("regression_threshold_ratio"),
+    )
+    if threshold_ratio is None:
+        threshold_ratio = 1.3
+
     return _BaselineSnapshot(
-        baseline_secs=baseline_secs,
-        threshold_secs=threshold_secs,
-        threshold_ratio=_positive_finite_float(
-            baseline.get("regression_threshold_ratio"),
-        ),
-        baseline_test_count=_positive_int(baseline.get("test_count")),
+        per_test_ms=per_test_ms,
+        threshold_ratio=threshold_ratio,
+        baseline_test_count=test_count,
     )
 
 
@@ -324,58 +338,33 @@ def _check_per_test_regression(
     *,
     snapshot: _BaselineSnapshot,
     test_count: int | None,
-) -> bool | None:
-    """Per-test cost rail.
+) -> bool:
+    """Per-test cost rail (the only data-driven rail).
 
-    Returns ``None`` when the baseline does not carry ratio / count
-    data (caller falls back to the absolute-seconds rail). Returns
-    ``True`` when the per-test cost exceeds the baseline multiplied
-    by ``threshold_ratio``, else ``False`` -- the definitive decision
-    when data is available.
+    Returns ``True`` when current per-test cost exceeds
+    ``baseline_per_test * threshold_ratio``.  Returns ``False`` when
+    we cannot compute current per-test cost (no test count from
+    pytest); a missing test count is not by itself a regression and
+    should not block the run -- the env-cap rail still catches blow-ups.
     """
-    if (
-        snapshot.threshold_ratio is None
-        or snapshot.baseline_test_count is None
-        or test_count is None
-        or test_count <= 0
-    ):
-        return None
-    baseline_per_test = snapshot.baseline_secs / snapshot.baseline_test_count
-    current_per_test = elapsed / test_count
-    max_per_test = baseline_per_test * snapshot.threshold_ratio
-    if current_per_test <= max_per_test:
+    if test_count is None or test_count <= 0:
         return False
+    current_per_test_ms = elapsed * 1000.0 / test_count
+    max_per_test_ms = snapshot.per_test_ms * snapshot.threshold_ratio
+    if current_per_test_ms <= max_per_test_ms:
+        return False
+    baseline_count_label = (
+        str(snapshot.baseline_test_count)
+        if snapshot.baseline_test_count is not None
+        else "unknown"
+    )
     _print_regression_banner(
-        f"REGRESSION DETECTED: per-test cost {current_per_test * 1000:.2f}ms "
-        f"exceeds {max_per_test * 1000:.2f}ms "
-        f"(baseline {baseline_per_test * 1000:.2f}ms, "
+        f"REGRESSION DETECTED: per-test cost {current_per_test_ms:.2f}ms "
+        f"exceeds {max_per_test_ms:.2f}ms "
+        f"(baseline {snapshot.per_test_ms:.2f}ms, "
         f"ratio {snapshot.threshold_ratio:.2f}).\n"
         f"Suite: {elapsed:.0f}s across {test_count} tests "
-        f"(baseline {snapshot.baseline_secs:.0f}s across "
-        f"{snapshot.baseline_test_count}).",
-    )
-    return True
-
-
-def _check_absolute_regression(
-    elapsed: float,
-    *,
-    snapshot: _BaselineSnapshot,
-    env_max_allowed: float | None,
-) -> bool:
-    """Absolute-seconds fallback rail."""
-    max_allowed = (
-        env_max_allowed
-        if env_max_allowed is not None
-        else snapshot.baseline_secs + snapshot.threshold_secs
-    )
-    if elapsed <= max_allowed:
-        return False
-    delta = elapsed - snapshot.baseline_secs
-    _print_regression_banner(
-        f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
-        f"baseline is {snapshot.baseline_secs:.0f}s (+{delta:.0f}s, "
-        f"tolerance {snapshot.threshold_secs:.0f}s).",
+        f"(baseline test count: {baseline_count_label}).",
     )
     return True
 
@@ -405,10 +394,15 @@ def _check_timing_regression(
     """Return ``True`` when the run shows a timing regression.
 
     Only checks full-suite runs (``run_all=True``); affected-only runs
-    vary widely and are not comparable to the baseline. Delegates the
-    actual rail logic to ``_check_env_cap`` / ``_check_per_test_regression``
-    / ``_check_absolute_regression`` so this orchestrator stays under
-    the 50-line function limit.
+    vary widely and are not comparable to the baseline.  Two rails:
+
+    * ``_check_env_cap`` -- operator escape hatch
+      (``UNIT_SUITE_MAX_SECONDS``); blow past it and fail regardless.
+    * ``_check_per_test_regression`` -- the data-driven rail.  Per-test
+      cost in milliseconds, computed live from elapsed seconds and
+      pytest's collected count.  Mechanical test-count growth (PRs
+      adding new tests) does not move this metric, so the baseline
+      stays valid until per-test cost actually drifts.
     """
     if not run_all:
         return False
@@ -418,17 +412,10 @@ def _check_timing_regression(
     env_max_allowed = _parse_env_override()
     if _check_env_cap(elapsed, env_max_allowed=env_max_allowed):
         return True
-    per_test = _check_per_test_regression(
+    return _check_per_test_regression(
         elapsed,
         snapshot=snapshot,
         test_count=test_count,
-    )
-    if per_test is not None:
-        return per_test
-    return _check_absolute_regression(
-        elapsed,
-        snapshot=snapshot,
-        env_max_allowed=env_max_allowed,
     )
 
 
