@@ -17,6 +17,7 @@ When invoked, focus on the diff and modified `.py` files in `src/` and `tests/`.
 ## Review Priorities
 
 ### CRITICAL: Security
+
 - **SQL injection**: f-strings or `%` interpolation in SQL strings. Use parameterized queries via the persistence layer.
 - **Command injection**: unvalidated input in `subprocess` shell calls. Use list args, never `shell=True` on user input.
 - **Path traversal**: user-controlled paths. Validate with `pathlib.Path.resolve()` and prefix-check.
@@ -27,12 +28,14 @@ When invoked, focus on the diff and modified `.py` files in `src/` and `tests/`.
 - **Secret-log redaction**: on credential-bearing paths (OAuth, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), `logger.exception(EVENT, error=str(exc))` is forbidden. Use `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` from `synthorg.observability`.
 
 ### CRITICAL: Error Handling
+
 - **Bare except**: `except: pass`. Catch specific exceptions.
 - **Swallowed exceptions**: silent failures. Log and re-raise or handle deliberately.
 - **Missing context managers**: manual file/resource management. Use `with`.
 - **Lifecycle stop swallowing failures**: timed-out `stop()` must mark the service unrestartable. See `docs/reference/lifecycle-sync.md`.
 
 ### HIGH: Type Hints
+
 - Public functions without type annotations (mypy strict mode is enforced).
 - `Any` where a specific type is possible.
 - Missing `T | None` for nullable parameters (the project uses PEP 604 union syntax, not `Optional[T]`).
@@ -57,6 +60,7 @@ except (ValueError, TypeError) as exc:    # parens still required when binding v
 Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesized form `except (A, B):` (no `as`) as a style issue: it should be unparenthesized. When `as exc` is present, parens ARE mandatory.
 
 ### HIGH: Pythonic Patterns
+
 - Use list/dict/set comprehensions over C-style loops.
 - Use `isinstance()` not `type() ==`.
 - Use `Enum` not magic numbers/strings.
@@ -64,6 +68,7 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 - **Mutable default arguments**: `def f(x=[])`. Use `def f(x=None)` and rebind inside.
 
 ### HIGH: Code Quality
+
 - Functions over 50 lines, files over 800 lines.
 - Functions over 5 parameters (use a frozen Pydantic model or dataclass).
 - Deep nesting (over 4 levels).
@@ -71,12 +76,14 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 - Line length > 88 (ruff enforced).
 
 ### HIGH: Concurrency
+
 - Prefer `asyncio.TaskGroup` for fan-out/fan-in over bare `asyncio.create_task`. Structured concurrency is the project default for new code.
 - Inside a `TaskGroup` where one worker's failure should NOT cancel siblings (independent workers, classification detectors, notification sinks), wrap each task body in a small `async def` helper that catches `Exception` and returns a safe default (re-raising only `MemoryError`/`RecursionError`).
 - Lifecycle `start()` / `stop()` use a dedicated `self._lifecycle_lock: asyncio.Lock` (separate from any hot-path lock). See `docs/reference/lifecycle-sync.md`.
 - Shared mutable state without locks. N+1 in async loops.
 
 ### HIGH: Pydantic v2 Conventions
+
 - `BaseModel`, `model_validator`, `computed_field`, `ConfigDict(allow_inf_nan=False)` to reject NaN/Inf at validation time.
 - `NotBlankStr` (from `core.types`) for all identifier/name fields, including `NotBlankStr | None` and `tuple[NotBlankStr, ...]` variants.
 - `@computed_field` for derived values, not stored + validated redundant fields (e.g. `TokenUsage.total_tokens`).
@@ -84,6 +91,7 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 - For dict/list fields in frozen Pydantic models, rely on `frozen=True` + `copy.deepcopy()` at system boundaries (tool execution, LLM serialization, inter-agent delegation, persistence).
 
 ### HIGH: Persistence Boundary
+
 - Only `src/synthorg/persistence/` may import `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`. Anywhere else is a violation flagged by `scripts/check_persistence_boundary.py`.
 - Controllers and API endpoints access persistence through service-layer facades (`ArtifactService`, `WorkflowService`, etc.), never directly into repositories.
 - Repositories must NOT log mutations. Services own audit logging.
@@ -91,6 +99,7 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 - Per-line opt-out: `# lint-allow: persistence-boundary -- <required justification>`.
 
 ### HIGH: Logging Convention
+
 - Every business-logic module: `from synthorg.observability import get_logger` then `logger = get_logger(__name__)`. Variable name MUST be `logger` (not `_logger`, not `log`).
 - Never `import logging`, `logging.getLogger()`, or `print()` in application code. Exception list: `observability/setup.py`, `observability/sinks.py`, `observability/syslog_handler.py`, `observability/http_handler.py`, `observability/otlp_handler.py` (bootstrap-time handler construction).
 - Event names from constants in `synthorg.observability.events.<domain>` (e.g. `from synthorg.observability.events.api import API_REQUEST_STARTED`). Never use a free-form string.
@@ -99,16 +108,19 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 - Pure data models, enums, and re-exports do NOT need logging.
 
 ### MEDIUM: Style
+
 - PEP 8: import order, naming, spacing.
 - Missing docstrings on public classes/functions (Google style, ruff D rules enforce).
 - `value == None` should be `value is None`.
 - Shadowing builtins (`list`, `dict`, `str`, `id`).
 
 ### MEDIUM: Vendor-Agnostic Naming
+
 - Never write Anthropic, Claude, OpenAI, GPT in project-owned code, docstrings, comments, tests, or config examples. Use `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, or generic `large`/`medium`/`small`. Tests use `test-provider`, `test-small-001`, etc.
 - Allowlisted: `docs/design/operations.md` provider list, `.claude/` skill/agent files, third-party import paths (`litellm.types.llms.openai` is a real module name and stays), provider presets (`src/synthorg/providers/presets.py` is user-facing runtime data).
 
 ### MEDIUM: Regional Defaults
+
 - Never hardcode ISO 4217 currency codes (`'USD'`, `'EUR'`) or symbols (`$`, `€`).
 - Never hardcode BCP 47 locale tags (`'en-US'`, `'de-DE'`).
 - Backend money fields drop the `_usd` suffix; type `currency: CurrencyCode` carries the semantics. All cost-bearing Pydantic models (`CostRecord`, `TaskMetricRecord`, `LlmCalibrationRecord`, `AgentRuntimeState`) carry currency.
@@ -116,13 +128,16 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 - Per-line opt-out: `# lint-allow: regional-defaults`.
 
 ### MEDIUM: Clean Rename Rule (pre-alpha)
+
 - The project is pre-alpha. A rename is the whole rename. Do NOT introduce alias re-exports, `_legacy` passthroughs, or "kept around for now" wrappers when renaming or removing identifiers. Update every consumer in the same change.
 - Flag re-exports introduced as a transitional alias on a renamed identifier.
 
 ### MEDIUM: No Long Dash
+
 - The long-dash glyph (Unicode U+2014) is banned in committed text (pre-commit enforces). Use a hyphen (`-`) or a colon (`:`). Flag any long dash you see in diffs.
 
 ### MEDIUM: Test Conventions
+
 - Markers: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`. 80% coverage minimum.
 - 30 second default timeout in `pyproject.toml`. Do NOT add per-file `pytest.mark.timeout(30)` markers; non-default overrides like `timeout(60)` ARE allowed.
 - Always include `-n 8` (pytest-xdist) in local invocations. Never run sequentially.

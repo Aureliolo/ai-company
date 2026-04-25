@@ -102,8 +102,9 @@ gofmt -l cli/
 
 ## Severity Levels
 
-- **HIGH**: Bugs, goroutine leaks, resource leaks, unchecked errors, race conditions, security issues
-- **MEDIUM**: Non-idiomatic code, testing gaps, scope violations
+- **CRITICAL**: Showstopper defects that must be fixed before merge - data loss, complete service outage, command/SQL injection, exposed Docker socket, scope violations that ship a feature command in the CLI
+- **HIGH**: Bugs, goroutine leaks, resource leaks, unchecked errors, race conditions, other security issues
+- **MEDIUM**: Non-idiomatic code, testing gaps, smaller scope violations
 - **LOW**: Performance, minor style
 
 ## Approval Criteria

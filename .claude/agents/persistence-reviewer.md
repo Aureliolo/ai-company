@@ -51,7 +51,7 @@ Repositories: scan for `logger.info`, `logger.warning`, `logger.error` calls ins
 ### 3. Migration discipline (CRITICAL)
 
 - Hand-edited SQL in `src/synthorg/persistence/{sqlite,postgres}/revisions/`: CRITICAL. The pre-commit gate blocks but you should also flag.
-- Manual edits to `atlas.sum`: CRITICAL. The user has feedback memory `feedback_atlas_migrations.md` to never hand-create. Flag and link to `docs/guides/persistence-migrations.md`.
+- Manual edits to `atlas.sum`: CRITICAL. Always use `atlas migrate diff`; link to `docs/guides/persistence-migrations.md`.
 - More than one new migration per backend per PR: CRITICAL.
 - Schema drift: run `atlas schema diff --env sqlite` and `--env postgres`. Any diff between `schema.sql` and the latest revision means generation is missing.
 
@@ -120,7 +120,8 @@ Renames are atomic. No aliasing the old name, no `_legacy` passthroughs. Flag re
 
 ## Severity Levels
 
-- **HIGH**: SQL injection, transaction safety, persistence-boundary violations, migration discipline violations, schema drift between backends, missing currency fields on cost-bearing models
+- **CRITICAL**: Persistence-boundary violations, hand-edited revision SQL, manual `atlas.sum` edits, more than one new migration per backend per PR, destructive migrations without a data step
+- **HIGH**: SQL injection, transaction safety, schema drift between backends, missing currency fields on cost-bearing models, deadlock-prone lock ordering
 - **MEDIUM**: Schema design (types/constraints), query efficiency, repo-side logging, missing indexes
 - **LOW**: Minor optimization, naming conventions
 
@@ -150,7 +151,6 @@ Read-only diagnostics only. Never write files via Bash. Never `cd` or `git -C` t
 - docs/reference/persistence-boundary.md (exception categories, in-memory fallback naming, migration-hash guardrails)
 - docs/guides/persistence-migrations.md (migration workflow)
 - docs/reference/pluggable-subsystems.md (services as a distinct pattern)
-- Memory note `feedback_atlas_migrations.md`: always `atlas migrate diff`, never hand-create
 
 Remember: persistence issues are often the root cause of application performance problems. Optimize queries and schema design early. Use EXPLAIN ANALYZE / EXPLAIN QUERY PLAN to verify assumptions. Always index foreign keys and predicates used by hot queries.
 

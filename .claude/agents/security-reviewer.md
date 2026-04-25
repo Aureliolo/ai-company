@@ -30,10 +30,12 @@ npm --prefix web run lint
 ## Review Workflow
 
 ### 1. Initial scan
+
 - Run gitleaks via pre-commit. Search the diff for hardcoded secrets, plaintext credentials, and SEC-1 fence omissions.
 - Review high-risk areas: auth, API endpoints, LLM call sites, DB queries, file uploads, HTML parsing, `subprocess` shell calls, MCP handlers.
 
 ### 2. OWASP Top 10 check
+
 1. **Injection**: queries parameterized? User input sanitized? ORMs used safely? Are LLM prompts using `wrap_untrusted` for any attacker-controllable string?
 2. **Broken auth**: passwords hashed (argon2id preferred)? JWTs validated? Sessions secure? Setup-wizard cookies properly invalidated?
 3. **Sensitive data**: HTTPS enforced? Secrets in env vars or secret backend, not in source? PII encrypted at rest? Logs sanitized via `safe_error_description`?
@@ -46,6 +48,7 @@ npm --prefix web run lint
 10. **Insufficient logging**: security events logged at the right level? Alerts configured? No raw `str(exc)` on credential paths.
 
 ### 3. Code pattern review
+
 Flag these patterns immediately:
 
 | Pattern | Severity | Fix |

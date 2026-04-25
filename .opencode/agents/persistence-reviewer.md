@@ -119,7 +119,8 @@ Renames are atomic. No aliasing the old name, no `_legacy` passthroughs. Flag re
 
 ## Severity Levels
 
-- **HIGH**: SQL injection, transaction safety, persistence-boundary violations, migration discipline violations, schema drift between backends, missing currency fields on cost-bearing models
+- **CRITICAL**: Persistence-boundary violations, hand-edited revision SQL, manual `atlas.sum` edits, more than one new migration per backend per PR, destructive migrations without a data step
+- **HIGH**: SQL injection, transaction safety, schema drift between backends, missing currency fields on cost-bearing models, deadlock-prone lock ordering
 - **MEDIUM**: Schema design (types/constraints), query efficiency, repo-side logging, missing indexes
 - **LOW**: Minor optimization, naming conventions
 
