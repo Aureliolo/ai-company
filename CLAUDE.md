@@ -109,7 +109,7 @@ Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web
 
 - `src/synthorg/persistence/` is the **only** place that may import `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`, or emit raw SQL DDL/DML keywords in string literals. Enforced by `scripts/check_persistence_boundary.py` (pre-push + CI).
 - Every durable feature MUST define a repository Protocol in `persistence/<domain>_protocol.py`, concrete impls under `persistence/{sqlite,postgres}/`, and be exposed on `PersistenceBackend`.
-- Controllers and API endpoints access persistence through domain-scoped **service layers** (`ArtifactService`, `WorkflowService`, `MemoryService`, `CustomRulesService`, `UserService`, `ProjectService`), never directly into repositories. Services centralise audit logging and cross-repo orchestration; repositories **must not** log mutations themselves (enforced by `scripts/check_persistence_boundary.py`).
+- Controllers and API endpoints access persistence through domain-scoped **service layers** (e.g. `ArtifactService`, `WorkflowService`, `MemoryService`, `CustomRulesService`, `UserService`, `ProjectService` -- non-exhaustive), never directly into repositories. Services centralise audit logging and cross-repo orchestration; repositories **must not** log mutations themselves (enforced by `scripts/check_persistence_boundary.py`).
 - Adding a migration: read `docs/guides/persistence-migrations.md` first. Do not hand-edit SQL or `atlas.sum`.
 - Per-line opt-out: `# lint-allow: persistence-boundary -- <required justification>`.
 

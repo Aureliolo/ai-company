@@ -1,0 +1,129 @@
+"""Unit tests for :class:`ArtifactService`.
+
+Verifies that the audit events emitted by the service are the new
+``API_ARTIFACT_*`` constants (renamed from ``PERSISTENCE_ARTIFACT_*``
+in #1562) and that mutations only emit when they actually mutate.
+"""
+
+import pytest
+import structlog
+
+from synthorg.core.artifact import Artifact
+from synthorg.core.enums import ArtifactType
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.artifacts.service import ArtifactService
+from synthorg.observability.events.api import (
+    API_ARTIFACT_CREATED,
+    API_ARTIFACT_DELETED,
+    API_ARTIFACT_UPDATED,
+)
+
+pytestmark = pytest.mark.unit
+
+
+class _FakeArtifactRepo:
+    """In-memory ArtifactRepository used as a test stub."""
+
+    def __init__(self) -> None:
+        self._rows: dict[str, Artifact] = {}
+
+    async def save(self, artifact: Artifact) -> None:
+        self._rows[artifact.id] = artifact
+
+    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
+        return self._rows.get(artifact_id)
+
+    async def list_artifacts(
+        self,
+        *,
+        task_id: NotBlankStr | None = None,
+        created_by: NotBlankStr | None = None,
+        artifact_type: ArtifactType | None = None,
+    ) -> tuple[Artifact, ...]:
+        rows = sorted(self._rows.values(), key=lambda a: a.id)
+        if task_id is not None:
+            rows = [a for a in rows if a.task_id == task_id]
+        if created_by is not None:
+            rows = [a for a in rows if a.created_by == created_by]
+        if artifact_type is not None:
+            rows = [a for a in rows if a.type == artifact_type]
+        return tuple(rows)
+
+    async def delete(self, artifact_id: NotBlankStr) -> bool:
+        return self._rows.pop(artifact_id, None) is not None
+
+
+async def test_create_emits_api_artifact_created() -> None:
+    """``create`` emits ``API_ARTIFACT_CREATED`` (not ``PERSISTENCE_*``)."""
+    repo = _FakeArtifactRepo()
+    service = ArtifactService(repo=repo)
+
+    with structlog.testing.capture_logs() as logs:
+        result = await service.create(
+            artifact_type=ArtifactType.CODE,
+            path=NotBlankStr("path/to/file.py"),
+            task_id=NotBlankStr("task-1"),
+            created_by=NotBlankStr("agent-1"),
+        )
+
+    assert result.id.startswith("artifact-")
+    assert any(log["event"] == API_ARTIFACT_CREATED for log in logs), (
+        f"expected {API_ARTIFACT_CREATED} in {logs}"
+    )
+    # Defend against re-introduction of the old persistence-layer event.
+    assert not any(log["event"] == "persistence.artifact.saved" for log in logs), (
+        "PERSISTENCE_ARTIFACT_SAVED should no longer fire"
+    )
+
+
+async def test_save_emits_api_artifact_updated() -> None:
+    """``save`` (upsert path used by content uploads) emits ``API_ARTIFACT_UPDATED``."""
+    repo = _FakeArtifactRepo()
+    service = ArtifactService(repo=repo)
+    artifact = Artifact(
+        id=NotBlankStr("artifact-existing"),
+        type=ArtifactType.CODE,
+        path=NotBlankStr("path/to/file.py"),
+        task_id=NotBlankStr("task-1"),
+        created_by=NotBlankStr("agent-1"),
+    )
+    await repo.save(artifact)
+
+    with structlog.testing.capture_logs() as logs:
+        await service.save(artifact)
+
+    assert any(log["event"] == API_ARTIFACT_UPDATED for log in logs)
+    assert not any(log["event"] == "persistence.artifact.saved" for log in logs)
+
+
+async def test_delete_returns_true_and_emits_api_artifact_deleted() -> None:
+    """Successful delete fires ``API_ARTIFACT_DELETED``."""
+    repo = _FakeArtifactRepo()
+    service = ArtifactService(repo=repo)
+    artifact = Artifact(
+        id=NotBlankStr("artifact-to-delete"),
+        type=ArtifactType.CODE,
+        path=NotBlankStr("doomed.py"),
+        task_id=NotBlankStr("task-1"),
+        created_by=NotBlankStr("agent-1"),
+    )
+    await repo.save(artifact)
+
+    with structlog.testing.capture_logs() as logs:
+        deleted = await service.delete(artifact.id)
+
+    assert deleted is True
+    assert any(log["event"] == API_ARTIFACT_DELETED for log in logs)
+    assert not any(log["event"] == "persistence.artifact.deleted" for log in logs)
+
+
+async def test_delete_missing_does_not_emit_event() -> None:
+    """Missing artifact: ``delete`` returns ``False``, no audit fired."""
+    repo = _FakeArtifactRepo()
+    service = ArtifactService(repo=repo)
+
+    with structlog.testing.capture_logs() as logs:
+        deleted = await service.delete(NotBlankStr("artifact-missing"))
+
+    assert deleted is False
+    assert not any(log["event"] == API_ARTIFACT_DELETED for log in logs)

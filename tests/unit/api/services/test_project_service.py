@@ -69,7 +69,12 @@ def _make_project(
 
 
 async def test_create_persists_and_emits_api_project_created() -> None:
-    """``create`` saves the project and fires ``API_PROJECT_CREATED``."""
+    """``create`` saves the project and fires ``API_PROJECT_CREATED``.
+
+    Asserts the structured kwargs (``project_id``, ``status``, ``lead``)
+    so that a future refactor that drops a field from the audit payload
+    is caught. Monitoring filters key on these fields.
+    """
     repo = _FakeProjectRepo()
     service = ProjectService(repo=repo)
     project = _make_project()
@@ -77,15 +82,25 @@ async def test_create_persists_and_emits_api_project_created() -> None:
     with structlog.testing.capture_logs() as logs:
         result = await service.create(project)
 
-    assert result is project
-    assert await repo.get(project.id) is project
-    assert any(log["event"] == API_PROJECT_CREATED for log in logs), (
-        f"expected {API_PROJECT_CREATED} in log events: {logs}"
+    assert result == project
+    fetched = await repo.get(project.id)
+    assert fetched == project
+    created_events = [log for log in logs if log["event"] == API_PROJECT_CREATED]
+    assert len(created_events) == 1, (
+        f"expected exactly one {API_PROJECT_CREATED} event in {logs}"
     )
+    event = created_events[0]
+    assert event["project_id"] == project.id
+    assert event["status"] == project.status.value
+    assert event["lead"] == project.lead
 
 
 async def test_update_persists_and_emits_api_project_updated() -> None:
-    """``update`` saves the project and fires ``API_PROJECT_UPDATED``."""
+    """``update`` saves the project and fires ``API_PROJECT_UPDATED``.
+
+    Asserts the structured kwargs (``project_id``, ``status``) to pin
+    the audit payload shape against accidental field removal.
+    """
     repo = _FakeProjectRepo()
     service = ProjectService(repo=repo)
     project = _make_project()
@@ -98,11 +113,18 @@ async def test_update_persists_and_emits_api_project_updated() -> None:
     fetched = await repo.get(project.id)
     assert fetched is not None
     assert fetched.name == "Renamed"
-    assert any(log["event"] == API_PROJECT_UPDATED for log in logs)
+    updated_events = [log for log in logs if log["event"] == API_PROJECT_UPDATED]
+    assert len(updated_events) == 1
+    event = updated_events[0]
+    assert event["project_id"] == updated.id
+    assert event["status"] == updated.status.value
 
 
 async def test_delete_returns_true_and_emits_api_project_deleted() -> None:
-    """``delete`` returns ``True`` and emits ``API_PROJECT_DELETED``."""
+    """``delete`` returns ``True`` and emits ``API_PROJECT_DELETED``.
+
+    Asserts ``project_id`` in the audit payload.
+    """
     repo = _FakeProjectRepo()
     service = ProjectService(repo=repo)
     project = _make_project()
@@ -113,7 +135,9 @@ async def test_delete_returns_true_and_emits_api_project_deleted() -> None:
 
     assert deleted is True
     assert await repo.get(project.id) is None
-    assert any(log["event"] == API_PROJECT_DELETED for log in logs)
+    deleted_events = [log for log in logs if log["event"] == API_PROJECT_DELETED]
+    assert len(deleted_events) == 1
+    assert deleted_events[0]["project_id"] == project.id
 
 
 async def test_delete_returns_false_for_missing_and_does_not_emit_event() -> None:
@@ -135,7 +159,8 @@ async def test_get_passes_through_to_repo() -> None:
     project = _make_project()
     await repo.save(project)
 
-    assert await service.get(project.id) is project
+    fetched = await service.get(project.id)
+    assert fetched == project
     assert await service.get(NotBlankStr("proj-missing")) is None
 
 

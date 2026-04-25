@@ -150,18 +150,27 @@ class TestGetModelCapabilitiesResilience:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``max_concurrent=1`` serialises two parallel capability lookups."""
+        """``max_concurrent=1`` serialises two parallel capability lookups.
+
+        Uses an ``asyncio.Lock`` around the counter so the assertion does
+        not depend on the rate limiter for atomicity. If the wrap regresses
+        to ``max_concurrent=0`` the counter would still update consistently
+        and the peak assertion would catch the parallelism.
+        """
         driver = LiteLLMDriver(
             "test-provider",
             _make_config(max_concurrent=1),
         )
         in_flight = {"current": 0, "peak": 0}
+        counter_lock = asyncio.Lock()
 
         async def _stub_do(model: str) -> ModelCapabilities:
-            in_flight["current"] += 1
-            in_flight["peak"] = max(in_flight["peak"], in_flight["current"])
+            async with counter_lock:
+                in_flight["current"] += 1
+                in_flight["peak"] = max(in_flight["peak"], in_flight["current"])
             await asyncio.sleep(0.01)
-            in_flight["current"] -= 1
+            async with counter_lock:
+                in_flight["current"] -= 1
             return _stub_capabilities(model)
 
         monkeypatch.setattr(driver, "_do_get_model_capabilities", _stub_do)
@@ -176,11 +185,17 @@ class TestGetModelCapabilitiesResilience:
 class TestBatchGetCapabilitiesResilience:
     """``BaseCompletionProvider.batch_get_capabilities`` default impl."""
 
-    async def test_surfaces_retry_exhausted(
+    async def test_surfaces_retry_exhausted_via_exception_group(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``RetryExhaustedError`` propagates out of the TaskGroup batch."""
+        """``RetryExhaustedError`` propagates out of the TaskGroup batch.
+
+        ``asyncio.TaskGroup`` wraps any in-flight raised exception in an
+        ``ExceptionGroup``; the test asserts the wrapper contract
+        explicitly so a future refactor that loses the wrapping is
+        caught.
+        """
         driver = LiteLLMDriver("test-provider", _make_config(max_retries=1))
 
         async def _stub_do(model: str) -> ModelCapabilities:
@@ -195,18 +210,49 @@ class TestBatchGetCapabilitiesResilience:
         # the base default directly to exercise the per-model fan-out.
         from synthorg.providers.base import BaseCompletionProvider
 
-        with pytest.raises((RetryExhaustedError, ExceptionGroup)) as exc_info:
+        with pytest.raises(ExceptionGroup) as exc_info:
             await BaseCompletionProvider.batch_get_capabilities(
                 driver,
                 ("test-model-001", "test-model-002"),
             )
-        # TaskGroup wraps the exhaustion in an ExceptionGroup; verify
-        # the inner exception is RetryExhaustedError.
-        if isinstance(exc_info.value, ExceptionGroup):
-            inner = exc_info.value.exceptions
-            assert any(isinstance(e, RetryExhaustedError) for e in inner)
-        else:
-            assert isinstance(exc_info.value, RetryExhaustedError)
+        inner = exc_info.value.exceptions
+        assert any(isinstance(e, RetryExhaustedError) for e in inner)
+
+    @pytest.mark.parametrize(
+        "exception_factory",
+        [
+            pytest.param(MemoryError, id="memory-error"),
+            pytest.param(RecursionError, id="recursion-error"),
+        ],
+    )
+    async def test_propagates_resource_exhaustion_errors(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        exception_factory: type[BaseException],
+    ) -> None:
+        """``MemoryError`` / ``RecursionError`` escape uncaught.
+
+        These are bare ``BaseException`` subclasses that signal runtime
+        resource exhaustion -- the batch loop must NOT degrade them to
+        ``None`` (would silently mask a critical signal).  Verifies the
+        ``except (MemoryError, RecursionError, RetryExhaustedError)``
+        re-raise path in ``_one()``.
+        """
+        driver = LiteLLMDriver("test-provider", _make_config(max_retries=0))
+
+        async def _stub_do(model: str) -> ModelCapabilities:
+            del model
+            raise exception_factory()
+
+        monkeypatch.setattr(driver, "_do_get_model_capabilities", _stub_do)
+        from synthorg.providers.base import BaseCompletionProvider
+
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await BaseCompletionProvider.batch_get_capabilities(
+                driver,
+                ("test-model-001",),
+            )
+        assert any(isinstance(e, exception_factory) for e in exc_info.value.exceptions)
 
     async def test_swallows_classification_errors(
         self,

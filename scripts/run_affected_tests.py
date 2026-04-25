@@ -181,20 +181,28 @@ def _parse_test_count(pytest_output: str) -> int | None:
 class _BaselineSnapshot:
     """Validated numeric view of ``tests/baselines/unit_timing.json``.
 
-    The primary regression metric is ``per_test_ms`` -- per-test cost in
-    milliseconds, derived from ``unit_suite_seconds * 1000 /
-    test_count`` at parse time.  Absolute-seconds checks are gone:
-    mechanical test-count growth (PRs adding new tests) was firing the
-    old absolute threshold without representing a real slowdown, so
-    operators were forced to refresh the baseline every time upstream
-    landed new tests.  Per-test cost is dimension-correct -- it
-    normalizes against population size and only fires when individual
-    tests actually slow down.
+    The primary regression metric is ``per_test_ms``.  When present in
+    the baseline JSON, it is used directly; when absent, it is computed
+    at parse time from ``unit_suite_seconds * 1000 / test_count`` so
+    legacy baselines without an explicit ``per_test_ms`` field continue
+    to work.  Absolute-seconds checks are gone: mechanical test-count
+    growth (PRs adding new tests) was firing the old absolute threshold
+    without representing a real slowdown, so operators were forced to
+    refresh the baseline every time upstream landed new tests.  Per-test
+    cost is dimension-correct -- it normalizes against population size
+    and only fires when individual tests actually slow down.
+
+    ``threshold_ratio`` is always set: ``_load_baseline_snapshot``
+    defaults it to ``1.3`` when the JSON omits ``regression_threshold_ratio``,
+    so consumers can use it without a None-check.
 
     ``baseline_test_count`` is retained for the partial-run guard in
     ``tests/conftest.py::pytest_sessionfinish`` (skip the check when
     the collected unit count is well below the full suite, e.g. the
-    user ran a single test file).  It is NOT used in ratio computation.
+    user ran a single test file).  It is ``None`` only when the
+    baseline JSON is malformed or missing the ``test_count`` field --
+    a healthy baseline always carries it.  This field is NOT used in
+    ratio computation.
     """
 
     per_test_ms: float
@@ -344,8 +352,15 @@ def _check_per_test_regression(
     Returns ``True`` when current per-test cost exceeds
     ``baseline_per_test * threshold_ratio``.  Returns ``False`` when
     we cannot compute current per-test cost (no test count from
-    pytest); a missing test count is not by itself a regression and
-    should not block the run -- the env-cap rail still catches blow-ups.
+    pytest).
+
+    A missing test count is intentionally not surfaced as a regression:
+    treating "we could not measure" as "we regressed" would block runs
+    on transient pytest output anomalies (e.g. xdist worker crashes
+    that swallow the summary line) where there is no actual slowdown
+    signal.  The env-cap rail (``UNIT_SUITE_MAX_SECONDS``) still
+    catches absolute blow-ups in that path, so the operator escape
+    hatch covers the worst case while routine misses degrade gracefully.
     """
     if test_count is None or test_count <= 0:
         return False

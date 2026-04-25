@@ -71,5 +71,9 @@ trip on minor runner noise.  Per-test ms is already noise-tolerant
 (thermal throttling, parallel mypy on the same machine, etc., move
 the absolute number but not the ratio against baseline_per_test).
 The absolute field added no signal but caused real damage every time
-upstream landed new tests.  Both code consumers now ignore it; future
-baseline files should omit it.
+upstream landed new tests.  Both code consumers now ignore it.
+
+If your live `unit_timing.json` still carries
+`regression_threshold_secs`, it is harmless: the field is silently
+ignored by the parsers.  You may delete it during the next manual
+baseline refresh.  New baseline files should omit it.

@@ -1,7 +1,8 @@
 """Repository protocol for custom personality preset persistence.
 
-Separate module for the preset repository protocol, keeping persistence
-protocols modular (same pattern as ``artifact_project_repos.py``).
+Each persistence domain has its own ``<domain>_protocol.py`` module
+under ``src/synthorg/persistence/``; this file is the preset slice of
+that pattern.
 """
 
 from typing import NamedTuple, Protocol, runtime_checkable

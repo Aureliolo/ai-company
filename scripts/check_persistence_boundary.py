@@ -360,7 +360,28 @@ def _iter_persistence_targets(
 
 
 def _resolve_project_root(repo_root: Path | None) -> Path | int:
-    """Resolve the project root from CLI arguments, returning an exit code on error."""
+    """Resolve the project root from CLI arguments.
+
+    Returns a dual-typed value so the caller can collapse argument
+    validation and successful resolution into one helper without
+    raising:
+
+    - On success: returns a resolved :class:`Path` to the project root.
+    - On failure: returns an integer process exit code (currently
+      ``2``) after printing a diagnostic to stderr; the caller forwards
+      this directly to :func:`sys.exit`.
+
+    Callers MUST disambiguate via ``isinstance(result, Path)`` before
+    using the value.
+
+    Args:
+        repo_root: User-supplied repo root from ``--repo-root``, or
+            ``None`` to fall back to the script's own parent directory.
+
+    Returns:
+        A resolved :class:`Path` on success, or an ``int`` exit code on
+        failure.
+    """
     default_root = Path(__file__).resolve().parent.parent
     if repo_root is None:
         return default_root

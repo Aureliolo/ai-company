@@ -259,3 +259,56 @@ def test_skips_when_baseline_missing_fields(
         run_all=True,
         test_count=10_000,
     )
+
+
+# ── snapshot loader (positive coverage) ──────────────────────────
+
+
+def test_load_baseline_snapshot_returns_explicit_per_test_ms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Snapshot prefers an explicit ``per_test_ms`` over the derived one.
+
+    Regression guard: a JSON field rename that drops ``per_test_ms``
+    silently (e.g. typo to ``per_test_milliseconds``) would otherwise
+    fall back to the derived value and quietly tighten or loosen the
+    rail. This test pins the explicit-field shape.
+    """
+    _patch_baseline(
+        monkeypatch,
+        _write_baseline(
+            tmp_path,
+            unit_suite_seconds=100.0,
+            test_count=10_000,
+            per_test_ms=4.5,
+            regression_threshold_ratio=1.5,
+        ),
+    )
+    snapshot = _MODULE._load_baseline_snapshot()  # type: ignore[attr-defined]
+    assert snapshot is not None
+    assert snapshot.per_test_ms == pytest.approx(4.5)
+    assert snapshot.threshold_ratio == pytest.approx(1.5)
+    assert snapshot.baseline_test_count == 10_000
+
+
+def test_load_baseline_snapshot_derives_per_test_ms_when_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without ``per_test_ms`` the loader derives it from ``unit_suite_seconds``."""
+    _patch_baseline(
+        monkeypatch,
+        _write_baseline(
+            tmp_path,
+            unit_suite_seconds=200.0,
+            test_count=10_000,
+        ),
+    )
+    snapshot = _MODULE._load_baseline_snapshot()  # type: ignore[attr-defined]
+    assert snapshot is not None
+    # 200s * 1000 / 10000 = 20.0 ms per test
+    assert snapshot.per_test_ms == pytest.approx(20.0)
+    # Default threshold ratio when omitted.
+    assert snapshot.threshold_ratio == pytest.approx(1.3)
+    assert snapshot.baseline_test_count == 10_000

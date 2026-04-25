@@ -27,6 +27,7 @@ from synthorg.observability.events.api import (
     API_AUTH_CONFIG_FALLBACK,
     API_AUTH_FAILED,
     API_AUTH_GUARD_SKIPPED,
+    API_AUTH_REFRESH_CREATED,
     API_SESSION_CREATE_FAILED,
     API_SESSION_CREATED,
 )
@@ -85,6 +86,11 @@ async def make_session_cookies(  # noqa: PLR0913
                         session_id=session_id,
                         user_id=user_id,
                         expires_at=refresh_expiry,
+                    )
+                    logger.info(
+                        API_AUTH_REFRESH_CREATED,
+                        session_id=session_id,
+                        user_id=user_id,
                     )
                     refresh_persisted = True
                 else:

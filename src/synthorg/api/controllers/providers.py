@@ -57,6 +57,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_MODEL_OPERATION_FAILED,
     API_PROVIDER_HEALTH_QUERIED,
+    API_PROVIDER_USAGE_ENRICHMENT_FAILED,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
     API_SSE_PULL_MODEL_FAILED,
@@ -71,6 +72,7 @@ from synthorg.providers.errors import (
 from synthorg.providers.health import ProviderHealthSummary  # noqa: TC001
 from synthorg.providers.presets import ProviderPreset, get_preset, list_presets
 from synthorg.providers.probing import probe_preset_urls
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 logger = get_logger(__name__)
 
@@ -198,9 +200,21 @@ class ProviderController(Controller):
 
         caps_by_id: Mapping[str, ModelCapabilities | None] = {}
         if driver is not None:
-            caps_by_id = await driver.batch_get_capabilities(
-                tuple(m.id for m in provider.models),
-            )
+            try:
+                caps_by_id = await driver.batch_get_capabilities(
+                    tuple(m.id for m in provider.models),
+                )
+            except RetryExhaustedError as exc:
+                # Retry exhaustion signals provider unhealthiness, not a
+                # per-model classification issue.  Degrade to "no
+                # capability data" rather than 500 -- the response still
+                # carries the static catalog from `provider.models`.
+                logger.warning(
+                    API_PROVIDER_USAGE_ENRICHMENT_FAILED,
+                    provider=name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
         results = tuple(
             to_provider_model_response(
                 model_config,

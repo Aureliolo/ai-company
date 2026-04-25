@@ -3,8 +3,7 @@
 Wraps :class:`ArtifactRepository` so API controllers can list / get /
 save / delete artifacts without reaching into
 ``state.app_state.persistence.artifacts`` directly. Centralises the
-``PERSISTENCE_ARTIFACT_*`` logging so every mutation has the same
-audit shape.
+``API_ARTIFACT_*`` logging so every mutation has the same audit shape.
 
 Content storage (upload / download / rollback) stays in the controller
 because it depends on :class:`ArtifactStorage` rather than the repository

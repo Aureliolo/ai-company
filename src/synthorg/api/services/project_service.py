@@ -39,11 +39,23 @@ class ProjectService:
 
     __slots__ = ("_repo",)
 
+    _repo: ProjectRepository
+
     def __init__(self, *, repo: ProjectRepository) -> None:
         self._repo = repo
 
     async def get(self, project_id: NotBlankStr) -> Project | None:
-        """Fetch a project by id, or ``None`` when no row matches."""
+        """Fetch a project by id.
+
+        Args:
+            project_id: Identifier of the project to fetch.
+
+        Returns:
+            The project, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: Repository read failure.
+        """
         return await self._repo.get(project_id)
 
     async def list_projects(
@@ -52,7 +64,21 @@ class ProjectService:
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
     ) -> tuple[Project, ...]:
-        """List projects with optional status / lead filters."""
+        """List projects with optional ``status`` / ``lead`` filters.
+
+        Emits ``API_PROJECT_LISTED`` at DEBUG with the result count for
+        traceability under high-volume listing.
+
+        Args:
+            status: Restrict to projects in this lifecycle status.
+            lead: Restrict to projects led by this agent id.
+
+        Returns:
+            Tuple of matching projects in repository order.
+
+        Raises:
+            QueryError: Repository read failure.
+        """
         projects = await self._repo.list_projects(
             status=status,
             lead=lead,
@@ -61,7 +87,19 @@ class ProjectService:
         return projects
 
     async def create(self, project: Project) -> Project:
-        """Persist a freshly-constructed project."""
+        """Persist a freshly-constructed project and audit the create.
+
+        Args:
+            project: Fully-validated project to persist.
+
+        Returns:
+            The same project (identity preserved for caller chaining).
+
+        Raises:
+            ConstraintViolationError: Duplicate id or invalid foreign
+                reference.
+            QueryError: Repository write failure.
+        """
         await self._repo.save(project)
         logger.info(
             API_PROJECT_CREATED,
@@ -72,7 +110,18 @@ class ProjectService:
         return project
 
     async def update(self, project: Project) -> Project:
-        """Upsert an existing project."""
+        """Upsert an existing project and audit the update.
+
+        Args:
+            project: Project to upsert (must have an existing id).
+
+        Returns:
+            The same project (identity preserved for caller chaining).
+
+        Raises:
+            ConstraintViolationError: Invalid foreign reference.
+            QueryError: Repository write failure.
+        """
         await self._repo.save(project)
         logger.info(
             API_PROJECT_UPDATED,
@@ -82,7 +131,21 @@ class ProjectService:
         return project
 
     async def delete(self, project_id: NotBlankStr) -> bool:
-        """Delete a project; returns ``True`` when a row was removed."""
+        """Delete a project and audit the deletion.
+
+        The audit event is only emitted when a row was actually removed,
+        so monitoring keyed on ``API_PROJECT_DELETED`` does not see
+        spurious entries for missing ids.
+
+        Args:
+            project_id: Identifier of the project to delete.
+
+        Returns:
+            ``True`` when a row was removed, ``False`` when no row matched.
+
+        Raises:
+            QueryError: Repository write failure.
+        """
         deleted = await self._repo.delete(project_id)
         if deleted:
             logger.info(
