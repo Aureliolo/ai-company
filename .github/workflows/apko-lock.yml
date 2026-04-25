@@ -34,6 +34,15 @@ jobs:
       - name: Update lockfiles
         run: |
           for config in docker/*/apko.yaml; do
+            # docker/web/apko.yaml depends on synthorg-web-assets@local --
+            # a melange-built apk produced fresh per docker.yml run, with
+            # no stable upstream to lock against. Skipping cleanly avoids
+            # `failed to read apk key: melange.rsa.pub` when apko looks
+            # for the workflow-build-time keyring outside docker.yml.
+            if [ "${config}" = "docker/web/apko.yaml" ]; then
+              echo "Skipping ${config} (workflow-build-time @local deps)"
+              continue
+            fi
             echo "Updating lockfile for ${config}..."
             apko lock "${config}"
           done
@@ -41,7 +50,11 @@ jobs:
       - name: Check for changes
         id: diff
         run: |
-          if git diff --quiet -- 'docker/*/apko.lock.json'; then
+          # `git diff --quiet` only catches modifications to tracked
+          # files; `apko lock` writes brand-new `<config>.apko.lock.json`
+          # files on first run that are still untracked. `git status
+          # --porcelain` covers both cases.
+          if [ -z "$(git status --porcelain -- 'docker/*/apko.lock.json')" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"

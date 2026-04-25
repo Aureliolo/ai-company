@@ -26,10 +26,6 @@ rulesets:
       - type: code_quality
         parameters:
           severity: all
-      - type: copilot_code_review
-        parameters:
-          review_on_push: false
-          review_draft_pull_requests: false
       - type: required_signatures
 
   - name: protect-main
