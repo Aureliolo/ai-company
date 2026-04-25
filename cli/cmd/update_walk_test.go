@@ -281,6 +281,13 @@ func TestRunStableHighlightsWalk_warnsOnEmptyRange(t *testing.T) {
 }
 
 func TestRunDevCommitWalk_warnsOnCompareError(t *testing.T) {
+	// Pin the build commit to a sentinel so this test deterministically
+	// exercises the tag-fallback branch even if a future test binary is
+	// ever built with real ldflags injection. The "tag was pruned" hint
+	// asserted below only fires on that branch -- on the SHA-base branch
+	// the hint reads "transient network error or GitHub rate limit"
+	// instead, which would silently break this assertion.
+	withCurrentBuildCommit(t, "none")
 	withCommitsBetween(t, func(_ context.Context, _, _ string) (selfupdate.CommitRange, error) {
 		return selfupdate.CommitRange{}, errors.New("404 Not Found")
 	})
