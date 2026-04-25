@@ -1,5 +1,6 @@
 """SQLite repository implementation for security audit entries."""
 
+import asyncio
 import json
 import sqlite3
 from datetime import UTC
@@ -57,8 +58,18 @@ class SQLiteAuditRepository:
         db: An open aiosqlite connection.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
+        # Inject the shared backend write lock so writes from this repo
+        # serialize with sibling repos that share the same
+        # ``aiosqlite.Connection``; fall back to a private lock for
+        # standalone test construction.
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     async def save(self, entry: AuditEntry) -> None:
         """Persist an audit entry (append-only, no upsert).
@@ -77,15 +88,35 @@ class SQLiteAuditRepository:
         )
         placeholders = ", ".join(f":{c}" for c in AUDIT_COLUMNS)
         sql = f"INSERT INTO audit_entries ({_COL_LIST}) VALUES ({placeholders})"  # noqa: S608
+        async with self._write_lock:
+            try:
+                await self._db.execute(sql, payload)
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback()
+                raise classify_audit_save_error(
+                    exc,
+                    entry_id=entry.id,
+                    is_duplicate=_sqlite_is_duplicate,
+                ) from exc
+
+    async def _safe_rollback(self) -> None:
+        """Best-effort rollback on the shared connection.
+
+        Mirrors the project_repo / artifact_repo pattern: a secondary
+        rollback failure must not mask the original error, but we DO
+        log it so a tainted shared connection leaves a trail in
+        observability.
+        """
         try:
-            await self._db.execute(sql, payload)
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            raise classify_audit_save_error(
-                exc,
-                entry_id=entry.id,
-                is_duplicate=_sqlite_is_duplicate,
-            ) from exc
+            await self._db.rollback()
+        except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(rollback_exc).__name__,
+                error=safe_error_description(rollback_exc),
+                rollback_failed=True,
+            )
         # No mutation log emitted from the persistence layer: per
         # CLAUDE.md "Repositories should not log mutations themselves
         # -- the service layer is the canonical logging point so audit
@@ -255,21 +286,23 @@ class SQLiteAuditRepository:
             QueryError: If the DELETE fails.
         """
         utc_cutoff = cutoff.astimezone(UTC).isoformat()
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM audit_entries WHERE timestamp < ?",
-                (utc_cutoff,),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = "Failed to purge audit entries"
-            logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                cutoff=utc_cutoff,
-            )
-            raise QueryError(msg) from exc
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM audit_entries WHERE timestamp < ?",
+                    (utc_cutoff,),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback()
+                msg = "Failed to purge audit entries"
+                logger.warning(
+                    PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    cutoff=utc_cutoff,
+                )
+                raise QueryError(msg) from exc
         return cursor.rowcount
 
     def _row_to_entry(self, row: dict[str, object]) -> AuditEntry:

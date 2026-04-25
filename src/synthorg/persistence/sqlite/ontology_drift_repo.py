@@ -1,10 +1,12 @@
 """SQLite-backed drift report repository."""
 
 import asyncio
+import contextlib
 import json
+import sqlite3
 from typing import TYPE_CHECKING, Any
 
-import aiosqlite  # noqa: TC002
+import aiosqlite
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
@@ -61,7 +63,7 @@ class SQLiteOntologyDriftReportRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -95,6 +97,8 @@ class SQLiteOntologyDriftReportRepository:
                 )
                 await self._db.commit()
             except Exception:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 logger.error(
                     ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
                     entity_name=report.entity_name,

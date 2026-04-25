@@ -5,6 +5,7 @@ Provides ``SQLiteTrainingPlanRepository`` which persists
 """
 
 import asyncio
+import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -19,7 +20,7 @@ from synthorg.hr.training.models import (
     TrainingPlan,
     TrainingPlanStatus,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
@@ -166,7 +167,7 @@ class SQLiteTrainingPlanRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -185,11 +186,14 @@ class SQLiteTrainingPlanRepository:
                 await self._db.execute(_UPSERT_SQL, _plan_to_params(plan))
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to save training plan {plan.id!r}"
-                logger.exception(
+                logger.warning(
                     HR_TRAINING_PERSISTENCE_ERROR,
                     plan_id=str(plan.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 

@@ -99,7 +99,7 @@ class SQLiteProjectRepository:
         # ``commit`` (or rolled back by A's ``rollback``), breaking
         # transaction atomicity.  Inject the shared
         # ``SQLitePersistenceBackend._shared_write_lock`` so that every
-        # repo using the same connection serialises through one lock;
+        # repo using the same connection serializes through one lock;
         # writes from a sibling repository (e.g. artifact + project
         # under the same connection) cannot interleave their
         # ``execute`` -> ``commit``/``rollback`` sequence.  Reads stay

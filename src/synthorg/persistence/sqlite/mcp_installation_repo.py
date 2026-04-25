@@ -13,10 +13,6 @@ import aiosqlite  # noqa: TC002
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger
-from synthorg.observability.events.integrations import (
-    MCP_SERVER_INSTALLED,
-    MCP_SERVER_UNINSTALLED,
-)
 
 logger = get_logger(__name__)
 
@@ -42,7 +38,7 @@ class SQLiteMcpInstallationRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -67,12 +63,11 @@ class SQLiteMcpInstallationRepository:
                 ),
             )
             await self._db.commit()
-        logger.info(
-            MCP_SERVER_INSTALLED,
-            catalog_entry_id=installation.catalog_entry_id,
-            connection_name=installation.connection_name,
-            backend="sqlite",
-        )
+        # Mutation-audit logging belongs in the service layer, not in
+        # the repository (per CLAUDE.md persistence-boundary).  Callers
+        # that need an MCP_SERVER_INSTALLED event emit it once at the
+        # service boundary so audit trails do not duplicate when
+        # multiple callers share the repo.
 
     async def get(
         self,
@@ -124,10 +119,7 @@ class SQLiteMcpInstallationRepository:
             )
             deleted = cursor.rowcount > 0
             await self._db.commit()
-        if deleted:
-            logger.info(
-                MCP_SERVER_UNINSTALLED,
-                catalog_entry_id=catalog_entry_id,
-                backend="sqlite",
-            )
+        # MCP_SERVER_UNINSTALLED belongs in the service layer per the
+        # persistence-boundary rule; the repository just returns
+        # whether a row was removed.
         return deleted

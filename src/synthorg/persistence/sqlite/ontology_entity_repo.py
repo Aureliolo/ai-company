@@ -1,11 +1,12 @@
 """SQLite-backed ontology entity repository."""
 
 import asyncio
+import contextlib
 import json
 import sqlite3
 from collections.abc import Iterable  # noqa: TC003
 
-import aiosqlite  # noqa: TC002
+import aiosqlite
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -13,7 +14,6 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
     ONTOLOGY_ENTITY_DUPLICATE,
     ONTOLOGY_ENTITY_NOT_FOUND,
-    ONTOLOGY_ENTITY_REGISTERED,
     ONTOLOGY_SEARCH_EXECUTED,
 )
 from synthorg.ontology.errors import (
@@ -47,7 +47,7 @@ class SQLiteOntologyEntityRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -130,11 +130,10 @@ class SQLiteOntologyEntityRepository:
                     error=str(exc),
                 )
                 raise OntologyDuplicateError(msg) from exc
-        logger.info(
-            ONTOLOGY_ENTITY_REGISTERED,
-            entity_name=entity.name,
-            tier=entity.tier.value,
-        )
+        # Mutation-audit logging belongs in the service layer, not in
+        # repositories.  Keeping ``logger.info(ONTOLOGY_ENTITY_REGISTERED)``
+        # here would duplicate the audit trail every time multiple
+        # callers share the repo (per CLAUDE.md persistence-boundary).
 
     async def get(self, name: str) -> EntityDefinition:
         """Retrieve an entity definition by name."""
@@ -165,6 +164,10 @@ class SQLiteOntologyEntityRepository:
                 params,
             )
             if cursor.rowcount == 0:
+                # Roll back so the empty UPDATE does not leave the
+                # shared connection inside an open implicit transaction.
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Entity '{entity.name}' not found"
                 logger.warning(
                     ONTOLOGY_ENTITY_NOT_FOUND,
@@ -182,6 +185,8 @@ class SQLiteOntologyEntityRepository:
                 {"name": name},
             )
             if cursor.rowcount == 0:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Entity '{name}' not found"
                 logger.warning(ONTOLOGY_ENTITY_NOT_FOUND, entity_name=name, op="delete")
                 raise OntologyNotFoundError(msg)

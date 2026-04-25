@@ -451,6 +451,9 @@ class FakeArtifactRepository:
             result = [a for a in result if a.created_by == created_by]
         if artifact_type is not None:
             result = [a for a in result if a.type == artifact_type]
+        # Match the SQLite repo contract (``ORDER BY id``) so tests
+        # asserting list order do not depend on dict insertion order.
+        result.sort(key=lambda a: a.id)
         return tuple(result)
 
     async def delete(self, artifact_id: NotBlankStr) -> bool:

@@ -374,7 +374,10 @@ class SQLitePersistenceBackend:
             self._db,
             write_lock=self._shared_write_lock,
         )
-        self._audit_entries = SQLiteAuditRepository(self._db)
+        self._audit_entries = SQLiteAuditRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
         self._users = SQLiteUserRepository(
             self._db,
             write_lock=self._shared_write_lock,

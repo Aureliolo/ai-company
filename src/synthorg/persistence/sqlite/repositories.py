@@ -72,7 +72,7 @@ class SQLiteTaskRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -308,6 +308,7 @@ id, title, description, type, priority, project, created_by,
                     "DELETE FROM tasks WHERE id = ?", (task_id,)
                 )
                 await self._db.commit()
+                deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete task {task_id!r}"
                 logger.warning(
@@ -317,7 +318,7 @@ id, title, description, type, priority, project, created_by,
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return deleted
 
 
 class SQLiteCostRecordRepository:
@@ -335,7 +336,7 @@ class SQLiteCostRecordRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -502,7 +503,7 @@ class SQLiteMessageRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()

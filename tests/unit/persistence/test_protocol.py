@@ -657,11 +657,13 @@ class _FakeBackend:
         return object()
 
     @property
-    def ssrf_violations(self) -> Any:
+    def ssrf_violations(self) -> _FakeSsrfViolationRepository:
         # Real fake repo (not ``object()``) so backend-level contract
         # access actually exposes an ``SsrfViolationRepository``-shaped
         # object -- callers can exercise SSRF wiring without bypassing
-        # the protocol.
+        # the protocol.  Return type is the concrete fake (not ``Any``)
+        # so the runtime-protocol check at the test site can verify
+        # the backend's exposure path against ``SsrfViolationRepository``.
         return _FakeSsrfViolationRepository()
 
     @property
@@ -845,10 +847,12 @@ class TestProtocolCompliance:
         assert isinstance(_FakeProjectRepository(), ProjectRepository)
 
     def test_fake_ssrf_violation_repo_is_ssrf_violation_repository(self) -> None:
-        assert isinstance(
-            _FakeSsrfViolationRepository(),
-            SsrfViolationRepository,
-        )
+        # Route through the backend property so the test exercises the
+        # contract-fidelity path (backend.ssrf_violations -> repo) rather
+        # than constructing the fake directly -- catches regressions where
+        # ``_FakeBackend.ssrf_violations`` drifts back to ``object()``.
+        backend = _FakeBackend()
+        assert isinstance(backend.ssrf_violations, SsrfViolationRepository)
 
     def test_fake_preset_repo_is_personality_preset_repository(self) -> None:
         assert isinstance(

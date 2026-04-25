@@ -117,9 +117,25 @@ RETURNING (xmax = 0) AS created""",
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        # ``RETURNING`` always yields exactly one row on a successful
-        # upsert (the matched-then-updated or newly-inserted row).
-        return bool(row[0]) if row is not None else False
+        # ``RETURNING (xmax = 0) AS created`` yields exactly one row
+        # on every successful upsert -- one for INSERT, one for the
+        # ON CONFLICT DO UPDATE branch.  A missing row therefore means
+        # the driver returned no result, which is a hard failure;
+        # silently coercing it to ``False`` ("updated") would mislabel
+        # creates as updates and let callers like ``ArtifactService.save``
+        # emit the wrong audit event.  Fail closed instead.
+        if row is None:
+            msg = (
+                f"Failed to save artifact {artifact.id!r}: no row returned from upsert"
+            )
+            logger.warning(
+                PERSISTENCE_ARTIFACT_SAVE_FAILED,
+                artifact_id=artifact.id,
+                error_type="MissingReturningRow",
+                error=msg,
+            )
+            raise QueryError(msg)
+        return bool(row[0])
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         """Retrieve an artifact by primary key.

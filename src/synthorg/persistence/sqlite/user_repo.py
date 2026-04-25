@@ -88,7 +88,7 @@ def _row_to_user(row: aiosqlite.Row) -> User:
     data["role"] = HumanRole(data["role"])
     data["created_at"] = datetime.fromisoformat(data["created_at"])
     data["updated_at"] = datetime.fromisoformat(data["updated_at"])
-    # Deserialise JSON columns (may be missing in pre-migration rows).
+    # Deserialize JSON columns (may be missing in pre-migration rows).
     raw_org = data.get("org_roles")
     parsed_org = json.loads("[]" if raw_org is None else raw_org)
     if not isinstance(parsed_org, list):
@@ -147,7 +147,7 @@ class SQLiteUserRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -463,6 +463,7 @@ ON CONFLICT(id) DO UPDATE SET
                     "DELETE FROM users WHERE id = ?", (user_id,)
                 )
                 await self._db.commit()
+                deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 constraint = _classify_sqlite_user_error(str(exc))
                 if constraint is not None:
@@ -484,7 +485,7 @@ ON CONFLICT(id) DO UPDATE SET
                     error=str(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return deleted
 
 
 class SQLiteApiKeyRepository:
@@ -507,7 +508,7 @@ class SQLiteApiKeyRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -693,6 +694,7 @@ ON CONFLICT(id) DO UPDATE SET
                     "DELETE FROM api_keys WHERE id = ?", (key_id,)
                 )
                 await self._db.commit()
+                deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete API key {key_id!r}"
                 logger.exception(
@@ -701,4 +703,4 @@ ON CONFLICT(id) DO UPDATE SET
                     error=str(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return deleted

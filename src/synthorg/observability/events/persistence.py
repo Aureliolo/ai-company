@@ -110,6 +110,9 @@ PERSISTENCE_PARKED_CONTEXT_NOT_FOUND: Final[str] = (
     "persistence.parked_context.not_found"
 )
 PERSISTENCE_PARKED_CONTEXT_DELETED: Final[str] = "persistence.parked_context.deleted"
+PERSISTENCE_PARKED_CONTEXT_DELETE_FAILED: Final[str] = (
+    "persistence.parked_context.delete_failed"
+)
 PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED: Final[str] = (
     "persistence.parked_context.deserialize_failed"
 )

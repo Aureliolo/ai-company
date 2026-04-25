@@ -290,12 +290,25 @@ def _emit_regression_banner(
 def pytest_testnodedown(node: pytest.Item, error: object) -> None:
     """xdist controller hook: aggregate per-worker accumulators.
 
-    Each worker writes its local ``_unit_elapsed_secs`` to
-    ``workeroutput`` in its own ``pytest_sessionfinish``; the
-    controller then sums those values back into the module-level
-    accumulator here, so when the controller's
-    ``pytest_sessionfinish`` runs the regression rail it sees the
-    full unit-only elapsed time across all workers.
+    Each worker writes its local ``_unit_elapsed_secs`` (sum of the
+    per-test wall-clock measurements that worker observed) to
+    ``workeroutput`` in its own ``pytest_sessionfinish``.  The
+    controller folds those values into the module-level accumulator
+    here using **MAX**, not SUM:
+
+    - The baseline (``unit_timing.json::unit_suite_seconds``) is
+      WALL-CLOCK seconds for the full xdist run -- i.e. how long
+      the suite took to complete in real time, with workers running
+      in parallel.
+    - Summing per-worker per-test elapsed times across N workers
+      gives ``N * wall-clock`` (each worker accumulates ~wall-clock
+      worth of sequential test execution).  Comparing that against
+      a wall-clock baseline would always trip the rail by a factor
+      of ~N.
+    - The wall-clock duration of the unit suite is approximated by
+      the longest-running worker's accumulator (workers all finish
+      around the same time when balanced).  ``max`` is dimension-
+      consistent with the baseline and stable across worker counts.
 
     The non-xdist case never reaches this hook -- pytest-xdist only
     invokes it when running with ``-n``.
@@ -303,7 +316,10 @@ def pytest_testnodedown(node: pytest.Item, error: object) -> None:
     global _unit_elapsed_secs  # noqa: PLW0603
     workeroutput = getattr(node, "workeroutput", {})
     if _WORKEROUTPUT_KEY in workeroutput:
-        _unit_elapsed_secs += float(workeroutput[_WORKEROUTPUT_KEY])
+        _unit_elapsed_secs = max(
+            _unit_elapsed_secs,
+            float(workeroutput[_WORKEROUTPUT_KEY]),
+        )
 
 
 @pytest.hookimpl(trylast=True)

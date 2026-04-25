@@ -233,7 +233,20 @@ class SQLiteSsrfViolationRepository:
             ValueError: If status is PENDING.
         """
         if status == SsrfViolationStatus.PENDING:
-            msg = "Cannot transition a violation back to PENDING"
+            msg = (
+                f"Cannot transition violation {violation_id!r} "
+                f"to PENDING (target status must be ALLOW or DENY)"
+            )
+            # Log the rejection at WARNING with full context so an
+            # operator investigating an audit-trail anomaly can see
+            # who attempted the bad transition.
+            logger.warning(
+                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                violation_id=violation_id,
+                attempted_status=status.value,
+                resolved_by=resolved_by,
+                error=msg,
+            )
             raise ValueError(msg)
 
         resolved_at_utc = resolved_at.astimezone(UTC).isoformat()

@@ -68,6 +68,7 @@ from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
     ProviderNotFoundError,
     ProviderValidationError,
+    RateLimitError,
 )
 from synthorg.providers.health import ProviderHealthSummary  # noqa: TC001
 from synthorg.providers.presets import ProviderPreset, get_preset, list_presets
@@ -204,15 +205,17 @@ class ProviderController(Controller):
                 caps_by_id = await driver.batch_get_capabilities(
                     tuple(m.id for m in provider.models),
                 )
-            except* RetryExhaustedError as exc_group:
+            except* (RetryExhaustedError, RateLimitError) as exc_group:
                 # ``BaseCompletionProvider.batch_get_capabilities``
                 # fans out via ``asyncio.TaskGroup``, which wraps any
                 # raised exception in an ``ExceptionGroup``.  ``except*``
                 # unpacks that wrapper so we still catch retry
                 # exhaustion regardless of how many sub-exceptions the
-                # group carries.  Retry exhaustion signals provider
-                # unhealthiness, not a per-model classification issue --
-                # degrade to "no capability data" rather than 500.
+                # group carries.  Retry exhaustion AND rate-limit
+                # exhaustion both signal provider-level unhealthiness
+                # rather than a per-model classification issue, so
+                # they should fall through to the static-model
+                # fallback ("no capability data") rather than a 500.
                 exc = exc_group.exceptions[0]
                 logger.warning(
                     API_PROVIDER_USAGE_ENRICHMENT_FAILED,

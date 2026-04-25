@@ -54,7 +54,7 @@ def _row_to_dict(row: Row) -> dict[str, object]:
     """Convert a positional ``aiosqlite.Row`` into a column-keyed dict.
 
     The shared ``row_to_custom_rule`` helper takes a dict so both
-    backends share one deserialiser. SQLite's positional row factory
+    backends share one deserializer. SQLite's positional row factory
     is mapped here at the boundary so the helper sees a uniform shape.
     """
     return dict(zip(_COLUMNS, row, strict=True))
@@ -91,6 +91,13 @@ class SQLiteCustomRuleRepository:
 
     Args:
         db: An open aiosqlite connection.
+        write_lock: Optional shared lock used to serialize writes on
+            the shared connection.  Inject the
+            :class:`SQLitePersistenceBackend._shared_write_lock` so
+            writes from this repo coordinate with sibling repos that
+            share the same connection.  Defaults to ``None``, in
+            which case the repo creates a private :class:`asyncio.Lock`
+            (suitable for standalone test construction).
     """
 
     def __init__(
@@ -101,7 +108,7 @@ class SQLiteCustomRuleRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()

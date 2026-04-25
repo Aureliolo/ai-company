@@ -273,7 +273,29 @@ class BaseCompletionProvider(ABC):
                 model,
             )
 
-        return await self._resilient_execute(_attempt)
+        try:
+            return await self._resilient_execute(_attempt)
+        except Exception as exc:
+            # SEC-1: ``logger.exception`` would attach a traceback
+            # whose frame-locals can leak provider credentials; use
+            # ``logger.error`` with the structured ``error_type`` +
+            # scrubbed ``error`` fields, mirroring ``complete()`` /
+            # ``stream()``.  ``record_provider_error`` keeps the
+            # provider-error metric in sync with the other call paths
+            # so dashboards do not under-count capability failures.
+            logger.error(  # noqa: TRY400 -- see SEC-1 rationale above
+                PROVIDER_CALL_ERROR,
+                model=model,
+                phase="get_model_capabilities",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            record_provider_error(
+                provider=self._provider_label(),
+                model=model,
+                error_class=classify_provider_error(exc),
+            )
+            raise
 
     async def batch_get_capabilities(
         self,

@@ -2,6 +2,7 @@
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
 import asyncio
+import contextlib
 import sqlite3
 
 import aiosqlite
@@ -38,7 +39,7 @@ class SQLiteCheckpointRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -61,6 +62,11 @@ INSERT OR REPLACE INTO checkpoints (
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                # Roll back so a failed write does not leave the
+                # shared connection inside an open transaction for
+                # the next caller.
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to save checkpoint {checkpoint.id!r}"
                 logger.exception(
                     PERSISTENCE_CHECKPOINT_SAVE_FAILED,
@@ -146,6 +152,8 @@ INSERT OR REPLACE INTO checkpoints (
                 count = cursor.rowcount
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to delete checkpoints for execution {execution_id!r}"
                 logger.exception(
                     PERSISTENCE_CHECKPOINT_DELETE_FAILED,

@@ -38,7 +38,23 @@ def _load_conftest_module() -> object:
     return module
 
 
-_MODULE = _load_conftest_module()
+_MODULE_CACHE: object | None = None
+
+
+def _module() -> object:
+    """Lazy-loaded handle on the conftest module.
+
+    The module is loaded on first call and cached.  Loading it at
+    import time (the previous shape) re-executed every top-level
+    side effect in ``tests/conftest.py`` -- including its many fixture
+    registrations and module-level state -- every time the test file
+    was collected, even when no test that needed the conftest module
+    actually ran.
+    """
+    global _MODULE_CACHE  # noqa: PLW0603
+    if _MODULE_CACHE is None:
+        _MODULE_CACHE = _load_conftest_module()
+    return _MODULE_CACHE
 
 
 def _patch_baseline(
@@ -46,7 +62,7 @@ def _patch_baseline(
     baseline_path: Path,
 ) -> None:
     """Point the conftest's baseline path at *baseline_path*."""
-    monkeypatch.setattr(_MODULE, "_BASELINE_PATH", baseline_path)
+    monkeypatch.setattr(_module(), "_BASELINE_PATH", baseline_path)
 
 
 def test_load_baseline_returns_full_triple(
@@ -66,7 +82,7 @@ def test_load_baseline_returns_full_triple(
         encoding="utf-8",
     )
     _patch_baseline(monkeypatch, baseline)
-    result = _MODULE._load_baseline_for_conftest()  # type: ignore[attr-defined]
+    result = _module()._load_baseline_for_conftest()  # type: ignore[attr-defined]
     assert result is not None
     secs, count, ratio = result
     assert secs == pytest.approx(100.0)
@@ -90,7 +106,7 @@ def test_load_baseline_defaults_threshold_ratio(
         encoding="utf-8",
     )
     _patch_baseline(monkeypatch, baseline)
-    result = _MODULE._load_baseline_for_conftest()  # type: ignore[attr-defined]
+    result = _module()._load_baseline_for_conftest()  # type: ignore[attr-defined]
     assert result is not None
     _, _, ratio = result
     assert ratio == pytest.approx(1.3)
@@ -102,7 +118,7 @@ def test_load_baseline_returns_none_when_missing(
 ) -> None:
     """A missing baseline file returns ``None`` (skip the check)."""
     _patch_baseline(monkeypatch, tmp_path / "missing.json")
-    assert _MODULE._load_baseline_for_conftest() is None  # type: ignore[attr-defined]
+    assert _module()._load_baseline_for_conftest() is None  # type: ignore[attr-defined]
 
 
 def test_load_baseline_returns_none_for_malformed_json(
@@ -113,7 +129,7 @@ def test_load_baseline_returns_none_for_malformed_json(
     baseline = tmp_path / "unit_timing.json"
     baseline.write_text("not json", encoding="utf-8")
     _patch_baseline(monkeypatch, baseline)
-    assert _MODULE._load_baseline_for_conftest() is None  # type: ignore[attr-defined]
+    assert _module()._load_baseline_for_conftest() is None  # type: ignore[attr-defined]
 
 
 def test_load_baseline_returns_none_when_required_field_missing(
@@ -127,14 +143,14 @@ def test_load_baseline_returns_none_when_required_field_missing(
         encoding="utf-8",
     )
     _patch_baseline(monkeypatch, baseline)
-    assert _MODULE._load_baseline_for_conftest() is None  # type: ignore[attr-defined]
+    assert _module()._load_baseline_for_conftest() is None  # type: ignore[attr-defined]
 
 
 def test_emit_regression_banner_writes_to_stderr(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The banner contains the headline metric numbers and the footer."""
-    _MODULE._emit_regression_banner(  # type: ignore[attr-defined]
+    _module()._emit_regression_banner(  # type: ignore[attr-defined]
         elapsed=200.0,
         unit_count=10_000,
         baseline_secs=100.0,

@@ -1,6 +1,7 @@
 """SQLite repository implementation for heartbeat persistence."""
 
 import asyncio
+import contextlib
 import sqlite3
 from datetime import UTC
 
@@ -38,7 +39,7 @@ class SQLiteHeartbeatRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -64,6 +65,8 @@ INSERT OR REPLACE INTO heartbeats (
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = (
                     f"Failed to save heartbeat for execution {heartbeat.execution_id!r}"
                 )
@@ -145,6 +148,8 @@ INSERT OR REPLACE INTO heartbeats (
                 deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to delete heartbeat {execution_id!r}"
                 logger.exception(
                     PERSISTENCE_HEARTBEAT_DELETE_FAILED,

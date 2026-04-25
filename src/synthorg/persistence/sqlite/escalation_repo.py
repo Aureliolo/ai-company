@@ -51,7 +51,7 @@ _SELECT_COLS = (
 
 
 def _row_to_escalation(row: Row) -> Escalation:
-    """Deserialise a DB row into an :class:`Escalation`."""
+    """Deserialize a DB row into an :class:`Escalation`."""
     try:
         conflict = Conflict.model_validate_json(str(row["conflict_json"]))
         decision: EscalationDecision | None = None
@@ -111,7 +111,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         self._db: aiosqlite.Connection = db
         self._db.row_factory = aiosqlite.Row
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()

@@ -74,7 +74,7 @@ class SQLiteArtifactRepository:
         # breaking atomicity (one commit / rollback affects the other's
         # writes).  Inject the shared
         # ``SQLitePersistenceBackend._shared_write_lock`` so every repo
-        # talking to the same connection serialises through one lock;
+        # talking to the same connection serializes through one lock;
         # fall back to a private lock when constructed standalone (e.g.
         # in unit tests that build a single repo against an in-memory
         # connection).

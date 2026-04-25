@@ -7,8 +7,9 @@ import sqlite3
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
+    PERSISTENCE_PARKED_CONTEXT_DELETE_FAILED,
     PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
     PERSISTENCE_PARKED_CONTEXT_NOT_FOUND,
     PERSISTENCE_PARKED_CONTEXT_QUERIED,
@@ -36,7 +37,7 @@ class SQLiteParkedContextRepository:
     ) -> None:
         self._db = db
         # Inject the shared backend write lock so writes from this repo
-        # serialise with sibling repos that share the same
+        # serialize with sibling repos that share the same
         # ``aiosqlite.Connection``; fall back to a private lock for
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -157,16 +158,21 @@ INSERT OR REPLACE INTO parked_contexts (
                     (parked_id,),
                 )
                 await self._db.commit()
+                deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete parked context {parked_id!r}"
-                logger.exception(
-                    PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
+                # Use the delete-specific event so audit dashboards
+                # can distinguish read-path failures (QUERY_FAILED)
+                # from write-path failures.
+                logger.warning(
+                    PERSISTENCE_PARKED_CONTEXT_DELETE_FAILED,
                     parked_id=parked_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
-        return cursor.rowcount > 0
+        return deleted
 
     def _row_to_model(self, row: dict[str, object]) -> ParkedContext:
         """Convert a database row to a ``ParkedContext`` model.
