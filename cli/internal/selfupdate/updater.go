@@ -73,8 +73,10 @@ var apiClient = &http.Client{
 
 // Release represents a GitHub release.
 type Release struct {
-	TagName string  `json:"tag_name"`
-	Assets  []Asset `json:"assets"`
+	TagName     string  `json:"tag_name"`
+	Body        string  `json:"body"`
+	PublishedAt string  `json:"published_at"`
+	Assets      []Asset `json:"assets"`
 }
 
 // Asset represents a release asset.
@@ -111,10 +113,12 @@ func Check(ctx context.Context) (CheckResult, error) {
 
 // devRelease extends Release with the pre-release flag from the GitHub API.
 type devRelease struct {
-	TagName    string  `json:"tag_name"`
-	Assets     []Asset `json:"assets"`
-	Prerelease bool    `json:"prerelease"`
-	Draft      bool    `json:"draft"`
+	TagName     string  `json:"tag_name"`
+	Body        string  `json:"body"`
+	PublishedAt string  `json:"published_at"`
+	Assets      []Asset `json:"assets"`
+	Prerelease  bool    `json:"prerelease"`
+	Draft       bool    `json:"draft"`
 }
 
 // CheckDev queries GitHub for the most recent release (including pre-releases)
@@ -148,7 +152,12 @@ func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 	}
 	result.UpdateAvail = avail
 
-	rel := Release{TagName: target.TagName, Assets: target.Assets}
+	rel := Release{
+		TagName:     target.TagName,
+		Body:        target.Body,
+		PublishedAt: target.PublishedAt,
+		Assets:      target.Assets,
+	}
 	assetURL, checksumURL, bundleURL, err := findAssets(rel)
 	if err != nil {
 		return result, err

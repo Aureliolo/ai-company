@@ -212,10 +212,10 @@ func isDevChannelMismatch(channel, ver string) bool {
 
 // downloadAndApplyCLI downloads, verifies, and replaces the current binary
 // with the new version. Returns errReexec on success so the caller can
-// re-exec the updated binary.
+// re-exec the updated binary. The "New version available" notice is now
+// printed by runChangelogWalk (or its offline fallback) before this is
+// called, so we go straight to the install confirm prompt.
 func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.CheckResult, autoAccept bool) error {
-	out.Step(fmt.Sprintf("New version available: %s (current: %s)", result.LatestVersion, result.CurrentVersion))
-
 	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion), autoAccept)
 	if err != nil {
 		return fmt.Errorf("confirming CLI update: %w", err)
@@ -292,6 +292,9 @@ func updateCLI(cmd *cobra.Command, autoAcceptCLI bool) error {
 		out.Success(fmt.Sprintf("CLI is up to date (%s)", result.CurrentVersion))
 		return nil
 	}
+
+	state, _ := config.Load(opts.DataDir)
+	runChangelogWalk(ctx, cmd, result, state)
 
 	return downloadAndApplyCLI(ctx, out, result, autoAcceptCLI)
 }
