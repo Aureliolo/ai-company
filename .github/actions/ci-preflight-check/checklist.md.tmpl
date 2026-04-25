@@ -1,63 +1,41 @@
-CI in this repository is incomplete. The `ci-preflight` job detected one or more setup items missing. Follow the checklist below to make the release / automation workflows able to run.
+# CI Setup Tracking Issue
 
-This issue is auto-managed by `.github/workflows/ci-preflight.yml`. It will update automatically as you fix each item, and close itself with a comment once every check passes.
-
-For background, see [`docs/guides/fork-setup.md`](../blob/HEAD/docs/guides/fork-setup.md) which walks through each item end-to-end.
+This issue is auto-managed by [`ci-preflight.yml`](../blob/HEAD/.github/workflows/ci-preflight.yml). It refreshes on every push, opens when something blocking is missing, and closes itself with a `Preflight passed` comment once every blocking check passes. See the [Fork Setup Guide](../blob/HEAD/docs/guides/fork-setup.md) for the long-form walkthrough.
 
 ---
 
-## Missing GitHub environments
+## Overview
+
+{{OVERVIEW_TABLE}}
+
+{{STATUS_LINE}}
+
+---
+
+## GitHub environments
 
 {{ENVIRONMENTS_BLOCK}}
 
-## Missing labels
+---
+
+## Labels
 
 {{LABELS_BLOCK}}
 
-## Branch protection gaps on `main`
+---
+
+## Branch protection on `main` _(informational only)_
 
 {{BRANCH_PROTECTION_BLOCK}}
 
-## Required secrets per environment
-
-The preflight cannot verify environment-scoped secrets directly without running inside each environment. Once you have created the environments above, populate them with the following secrets. Every check that depends on a secret will surface as a real run failure later -- this section is informational.
-
-### `atlas`
-- `ATLAS_TOKEN` -- Atlas Cloud API token for schema validation. Get one at https://atlasgo.cloud/. Free tier covers a single project. Used by `ci.yml` schema-validate.
-
-### `release` (and `release-tags` shares the same App)
-- `RELEASE_BOT_APP_CLIENT_ID` -- GitHub App **Client ID** for your release bot.
-- `RELEASE_BOT_APP_PRIVATE_KEY` -- the App's private key (full PEM contents, including `-----BEGIN ... PRIVATE KEY-----` headers).
-
-To create the release bot App:
-
-1. Go to https://github.com/settings/apps/new (for a personal-account App) or your organization's "Developer settings -> GitHub Apps -> New GitHub App" (for an org App).
-2. **Name**: anything (e.g. `myorg-release-bot`). Webhook: uncheck "Active" (no webhook needed).
-3. **Repository permissions** the App needs:
-   - Contents: **Read & write** (mint signed commits + push tags).
-   - Pull requests: **Read & write** (open release PRs).
-   - Metadata: **Read** (always required).
-4. **Install** the App on this repository (after creation, "Install App" tab).
-5. Generate a private key under "Private keys -> Generate private key" and save the PEM file.
-6. Copy the App's **Client ID** (top of the App settings page) and the PEM contents into the `release` environment as the two secrets above.
-
-The minted token is what mints signed bot commits on protected `main` and bypasses the GITHUB_TOKEN anti-recursion rule for tag-triggered downstream workflows. Without it, `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml` and `test-signing.yml` skip cleanly (they are already gated on `!github.event.repository.fork`).
-
-### `cloudflare-preview` (optional -- only if you want PR docs previews)
-- `CLOUDFLARE_API_TOKEN` -- Pages-deploy-scoped API token from https://dash.cloudflare.com/profile/api-tokens.
-- `CLOUDFLARE_ACCOUNT_ID` -- account ID from the Cloudflare dashboard sidebar.
-
-`pages-preview.yml` is the only consumer; if you do not need PR previews, you can leave `cloudflare-preview` empty and the workflow will skip its deploy step.
-
-### `apko-lock` (optional -- only if you want scheduled Wolfi base-image lock updates)
-No secrets required; the workflow uses `${{ github.token }}`. The environment exists for branch-policy gating.
-
-### `image-push` (optional -- only if you want to publish container images to GHCR)
-No secrets required; uses the auto-provided `github.token` against your fork's GHCR namespace. The environment exists for branch-policy gating.
-
-### `github-pages` (required for the docs site)
-No secrets required; the GitHub-managed Pages deployment uses the workflow token. The environment exists for branch-policy gating on the `main`-only Pages publish path. See `pages.yml`.
+> Branch protection cannot be queried by the workflow's default `GITHUB_TOKEN` (the `administration: read` scope is not grantable to the auto-provided token). This section reports what can be inferred and never opens or closes this issue. Configure the items above manually following [Fork Setup Guide section 5](../blob/HEAD/docs/guides/fork-setup.md).
 
 ---
 
-Once every box above is checked, the next push or workflow_dispatch run of `ci-preflight` will close this issue with a confirmation comment.
+## Setup instructions for missing environments
+
+{{SETUP_BLOCK}}
+
+---
+
+Once every blocking item is resolved, the next preflight run will close this issue with a confirmation comment. Re-runs are non-destructive: the body is regenerated from current state on every preflight run, so checking items off in the GitHub UI is purely cosmetic -- the source of truth is what the next run discovers.

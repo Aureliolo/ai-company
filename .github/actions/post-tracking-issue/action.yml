@@ -119,11 +119,53 @@ runs:
           # Best-effort pin. A repo can hold at most 3 pinned issues;
           # quota / race / permission failures degrade to a warning so
           # the comment / create above remains the primary signal.
-          if ! gh api --method PUT \
-              "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/pin" \
-              --silent 2>/dev/null; then
-            echo "::warning::could not pin tracking issue #$ISSUE_NUMBER (quota / race / permission)"
+          #
+          # GitHub never shipped a REST endpoint for pinning -- the
+          # `PUT /repos/.../issues/.../pin` URL the prior version used
+          # always returned 404, silently swallowed by `2>/dev/null`.
+          # The supported path is the GraphQL `pinIssue` mutation,
+          # which takes the issue's node ID. Resolve the node ID via
+          # GraphQL (the workflow's GITHUB_TOKEN has the necessary
+          # repository read scope), then fire the mutation and surface
+          # the actual error message on failure instead of guessing.
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          ISSUE_NODE_ID=$(gh api graphql \
+            -f query='query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                issue(number: $number) { id }
+              }
+            }' \
+            -f owner="$OWNER" \
+            -f repo="$REPO_NAME" \
+            -F number="$ISSUE_NUMBER" \
+            --jq '.data.repository.issue.id' 2>/dev/null) || ISSUE_NODE_ID=""
+
+          if [ -z "$ISSUE_NODE_ID" ]; then
+            echo "::warning::could not resolve issue #$ISSUE_NUMBER node ID for pinning"
           else
-            echo "Pinned tracking issue #$ISSUE_NUMBER"
+            PIN_RESPONSE=$(gh api graphql \
+              -f query='mutation($id: ID!) {
+                pinIssue(input: {issueId: $id}) {
+                  issue { number }
+                }
+              }' \
+              -f id="$ISSUE_NODE_ID" 2>&1) || true
+
+            if printf '%s' "$PIN_RESPONSE" | grep -q '"errors"'; then
+              # GraphQL returns 200 with an `errors` array on
+              # business-rule failures (3-pin quota, race conditions,
+              # permission denied). Extract the first error message.
+              PIN_ERROR=$(printf '%s' "$PIN_RESPONSE" | jq -r '.errors[0].message // "unknown error"' 2>/dev/null || echo "unknown error")
+              echo "::warning::could not pin tracking issue #$ISSUE_NUMBER: $PIN_ERROR"
+            elif printf '%s' "$PIN_RESPONSE" | grep -q '"pinIssue"'; then
+              echo "Pinned tracking issue #$ISSUE_NUMBER"
+            else
+              # Network / auth failure -- gh api itself returned
+              # something that is not a recognisable GraphQL response.
+              # Trim to the first 200 chars to keep workflow logs clean.
+              PIN_ERROR=$(printf '%s' "$PIN_RESPONSE" | head -c 200)
+              echo "::warning::could not pin tracking issue #$ISSUE_NUMBER: $PIN_ERROR"
+            fi
           fi
         fi
