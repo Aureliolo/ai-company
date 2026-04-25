@@ -102,9 +102,15 @@ jobs:
           )
 
           if [ -z "$ISSUE_NUMBER" ]; then
-            ISSUE_URL=$(gh issue create --title "$TITLE" \
-              --label 'automation:ci-health,type:ci,prio:medium' \
-              --body "$BODY")
+            # If a referenced label is missing, gh exits non-zero and the
+            # whole sink would be swallowed. Fall back to a label-less
+            # create so the failure still surfaces, with a warning logged.
+            if ! ISSUE_URL=$(gh issue create --title "$TITLE" \
+                --label 'automation:ci-health,type:ci,prio:medium' \
+                --body "$BODY" 2>&1); then
+              echo "::warning::labeled issue create failed: $ISSUE_URL -- retrying without labels"
+              ISSUE_URL=$(gh issue create --title "$TITLE" --body "$BODY")
+            fi
             ISSUE_NUMBER="${ISSUE_URL##*/}"
             echo "Created tracking issue #$ISSUE_NUMBER"
           else

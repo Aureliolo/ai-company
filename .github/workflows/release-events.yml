@@ -126,9 +126,16 @@ jobs:
             # across gh versions; parsing the URL works on every
             # version). Extract the trailing issue number from
             # ``https://github.com/owner/repo/issues/<N>``.
-            ISSUE_URL=$(gh issue create --title "$TITLE" \
-              --label "$LABEL" \
-              --body "$ISSUE_BODY")
+            # If the label is missing (e.g. someone deleted it from the
+            # repo's label set), gh exits non-zero -- fall back to a
+            # label-less create so the event still lands and the
+            # missing-label condition surfaces as a workflow warning.
+            if ! ISSUE_URL=$(gh issue create --title "$TITLE" \
+                --label "$LABEL" \
+                --body "$ISSUE_BODY" 2>&1); then
+              echo "::warning::labeled issue create failed: $ISSUE_URL -- retrying without labels"
+              ISSUE_URL=$(gh issue create --title "$TITLE" --body "$ISSUE_BODY")
+            fi
             ISSUE_NUMBER="${ISSUE_URL##*/}"
             echo "Created tracking issue #$ISSUE_NUMBER"
           fi

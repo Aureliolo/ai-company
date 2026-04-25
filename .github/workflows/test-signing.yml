@@ -305,9 +305,15 @@ jobs:
             # Parse ``gh issue create``'s stdout URL for the issue
             # number rather than relying on ``--json`` (see release-
             # events.yml for the version-compatibility rationale).
-            ISSUE_URL=$(gh issue create --title "$TITLE" \
-              --label 'automation:release-events,type:ci,prio:high' \
-              --body "$BODY")
+            # Fallback path: if a referenced label has been deleted,
+            # gh exits non-zero. Re-attempt label-less so the
+            # regression report still lands.
+            if ! ISSUE_URL=$(gh issue create --title "$TITLE" \
+                --label 'automation:release-events,type:ci,prio:high' \
+                --body "$BODY" 2>&1); then
+              echo "::warning::labeled issue create failed: $ISSUE_URL -- retrying without labels"
+              ISSUE_URL=$(gh issue create --title "$TITLE" --body "$BODY")
+            fi
             ISSUE_NUMBER="${ISSUE_URL##*/}"
             echo "Created tracking issue #$ISSUE_NUMBER"
           else
