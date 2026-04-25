@@ -25,6 +25,22 @@ jobs:
       python: ${{ steps.filter.outputs.python }}
       dashboard: ${{ steps.filter.outputs.dashboard }}
       docker: ${{ steps.filter.outputs.docker }}
+      # release-please PRs only touch CHANGELOG.md, version.txt, and
+      # the manifest. There is no source code to test, so every heavy
+      # job below short-circuits on this flag and ci-pass posts success
+      # immediately.
+      #
+      # SECURITY: branch names alone are NOT sufficient -- on a
+      # `pull_request` event from a fork, `github.head_ref` is the
+      # source ref name, which is fully attacker-controlled. A fork PR
+      # named `release-please--evil` would otherwise short-circuit CI
+      # and post a green CI Pass with no real testing. We therefore
+      # gate the pull_request arm on the PR author identity (set by
+      # GitHub at PR creation, not bypassable via branch naming) and
+      # only fall back to ref-name detection for push / dispatch
+      # events, where pushing `refs/heads/release-please--*` already
+      # requires push access to the upstream.
+      is_release_please: ${{ (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'synthorg-release-bot[bot]') || (github.event_name != 'pull_request' && startsWith(github.ref, 'refs/heads/release-please--')) }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -64,7 +80,7 @@ jobs:
   lint:
     name: Lint
     needs: changes
-    if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -93,7 +109,7 @@ jobs:
   schema-validate:
     name: Schema Validation
     needs: changes
-    if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: atlas
@@ -151,7 +167,7 @@ jobs:
   type-check:
     name: Type Check
     needs: changes
-    if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -169,7 +185,7 @@ jobs:
   openapi-liveness:
     name: OpenAPI Liveness
     needs: changes
-    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.python == 'true' || needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -187,7 +203,7 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     needs: changes
-    if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -252,7 +268,7 @@ jobs:
   python-audit:
     name: Python Security Audit
     needs: changes
-    if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -278,7 +294,7 @@ jobs:
   dockerfile-lint:
     name: Dockerfile Lint
     needs: changes
-    if: needs.changes.outputs.docker == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.docker == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -302,7 +318,7 @@ jobs:
   dashboard-lint:
     name: Dashboard Lint
     needs: changes
-    if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -325,7 +341,7 @@ jobs:
   dashboard-type-check:
     name: Dashboard Type Check
     needs: changes
-    if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -352,7 +368,7 @@ jobs:
   dashboard-test:
     name: Dashboard Test
     needs: changes
-    if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -505,7 +521,7 @@ jobs:
   dashboard-build:
     name: Dashboard Build
     needs: changes
-    if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -533,7 +549,7 @@ jobs:
   dashboard-audit:
     name: Dashboard Security Audit
     needs: changes
-    if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -557,7 +573,7 @@ jobs:
   dashboard-storybook-build:
     name: Dashboard Storybook Build
     needs: changes
-    if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
+    if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

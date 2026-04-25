@@ -74,6 +74,11 @@ echo
 # API or from yq's YAML -> JSON conversion) into the canonical shape:
 #   - Strip id, node_id, created_at, updated_at, bypass_actors,
 #     current_user_can_bypass, source, source_type, _links, node_id
+#   - Drop `copilot_code_review` rule entries -- Copilot review is a
+#     UI-managed convenience that gets toggled off when GitHub changes
+#     its review-rate-limit policies, so treating its presence as drift
+#     produces noise on every policy adjustment. Both sides have it
+#     stripped, so the audit is silent on this rule by design.
 #   - Sort .rules by .type (ascending) so diff is order-independent
 #   - Remove null `parameters` objects (YAML spec omits; API may emit)
 #
@@ -84,12 +89,14 @@ NORMALISE_FILTER='
     del(.id, .node_id, .created_at, .updated_at,
         .bypass_actors, .current_user_can_bypass,
         .source, .source_type, ._links);
+  def drop_ignored_rules:
+    if .rules then .rules |= map(select(.type != "copilot_code_review")) else . end;
   def sort_rules:
     if .rules then .rules |= sort_by(.type) else . end;
   def drop_null_params:
     if .rules then .rules |= map(if has("parameters") and .parameters == null then del(.parameters) else . end) else . end;
   {
-    rulesets: (.rulesets | map(strip_meta | sort_rules | drop_null_params) | sort_by(.name))
+    rulesets: (.rulesets | map(strip_meta | drop_ignored_rules | sort_rules | drop_null_params) | sort_by(.name))
   }
 '
 
