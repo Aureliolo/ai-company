@@ -13,14 +13,14 @@ The skill below references `subagent_type` values from Claude Code plugins. In O
 | Skill references this `subagent_type` | Use this OpenCode agent instead |
 |---|---|
 | `pr-review-toolkit:code-reviewer` | `.opencode/agents/code-reviewer.md` |
-| `everything-claude-code:python-reviewer` | `.opencode/agents/python-reviewer.md` |
+| `python-reviewer` | `.opencode/agents/python-reviewer.md` |
 | `pr-review-toolkit:pr-test-analyzer` | `.opencode/agents/pr-test-analyzer.md` |
 | `pr-review-toolkit:silent-failure-hunter` | `.opencode/agents/silent-failure-hunter.md` |
 | `pr-review-toolkit:comment-analyzer` | `.opencode/agents/comment-analyzer.md` |
 | `pr-review-toolkit:type-design-analyzer` | `.opencode/agents/type-design-analyzer.md` |
-| `everything-claude-code:security-reviewer` | `.opencode/agents/security-reviewer.md` |
-| `everything-claude-code:database-reviewer` | `.opencode/agents/persistence-reviewer.md` |
-| `everything-claude-code:go-reviewer` | `.opencode/agents/go-reviewer.md` |
+| `security-reviewer` | `.opencode/agents/security-reviewer.md` |
+| `persistence-reviewer` | `.opencode/agents/persistence-reviewer.md` |
+| `go-reviewer` | `.opencode/agents/go-reviewer.md` |
 | `pr-review-toolkit:code-simplifier` | `.opencode/agents/code-reviewer.md` (use code-reviewer with simplification focus) |
 | `.claude/agents/design-token-audit.md` | `.opencode/agents/design-token-audit.md` |
 | `.claude/agents/tool-parity-checker.md` | `.opencode/agents/tool-parity-checker.md` (read from `.claude/agents/`) |

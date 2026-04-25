@@ -251,7 +251,7 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 |---|---|---|
 | **docs-consistency** | **ALWAYS** -- runs on every PR regardless of change type | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **code-reviewer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` |
-| **python-reviewer** | Any `src_py` or `test_py` | `everything-claude-code:python-reviewer` |
+| **python-reviewer** | Any `src_py` or `test_py` | `python-reviewer` |
 | **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `pr-review-toolkit:pr-test-analyzer` |
 | **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `pr-review-toolkit:silent-failure-hunter` |
 | **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `pr-review-toolkit:comment-analyzer` |
@@ -259,16 +259,16 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **logging-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **resilience-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **conventions-enforcer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **security-reviewer** | Files in `src/synthorg/api/`, `src/synthorg/security/`, `src/synthorg/tools/`, `src/synthorg/config/`, `src/synthorg/persistence/`, `src/synthorg/engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `everything-claude-code:security-reviewer` |
+| **security-reviewer** | Files in `src/synthorg/api/`, `src/synthorg/security/`, `src/synthorg/tools/`, `src/synthorg/config/`, `src/synthorg/persistence/`, `src/synthorg/engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `security-reviewer` |
 | **frontend-reviewer** | Any `web_src` or `web_test` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **design-token-audit** | Any `web_src` | `.claude/agents/design-token-audit.md` prompt (scans for density, animation, spacing token violations) |
 | **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `everything-claude-code:database-reviewer` |
+| **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `persistence-reviewer` |
 | **test-quality-reviewer** | Any `test_py` or `web_test` | `pr-review-toolkit:pr-test-analyzer` (custom prompt below) |
 | **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **go-reviewer** | Any `cli_go` | `everything-claude-code:go-reviewer` |
-| **go-security-reviewer** | Any `cli_go` -- diff contains `exec.Command`, `os/exec`, `http`, `os.Remove`, `os.WriteFile`, `filepath`, user-supplied paths | `everything-claude-code:security-reviewer` |
+| **go-reviewer** | Any `cli_go` | `go-reviewer` |
+| **go-security-reviewer** | Any `cli_go` -- diff contains `exec.Command`, `os/exec`, `http`, `os.Remove`, `os.WriteFile`, `filepath`, user-supplied paths | `security-reviewer` |
 | **go-conventions-enforcer** | Any `cli_go` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **issue-resolution-verifier** | Issue context was found in Phase 0 step 6 | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `.claude/agents/tool-parity-checker.md` prompt (verifies Claude Code <-> OpenCode config parity) |
