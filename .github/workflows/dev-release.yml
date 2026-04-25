@@ -21,9 +21,12 @@ jobs:
     name: Create Dev Pre-Release
     # Skip Release Please version-bump merges and tag pushes (handled by
     # the stable release pipeline). Also skip if a v* tag already points
-    # at this commit (the stable release just landed).
+    # at this commit (the stable release just landed). Skip in forks --
+    # the release-bot App token isn't available off the upstream release
+    # environment.
     if: >-
-      !startsWith(github.event.head_commit.message, 'chore(main): release')
+      !github.event.repository.fork
+      && !startsWith(github.event.head_commit.message, 'chore(main): release')
       && !contains(github.event.head_commit.message, 'Release-As:')
     runs-on: ubuntu-latest
     timeout-minutes: 5

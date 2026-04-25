@@ -1,0 +1,301 @@
+name: 'CI Preflight Check'
+description: |
+  Inspect the repository for the GitHub environments, labels, branch
+  protection rules, and App installation that the CI / automation
+  workflows assume. Returns a `gaps-found` boolean and a rendered
+  Markdown body that lists every missing item with how-to-fix
+  pointers, so the calling workflow can open or close a tracking
+  issue accordingly.
+
+  Does NOT verify environment-scoped secrets directly. The body it
+  produces lists the expected secrets per environment (informational)
+  and instructs the operator to populate them once the environments
+  are created. Real secret-presence is verified at runtime by the
+  workflows that consume the secrets.
+
+inputs:
+  gh-token:
+    description: >-
+      GitHub token with access to the environments, labels, and
+      branches/protection APIs. The workflow's default github.token
+      (passed via the `gh-token` input from the calling workflow) is
+      sufficient when the calling job declares `permissions: { contents:
+      read, issues: write }`.
+    required: true
+
+outputs:
+  gaps-found:
+    description: '`true` if any check failed, `false` otherwise.'
+    value: ${{ steps.check.outputs.gaps-found }}
+  body:
+    description: 'Rendered Markdown body for the tracking issue. Always populated -- on pass it shows the all-green summary, on gaps it lists each missing item.'
+    value: ${{ steps.check.outputs.body }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run preflight checks
+      id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        GH_REPO: ${{ github.repository }}
+        TEMPLATE_PATH: ${{ github.action_path }}/checklist.md.tmpl
+      run: |
+        set -euo pipefail
+
+        # ── Expectations (kept in sync with .github/labels.yml + the
+        # workflow surface). Update both when new ones land. ──
+        EXPECTED_ENVS=(atlas release release-tags apko-lock cloudflare-preview image-push github-pages)
+        EXPECTED_LABELS=(
+          "automation:ci-health"
+          "automation:ci-preflight"
+          "automation:release-events"
+          "type:ci"
+          "prio:low"
+          "prio:medium"
+          "prio:high"
+          "autorelease: pending"
+        )
+
+        # `gaps_found` only flips for *blocking* checks (envs missing,
+        # labels missing). Branch protection is informational -- it can
+        # never be queried by the workflow's default token, so it is
+        # rendered as a status note rather than a blocker.
+        gaps_found=false
+
+        # ── Environments ──────────────────────────────────────────
+        # Single-shot retry to absorb transient API hiccups; on a hard
+        # failure (e.g. token can't read environments) we degrade to a
+        # skipped check rather than flagging every env as missing.
+        # The `sleep 1` between attempts gives a transient rate-limit
+        # or brief outage a moment to clear before re-firing.
+        declare -A env_exists
+        envs_block=""
+        envs_status="OK"
+        envs_skipped=false
+        # Paginate via `--paginate` so a repo with more than 30
+        # environments enumerates fully. Realistically this repo has
+        # 7, but a fork that has added custom environments should not
+        # see false-positive "missing" entries because we only saw
+        # the first page.
+        if existing_envs_json=$(gh api "repos/$GH_REPO/environments" --paginate --jq '[.environments[]?.name]' 2>/dev/null \
+            | jq -s 'add // []' \
+            || (sleep 1 && gh api "repos/$GH_REPO/environments" --paginate --jq '[.environments[]?.name]' | jq -s 'add // []')); then
+          missing_envs=()
+          for env in "${EXPECTED_ENVS[@]}"; do
+            if jq -e --arg n "$env" 'index($n) != null' <<<"$existing_envs_json" >/dev/null; then
+              env_exists[$env]=true
+            else
+              env_exists[$env]=false
+              missing_envs+=("$env")
+            fi
+          done
+          if [ "${#missing_envs[@]}" -eq 0 ]; then
+            envs_block="All ${#EXPECTED_ENVS[@]} expected environments exist."
+          else
+            gaps_found=true
+            envs_status="${#missing_envs[@]} of ${#EXPECTED_ENVS[@]} missing"
+            envs_block="Create at **Settings -> Environments -> New environment**:"$'\n\n'
+            for env in "${missing_envs[@]}"; do
+              envs_block+="- [ ] \`$env\`"$'\n'
+            done
+            envs_block+=$'\n'"See [Fork Setup Guide section 2](../blob/HEAD/docs/guides/fork-setup.md) for branch policies and which workflows consume each environment."
+          fi
+        else
+          # Skipping a blocking check is treated as inconclusive, not
+          # as passing: flip `gaps_found` to true so the tracking
+          # issue stays open and the caller knows the audit could not
+          # complete. Otherwise a permanently-permission-denied token
+          # would silently green-light a broken fork.
+          envs_skipped=true
+          envs_status="skipped (cannot enumerate)"
+          envs_block="_Could not enumerate environments (token lacks permission). Inconclusive -- treated as a gap until verifiable._"
+          gaps_found=true
+          # When we cannot enumerate, treat every env as "unknown" so
+          # the conditional setup section below still renders -- a fork
+          # without environments needs the instructions even if we
+          # cannot positively confirm they are missing.
+          for env in "${EXPECTED_ENVS[@]}"; do
+            env_exists[$env]=false
+          done
+        fi
+
+        # ── Labels ────────────────────────────────────────────────
+        # `gh label list` defaults to 30 results; this repo has 75+
+        # labels in production, so a default-limit call would silently
+        # drop the alphabetically-later ones (e.g. `type:ci`) and
+        # false-flag them as missing. Paginate via `gh api` to fetch
+        # every label regardless of total count.
+        labels_block=""
+        labels_status="OK"
+        if existing_labels_json=$(gh api "repos/$GH_REPO/labels" --paginate --jq '[.[].name]' 2>/dev/null \
+            | jq -s 'add // []'); then
+          missing_labels=()
+          for label in "${EXPECTED_LABELS[@]}"; do
+            if ! jq -e --arg n "$label" 'index($n) != null' <<<"$existing_labels_json" >/dev/null; then
+              missing_labels+=("$label")
+            fi
+          done
+          if [ "${#missing_labels[@]}" -eq 0 ]; then
+            labels_block="All ${#EXPECTED_LABELS[@]} expected labels exist."
+          else
+            gaps_found=true
+            labels_status="${#missing_labels[@]} of ${#EXPECTED_LABELS[@]} missing"
+            labels_block="Run the **Sync Labels** workflow once (Actions -> Sync Labels -> Run workflow on \`main\`) to bootstrap from \`.github/labels.yml\`. Missing:"$'\n\n'
+            for label in "${missing_labels[@]}"; do
+              labels_block+="- [ ] \`$label\`"$'\n'
+            done
+          fi
+        else
+          # Same inconclusive-is-a-gap rule as the environments check.
+          labels_status="skipped (cannot enumerate)"
+          labels_block="_Could not enumerate labels (token lacks permission). Inconclusive -- treated as a gap until verifiable._"
+          gaps_found=true
+        fi
+
+        # ── Branch protection on main (informational) ─────────────
+        # The workflow's default GITHUB_TOKEN cannot be granted the
+        # `administration: read` scope, so this section is purely
+        # informational: whatever can be inferred is reported, but
+        # never drives `gaps_found`. A fork operator follows the
+        # Fork Setup Guide manually for these items.
+        bp_block=""
+        bp_status="info"
+        bp_notes=()
+        bp_response=$(gh api "repos/$GH_REPO/branches/main/protection" --include 2>&1 || true)
+        bp_status_line=$(printf '%s' "$bp_response" | head -n 1)
+        if printf '%s' "$bp_status_line" | grep -qE 'HTTP/[0-9.]+ 200'; then
+          bp_json=$(gh api "repos/$GH_REPO/branches/main/protection" 2>/dev/null || echo '{}')
+          if jq -e '.required_signatures.enabled == true' <<<"$bp_json" >/dev/null; then
+            bp_notes+=("Signed commits: enabled")
+          else
+            bp_notes+=("Signed commits: NOT enabled (recommended for production main)")
+          fi
+          if jq -e '.required_status_checks.strict == true' <<<"$bp_json" >/dev/null; then
+            bp_notes+=("Strict status checks: on")
+          else
+            bp_notes+=("Strict status checks: off")
+          fi
+          if jq -e '[.required_status_checks.contexts[]?] | index("CI Pass") != null' <<<"$bp_json" >/dev/null; then
+            bp_notes+=("Required check \`CI Pass\`: configured")
+          else
+            bp_notes+=("Required check \`CI Pass\`: NOT configured")
+          fi
+          bp_status="visible"
+        elif printf '%s' "$bp_status_line" | grep -qE 'HTTP/[0-9.]+ 404'; then
+          bp_notes+=("No branch protection rule on \`main\` (or 404 from this token).")
+          bp_status="missing"
+        else
+          bp_notes+=("Cannot read branch protection from this workflow's token (the \`administration: read\` scope is not grantable to the default \`GITHUB_TOKEN\`).")
+          bp_status="opaque"
+        fi
+        default_branch=$(gh api "repos/$GH_REPO" --jq '.default_branch' 2>/dev/null || echo "")
+        if [ -n "$default_branch" ] && [ "$default_branch" != "main" ]; then
+          bp_notes+=("Default branch is \`$default_branch\`, not \`main\`. Workflows assume \`main\`.")
+        fi
+        for note in "${bp_notes[@]}"; do
+          bp_block+="- $note"$'\n'
+        done
+
+        # ── Setup instructions (only for missing environments) ────
+        # When an environment exists we hide its setup section; the
+        # signal "env exists" is a proxy for "operator reached this
+        # step in the guide". Env-scoped secret values cannot be
+        # introspected from this workflow's token, so secret presence
+        # is not auto-checked -- runtime workflow failures surface a
+        # missing secret loud enough on its own.
+        setup_block=""
+
+        if [ "${env_exists[atlas]}" != "true" ]; then
+          setup_block+=$'### `atlas`\n\n'
+          setup_block+=$'After creating the `atlas` environment, add this secret:\n\n'
+          setup_block+=$'- `ATLAS_TOKEN` -- Atlas Cloud API token for schema validation. Get one at https://atlasgo.cloud/. Free tier covers a single project. Used by `ci.yml` schema-validate.\n\n'
+        fi
+
+        if [ "${env_exists[release]}" != "true" ] || [ "${env_exists[release-tags]}" != "true" ]; then
+          setup_block+=$'### `release` (and `release-tags` shares the same App)\n\n'
+          setup_block+=$'These two environments together gate the release pipeline. After creating them, add the following secrets to `release`:\n\n'
+          setup_block+=$'- `RELEASE_BOT_APP_CLIENT_ID` -- GitHub App **Client ID** for your release bot.\n'
+          setup_block+=$'- `RELEASE_BOT_APP_PRIVATE_KEY` -- the App\'s private key (full PEM contents, including `-----BEGIN ... PRIVATE KEY-----` headers).\n\n'
+          setup_block+=$'To create the release-bot App:\n\n'
+          setup_block+=$'1. Go to https://github.com/settings/apps/new (personal account) or your organization\'s "Developer settings -> GitHub Apps -> New GitHub App".\n'
+          setup_block+=$'2. **Name**: anything (e.g. `myorg-release-bot`). Webhook: uncheck "Active".\n'
+          setup_block+=$'3. **Repository permissions**: Contents Read & write, Pull requests Read & write, Metadata Read.\n'
+          setup_block+=$'4. **Install** the App on this repository.\n'
+          setup_block+=$'5. Generate a private key under "Private keys -> Generate private key" and save the PEM file.\n'
+          setup_block+=$'6. Copy the App\'s Client ID and PEM contents into the `release` environment as the two secrets above.\n\n'
+          setup_block+=$'The minted token is what mints signed bot commits on protected `main` and bypasses the GITHUB_TOKEN anti-recursion rule for tag-triggered downstream workflows. Without it, `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml` and `test-signing.yml` skip cleanly (they are already gated on `!github.event.repository.fork`).\n\n'
+        fi
+
+        if [ "${env_exists[cloudflare-preview]}" != "true" ]; then
+          setup_block+=$'### `cloudflare-preview` _(optional -- PR docs previews)_\n\n'
+          setup_block+=$'After creating the environment, add:\n\n'
+          setup_block+=$'- `CLOUDFLARE_API_TOKEN` -- Pages-deploy-scoped API token from https://dash.cloudflare.com/profile/api-tokens.\n'
+          setup_block+=$'- `CLOUDFLARE_ACCOUNT_ID` -- account ID from the Cloudflare dashboard sidebar.\n\n'
+          setup_block+=$'`pages-preview.yml` is the only consumer; the deploy step skips when these secrets are unset.\n\n'
+        fi
+
+        if [ "${env_exists[apko-lock]}" != "true" ]; then
+          setup_block+=$'### `apko-lock` _(optional -- scheduled Wolfi base-image lock updates)_\n\n'
+          setup_block+=$'No secrets required. The environment exists for branch-policy gating only.\n\n'
+        fi
+
+        if [ "${env_exists[image-push]}" != "true" ]; then
+          setup_block+=$'### `image-push` _(optional -- publishes container images to GHCR)_\n\n'
+          setup_block+=$'No secrets required. Uses the auto-provided `github.token` against your fork\'s GHCR namespace. The environment exists for branch-policy gating only.\n\n'
+        fi
+
+        if [ "${env_exists[github-pages]}" != "true" ]; then
+          setup_block+=$'### `github-pages`\n\n'
+          setup_block+=$'No secrets required. The GitHub-managed Pages deployment uses the workflow token. The environment exists for branch-policy gating on the `main`-only Pages publish path. See `pages.yml`.\n\n'
+        fi
+
+        if [ -z "$setup_block" ]; then
+          setup_block=$'_All expected environments exist. Setup instructions hidden._'$'\n\n'
+          setup_block+=$'_The preflight cannot directly verify secret values inside each environment -- runtime workflow failures will surface a missing or invalid secret when the workflow next runs._'
+        fi
+
+        # ── Overview table + status line ─────────────────────────
+        if [ "$gaps_found" = true ]; then
+          status_line="**Action required.** Resolve the items checked below; the next preflight run will close this issue automatically."
+        else
+          status_line="**All blocking checks pass.** Branch protection notes below are informational only."
+        fi
+
+        overview_table=$'| Check | Status |\n'
+        overview_table+=$'|---|---|\n'
+        overview_table+="| GitHub environments | $envs_status |"$'\n'
+        overview_table+="| Labels | $labels_status |"$'\n'
+        overview_table+="| Branch protection on \`main\` | informational ($bp_status) |"$'\n'
+
+        # ── Render the body from the template ────────────────────
+        body=$(cat "$TEMPLATE_PATH")
+        body="${body//\{\{STATUS_LINE\}\}/$status_line}"
+        body="${body//\{\{OVERVIEW_TABLE\}\}/$overview_table}"
+        body="${body//\{\{ENVIRONMENTS_BLOCK\}\}/$envs_block}"
+        body="${body//\{\{LABELS_BLOCK\}\}/$labels_block}"
+        body="${body//\{\{BRANCH_PROTECTION_BLOCK\}\}/$bp_block}"
+        body="${body//\{\{SETUP_BLOCK\}\}/$setup_block}"
+
+        # ── Emit outputs ─────────────────────────────────────────
+        # Random delimiter so a body that happens to contain the
+        # marker on its own line cannot truncate the output. Per
+        # GitHub Actions docs the delimiter must not appear in the
+        # value; salting with a per-run random suffix makes that
+        # condition vacuous. The triple fallback (uuidgen ->
+        # /proc/sys/kernel/random/uuid -> $RANDOM) keeps the
+        # subshell from ever exiting non-zero under `set -e` even
+        # on minimal or non-Linux runners.
+        delim="PREFLIGHT_BODY_EOF_$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo $RANDOM)"
+        echo "gaps-found=$gaps_found" >> "$GITHUB_OUTPUT"
+        {
+          printf 'body<<%s\n' "$delim"
+          printf '%s\n' "$body"
+          printf '%s\n' "$delim"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "::group::Preflight result"
+        echo "gaps-found=$gaps_found"
+        printf '%s\n' "$body"
+        echo "::endgroup::"

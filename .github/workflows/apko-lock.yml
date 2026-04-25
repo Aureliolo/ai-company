@@ -66,7 +66,16 @@ jobs:
             dependencies
             type:ci
             scope:docker
-          reviewers: Aureliolo
+          # peter-evans/create-pull-request' `reviewers` input only
+          # accepts user logins; passing an org name produces a 422
+          # "Could not resolve to a node" from GitHub's review-request
+          # API. Gate on owner.type == 'User' so an org-owned fork
+          # falls back to no reviewer assignment (the PR still opens,
+          # just without an automatic reviewer). User-owned repos --
+          # including the upstream `Aureliolo/synthorg` -- keep the
+          # existing behaviour. To request review from a team in an
+          # org-owned fork, change to `team-reviewers: <team-slug>` here.
+          reviewers: ${{ github.event.repository.owner.type == 'User' && github.repository_owner || '' }}
 
   report-failure:
     name: Open / update tracking issue on schedule failure

@@ -21,8 +21,10 @@ jobs:
     name: Check Rollover
     # Skip on Release Please release commits and on commits that already
     # carry a Release-As trailer (including our own rollover commits).
+    # Skip in forks -- needs the upstream-only release-bot App token.
     if: >-
-      !startsWith(github.event.head_commit.message, 'chore(main): release')
+      !github.event.repository.fork
+      && !startsWith(github.event.head_commit.message, 'chore(main): release')
       && !contains(github.event.head_commit.message, 'Release-As:')
     runs-on: ubuntu-latest
     timeout-minutes: 5

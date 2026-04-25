@@ -9,6 +9,10 @@ permissions: {}
 jobs:
   release-please:
     name: Release Please
+    # Fork gate: release-please needs the synthorg-release-bot App token
+    # to mint signed commits + bypass GITHUB_TOKEN's anti-recursion rule.
+    # Forks don't have those env-scoped secrets; skip cleanly.
+    if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-latest
     environment: release
     permissions:

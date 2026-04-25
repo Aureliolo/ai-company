@@ -1,0 +1,41 @@
+# CI Setup Tracking Issue
+
+This issue is auto-managed by [`ci-preflight.yml`](../blob/HEAD/.github/workflows/ci-preflight.yml). It refreshes on every push, opens when something blocking is missing, and closes itself with a `Preflight passed` comment once every blocking check passes. See the [Fork Setup Guide](../blob/HEAD/docs/guides/fork-setup.md) for the long-form walkthrough.
+
+---
+
+## Overview
+
+{{OVERVIEW_TABLE}}
+
+{{STATUS_LINE}}
+
+---
+
+## GitHub environments
+
+{{ENVIRONMENTS_BLOCK}}
+
+---
+
+## Labels
+
+{{LABELS_BLOCK}}
+
+---
+
+## Branch protection on `main` _(informational only)_
+
+{{BRANCH_PROTECTION_BLOCK}}
+
+> Branch protection cannot be queried by the workflow's default `GITHUB_TOKEN` (the `administration: read` scope is not grantable to the auto-provided token). This section reports what can be inferred and never opens or closes this issue. Configure the items above manually following [Fork Setup Guide section 5](../blob/HEAD/docs/guides/fork-setup.md).
+
+---
+
+## Setup instructions for missing environments
+
+{{SETUP_BLOCK}}
+
+---
+
+Once every blocking item is resolved, the next preflight run will close this issue with a confirmation comment. Re-runs are non-destructive: the body is regenerated from current state on every preflight run, so checking items off in the GitHub UI is purely cosmetic -- the source of truth is what the next run discovers.

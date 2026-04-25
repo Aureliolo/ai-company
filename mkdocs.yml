@@ -124,6 +124,7 @@ nav:
       - Human Interaction & API: guides/human-interaction.md
       - Persistence Migrations: guides/persistence-migrations.md
       - Contributing: guides/contributing.md
+      - Fork Setup: guides/fork-setup.md
   - Design:
       - design/index.md
       - Agents: design/agents.md

@@ -8,23 +8,29 @@ description: |
   Behaviour:
     1. Search open issues by title alone (no label filter) so issues
        created via the label-less fallback below remain discoverable
-       and the next failure comments on them instead of opening a
+       and the next failure updates them instead of opening a
        duplicate tracker.
-    2. If a match is found -> append a comment with the supplied body.
+    2. If a match is found -> edit the body in place. The body is
+       authoritative state, so an edit avoids accumulating stale
+       snapshots in the comment chain.
     3. Otherwise -> create a new issue with the supplied labels. If the
        labelled create fails (e.g., a referenced label has been deleted
        from the repo), retry without labels and emit a workflow
        warning so the missing-label condition surfaces in the run UI.
-    4. If `pin: true` (default), best-effort pin the issue. Pin
-       failures (3-issue cap, race, permissions) emit a warning but do
-       NOT fail the action -- the comment / create above is the
-       primary signal.
+    4. If `pin: true` (default), best-effort pin the issue via the
+       GraphQL `pinIssue` mutation (GitHub never shipped a REST
+       endpoint for this). Pin failures (3-issue cap, race, "already
+       pinned", permissions) emit a warning with the actual GraphQL
+       error message but do NOT fail the action -- the create / edit
+       above is the primary signal.
 
   Caller contract:
     - The job invoking this action must declare `permissions:
       issues: write`.
-    - `gh-token` is a passthrough for `GH_TOKEN`; pass
-      `${{ github.token }}` unless a higher-permission token is needed.
+    - `gh-token` is a passthrough for `GH_TOKEN`; pass the workflow's
+      `github.token` (referenced as the GitHub Actions expression
+      `github.token` in the caller's YAML) unless a higher-permission
+      token is needed.
 
 inputs:
   title:
@@ -40,18 +46,29 @@ inputs:
       labels so dedup works even if a label gets deleted.
     required: true
   body:
-    description: 'Issue body (on create) / comment body (on update). Markdown.'
+    description: 'Markdown body. On a fresh issue this is the initial body. On an existing match it overwrites the body in place.'
     required: true
   pin:
-    description: 'Pin the issue after create / comment. Best-effort -- failures degrade to a warning. default: true'
+    description: 'Pin the issue after create / edit. Best-effort -- failures degrade to a warning. default: true'
     required: false
     default: 'true'
   gh-token:
-    description: |
-      GitHub token with `issues: write` scope. The default
-      `${{ github.token }}` works for repo-internal workflows; pass an
-      App installation token if write-on-fork or cross-repo behaviour
-      is needed.
+    description: >-
+      GitHub token with `issues: write` scope on the workflow's own
+      repository. The workflow's default github.token is sufficient
+      for callers running on push, schedule, workflow_dispatch, or
+      same-repo pull_request events. It is NOT sufficient for
+      pull_request events whose head ref lives in a forked
+      repository -- GitHub silently downgrades GITHUB_TOKEN to
+      read-only for those runs regardless of what the workflow
+      declares under `permissions:`, and any issue-write call here
+      will 403. Callers that may run from fork PRs must gate this
+      step on `github.event.pull_request.head.repo.full_name ==
+      github.repository`. The action is single-repo: it always
+      targets the calling workflow's github.repository for both
+      issue lookup/create and pinning, which means it correctly
+      self-targets a fork when the workflow runs in the fork itself
+      (push events from the fork's own collaborators).
     required: true
 
 runs:
@@ -104,19 +121,67 @@ runs:
           ISSUE_NUMBER="${ISSUE_URL##*/}"
           echo "Created tracking issue #$ISSUE_NUMBER"
         else
-          gh issue comment "$ISSUE_NUMBER" --body "$BODY"
-          echo "Commented on tracking issue #$ISSUE_NUMBER"
+          # Edit the body in place rather than appending a comment.
+          # The body is regenerated from current state on every
+          # preflight run, so a comment chain would just accumulate
+          # stale snapshots of past gaps and pollute the issue feed.
+          # An edit keeps the issue clean: title is the dedup key,
+          # body always reflects current state.
+          gh issue edit "$ISSUE_NUMBER" --body "$BODY"
+          echo "Updated tracking issue #$ISSUE_NUMBER"
         fi
 
         if [ "$PIN" = "true" ]; then
           # Best-effort pin. A repo can hold at most 3 pinned issues;
           # quota / race / permission failures degrade to a warning so
-          # the comment / create above remains the primary signal.
-          if ! gh api --method PUT \
-              "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/pin" \
-              --silent 2>/dev/null; then
-            echo "::warning::could not pin tracking issue #$ISSUE_NUMBER (quota / race / permission)"
+          # the create / edit above remains the primary signal.
+          #
+          # GitHub never shipped a REST endpoint for pinning -- the
+          # `PUT /repos/.../issues/.../pin` URL the prior version used
+          # always returned 404, silently swallowed by `2>/dev/null`.
+          # The supported path is the GraphQL `pinIssue` mutation,
+          # which takes the issue's node ID. Resolve the node ID via
+          # GraphQL (the workflow's GITHUB_TOKEN has the necessary
+          # repository read scope), then fire the mutation and surface
+          # the actual error message on failure instead of guessing.
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          ISSUE_NODE_ID=$(gh api graphql \
+            -f query='query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                issue(number: $number) { id }
+              }
+            }' \
+            -f owner="$OWNER" \
+            -f repo="$REPO_NAME" \
+            -F number="$ISSUE_NUMBER" \
+            --jq '.data.repository.issue.id' 2>/dev/null) || ISSUE_NODE_ID=""
+
+          if [ -z "$ISSUE_NODE_ID" ]; then
+            echo "::warning::could not resolve issue #$ISSUE_NUMBER node ID for pinning"
           else
-            echo "Pinned tracking issue #$ISSUE_NUMBER"
+            PIN_RESPONSE=$(gh api graphql \
+              -f query='mutation($id: ID!) {
+                pinIssue(input: {issueId: $id}) {
+                  issue { number }
+                }
+              }' \
+              -f id="$ISSUE_NODE_ID" 2>&1) || true
+
+            if printf '%s' "$PIN_RESPONSE" | grep -q '"errors"'; then
+              # GraphQL returns 200 with an `errors` array on
+              # business-rule failures (3-pin quota, race conditions,
+              # permission denied). Extract the first error message.
+              PIN_ERROR=$(printf '%s' "$PIN_RESPONSE" | jq -r '.errors[0].message // "unknown error"' 2>/dev/null || echo "unknown error")
+              echo "::warning::could not pin tracking issue #$ISSUE_NUMBER: $PIN_ERROR"
+            elif printf '%s' "$PIN_RESPONSE" | grep -q '"pinIssue"'; then
+              echo "Pinned tracking issue #$ISSUE_NUMBER"
+            else
+              # Network / auth failure -- gh api itself returned
+              # something that is not a recognisable GraphQL response.
+              # Trim to the first 200 chars to keep workflow logs clean.
+              PIN_ERROR=$(printf '%s' "$PIN_RESPONSE" | head -c 200)
+              echo "::warning::could not pin tracking issue #$ISSUE_NUMBER: $PIN_ERROR"
+            fi
           fi
         fi

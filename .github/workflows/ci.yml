@@ -613,9 +613,18 @@ jobs:
     # The ``release`` environment's branch policy still restricts both
     # paths to main -- a workflow_dispatch from a feature branch is
     # blocked at the environment gate, not by the if: check.
+    #
+    # Fork gate: skip in forks. The audit needs the release-bot App
+    # token (env-scoped secret on `release`) and a fork won't have it.
+    # ci-preflight reports the missing setup separately.
+    #
+    # Precedence: `&&` binds tighter than `||`, so the inner
+    # parentheses around `(push && main || dispatch)` are required
+    # to keep the trigger-OR group intact under the outer fork-AND.
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      || github.event_name == 'workflow_dispatch'
+      !github.event.repository.fork
+      && ((github.event_name == 'push' && github.ref == 'refs/heads/main')
+          || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     continue-on-error: true
