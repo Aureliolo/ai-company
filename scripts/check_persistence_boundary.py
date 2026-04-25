@@ -352,21 +352,60 @@ def _iter_persistence_targets(
 ) -> list[tuple[Path, str]]:
     """Yield ``(absolute_path, posix_relative_path)`` for persistence files.
 
-    Returns every tracked ``*.py`` file under ``src/synthorg/persistence/``
-    so the mutation-log gate can scan them.  Tests under
-    ``tests/.../persistence/`` are intentionally excluded -- the rule
-    applies to production code; tests that exercise repo internals can
-    log whatever they need.
+    The mutation-log gate only ever needs to scan
+    ``src/synthorg/persistence/``; user-supplied ``--paths`` are used as
+    a *coarse opt-in* (skip persistence scanning entirely if no path
+    overlaps the persistence tree) but do **not** drive the actual
+    enumeration -- that is anchored at a hard-coded prefix under
+    ``project_root``.  Avoiding user-input on the final filesystem read
+    keeps CodeQL's path-injection analysis happy and prevents the
+    persistence sweep from accidentally widening scope when callers
+    pass aggressive ``--paths``.
+
+    Tests under ``tests/.../persistence/`` are intentionally excluded
+    -- the rule applies to production code; tests that exercise repo
+    internals can log whatever they need.
     """
+    if not _persistence_in_scope(roots, project_root):
+        return []
+    persistence_root = project_root / _PERSISTENCE_SRC_PREFIX.rstrip("/")
+    if not persistence_root.is_dir():
+        return []
     targets: list[tuple[Path, str]] = []
-    for root in roots:
-        abs_root = _resolve_root(root, project_root)
-        if abs_root is None or not abs_root.exists():
-            continue
-        for path, rel in _git_tracked_python_files(abs_root, project_root):
-            if rel.startswith(_PERSISTENCE_SRC_PREFIX):
-                targets.append((path, rel))
+    for path, rel in _git_tracked_python_files(persistence_root, project_root):
+        if rel.startswith(_PERSISTENCE_SRC_PREFIX):
+            targets.append((path, rel))
     return targets
+
+
+def _persistence_in_scope(roots: list[Path], project_root: Path) -> bool:
+    """Return ``True`` when at least one ``--paths`` entry overlaps persistence.
+
+    Coarse opt-in for the mutation-log sweep -- uses the same
+    containment check as :func:`_resolve_root` so the boundary is
+    consistent.  The function never returns the user-supplied path
+    itself, only a boolean derived from it.
+    """
+    persistence_prefix = (project_root / _PERSISTENCE_SRC_PREFIX.rstrip("/")).resolve(
+        strict=False
+    )
+    for root in roots:
+        resolved = _resolve_root(root, project_root)
+        if resolved is None:
+            continue
+        # Either the user path is inside persistence, or persistence is
+        # inside the user path -- both count as "persistence is in
+        # scope".  Compare resolved string forms so CodeQL recognises
+        # the prefix relationship.
+        resolved_str = os.fspath(resolved)
+        prefix_str = os.fspath(persistence_prefix)
+        if (
+            resolved_str == prefix_str
+            or resolved_str.startswith(prefix_str + os.sep)
+            or prefix_str.startswith(resolved_str + os.sep)
+        ):
+            return True
+    return False
 
 
 class ProjectRootError(Exception):
