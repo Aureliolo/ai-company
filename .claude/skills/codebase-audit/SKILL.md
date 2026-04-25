@@ -1182,16 +1182,35 @@ Severity: low.
 File: `_audit/findings/73-roadmap-currency.md`
 
 ```text
-Cross-reference roadmap.md / docs/roadmap*.md with `gh issue list` (open +
-closed by version label) and `gh release list`.
+Read `roadmap.md`, all files matching `docs/*roadmap*`, `docs/future-vision*`,
+`docs/vision*`. For each:
 
-Flag:
-- Version themes listing issues already closed as open work
-- Shipped work still described as future
-- Version numbers on the roadmap not matching released tags in pyproject.toml
-- Missing entries for versions that have shipped
+1. Check version themes vs. `gh release list` and `gh issue list` -- flag
+   themes listing closed issues as open work, shipped work described as
+   future, version numbers not matching released tags in pyproject.toml,
+   missing entries for shipped versions.
 
-Severity: medium.
+2. Extract every numeric/temporal claim in narrative text (test counts,
+   agent counts, "since vX", "as of <date>", "X+ design pages", etc.) and
+   verify against live source.
+
+3. Check every "future" / "planned" / "upcoming" claim against shipped
+   work -- if the feature is shipped, the claim is stale.
+
+## Evidence Requirement
+You MUST emit Bash output for every numeric/temporal claim you verify:
+- Test count: paste output of `uv run python -m pytest tests/ --collect-only -q | tail -1`
+- Release list: paste output of `gh release list --limit 10`
+- Agent count: paste `ls .claude/agents | wc -l`
+- pyproject.toml version: paste the matching line
+
+Findings without evidence are inadmissible.
+
+## Severity Calibration
+- Medium for version-theme drift on internal pages.
+- HIGH for stale numeric claims on pages reachable from synthorg.io top
+  nav (homepage, roadmap, comparison, vision).
+- HIGH for shipped work described as future.
 ```
 
 **Agent 74 -- comparison-page-accuracy** (sonnet)
@@ -1215,18 +1234,35 @@ Severity: medium for inaccurate self-claims, low for competitor drift.
 File: `_audit/findings/75-landing-page-metrics.md`
 
 ```text
-Check numeric claims on public-facing pages (README, landing, comparison,
-docs index). For each number, verify against live source:
-- Test count via pytest --collect-only
-- Provider count via providers/presets.py
-- Backend count via persistence/ subdirectories
-- Tool count via tools/registry.py
-- Supported model count
-- Line count / file count claims
+Walk every page in `mkdocs.yml` nav (not just landing-style pages). For
+each page, enumerate every numeric claim and verify against live source.
+Roadmap, vision, comparison, architecture, design pages, blog posts all
+qualify -- do NOT limit to "landing-style" pages.
 
-Flag every stale number.
+For each number, verify against live source:
+- Test count via `uv run python -m pytest tests/ --collect-only -q | tail -1`
+- Provider count via `providers/presets.py`
+- Backend count via `persistence/` subdirectories
+- Tool count via `tools/registry.py`
+- Agent count via `ls .claude/agents`
+- Supported model count via the model registry
+- Line count / file count claims via `find` + `wc`
 
-Severity: medium.
+Flag EVERY stale number, not just obvious ones.
+
+## Evidence Requirement
+You MUST emit Bash output for every numeric claim you verify. Findings
+without evidence are inadmissible -- the validation phase rejects
+evidence-free numeric findings with severity downgrade to info.
+
+## Severity Calibration
+- HIGH for stale numbers on pages reachable from synthorg.io top nav
+  (homepage, roadmap, comparison, vision, architecture, decisions,
+  getting-started).
+- Medium otherwise.
+
+Stale public-facing numbers are an investor / user trust issue, not a
+low-priority finding.
 ```
 
 **Agent 76 -- superseded-decisions** (sonnet)
@@ -2778,6 +2814,224 @@ Use AskUserQuestion to confirm:
 - Whether to create issues now or export report only
 
 If `--report-only`, skip this phase entirely.
+
+---
+
+## All-Round Improvements
+
+These are structural improvements to the audit lifecycle, not new agents. They apply to every run.
+
+### Phase 0 setup: run-history layout
+
+Replace the previous `rm -rf _audit && mkdir -p _audit/findings` with run-history:
+
+```bash
+RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M)"
+mkdir -p "$RUN_DIR/findings"
+ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest
+```
+
+On Windows, the OpenCode adapter substitutes `New-Item -ItemType SymbolicLink` for `ln -sfn`. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory. `_audit/latest` always points at the most recent run. Older runs accumulate.
+
+Verify `_audit/` is in `.gitignore` (existing behavior). The `_audit/.ignore.yaml` ignore list (see below) is also gitignored by virtue of the parent.
+
+### Phase 0 sub-step: cost / time estimate
+
+Before launching agents, estimate run cost and time. Print to stdout:
+
+> Estimated run time: ~14 min. Estimated cost: $X.XX (Y on Sonnet, Z on Haiku, W on Opus).
+
+Time formula: `(batch_count * avg_batch_duration_from_history) + validation_time + synthesis_time`. First run defaults: ~45s/batch, ~30s/validation batch, ~60s synthesis.
+
+Cost formula: per-model rate * estimated prompt size * agent count.
+
+A new `--budget <USD>` flag aborts if estimate exceeds budget. The existing `--quick` flag still skips zero-finding deep-dives.
+
+### Persistent ignore list
+
+`_audit/.ignore.yaml` (gitignored):
+
+```yaml
+- finding: "src/synthorg/foo.py:42"
+  agent: 21
+  reason: "Intentional silent except -- cleanup path, see docstring"
+  added: 2026-04-25
+- finding: "docs/roadmap.md:#numeric-claim:13k"
+  agent: 75
+  reason: "Will fix in next docs sweep"
+  added: 2026-04-25
+  expires: 2026-05-25
+```
+
+When building INDEX (Phase 4), read `.ignore.yaml`. Findings with a matching `finding`/`agent` pair are filtered out before counting and triage. Add a footer: "N findings suppressed by .ignore.yaml; run with `--show-ignored` to see them."
+
+Phase 5 triage gets a new option: "Ignore permanently" -- appends to `.ignore.yaml` with reason and optional expiry.
+
+### Phase 3 update: validate medium severity
+
+Phase 3 currently validates critical+high. Update to validate **critical + high + medium**. Low and info still skipped (validation cost not worth it). Adds ~30-50% validation batches; justified because medium findings have caused real public-facing drift (the 13k tests claim) to slip past prior audits.
+
+### Phase 3 update: evidence requirement enforcement
+
+When validation reads a finding from agent 73, 75, 132, 151, or 152, it MUST verify that the finding includes Bash output proving the numeric claim. Findings without evidence are downgraded to severity `info` and excluded from triage.
+
+### Phase 3.5: Synthesis & Quality Pass (NEW)
+
+Runs after validation, before INDEX.md. Launches one **sonnet** synthesis agent that:
+
+1. Reads every finding file in the current run.
+2. Clusters findings by `file:line` (or by file alone when line numbers don't match across agents). Two agents reporting the same line collapse into one consolidated entry showing both perspectives. Single-agent findings pass through unchanged. Writes to `_audit/latest/findings-clustered.md`.
+3. Applies severity normalization across the clustered findings using a single rubric:
+   - `critical`: active security hole, data corruption risk, production outage potential
+   - `high`: broken behavior, missing safety check, public-facing factual error
+   - `medium`: convention violation, dead code, missing wiring, internal inconsistency
+   - `low`: style, minor docs gaps, cosmetic
+   - `info`: TODO, deferred work, opportunity
+4. Adds an `effort` field to each finding: `trivial` / `small` / `medium` / `large`.
+5. **Public-facing severity bump**: any finding whose file is in the public-facing set (README.md, docs/ tree reachable from mkdocs.yml nav, comparison page output) gets severity bumped one level. Reason: stale or wrong claims on synthorg.io are visible to investors and search engines.
+
+Then a dedicated **opus** Wave 28 meta-synthesis agent reads all 15 Wave 28 finding files plus the clustered output and writes `_audit/latest/REWORK.md`:
+
+```markdown
+# Recommended Reworks
+
+## Top N Architectural Recommendations
+
+### 1. Centralize timestamp formatting (effort: medium)
+
+**Pattern**: 7 different ISO-8601 formatters across the codebase
+(agents 137, 141 both flag this from different angles).
+
+**Affected files**: ...
+
+**Proposal**: introduce `synthorg.core.formatters.iso_timestamp()` and migrate the 7 sites.
+
+**Migration path**:
+1. Land the new helper.
+2. Migrate sites in alphabetical order over 2-3 PRs.
+3. Add a ruff custom rule to forbid new formatters.
+
+**Recommended next action**: open RFC issue with this proposal.
+
+---
+```
+
+The meta-synthesis agent groups Wave 28 findings by underlying root cause (not by which agent flagged them), assigns effort, proposes migration paths, and ranks by impact-to-effort ratio. INDEX.md links to REWORK.md from its Architectural Recommendations section.
+
+### Phase 4 update: INDEX.md Architectural Recommendations + JSON export
+
+Append a new section to INDEX.md, populated from Wave 28 findings via REWORK.md:
+
+```markdown
+## Architectural Recommendations
+
+These are systemic patterns -- not single-line bugs. Each is a candidate
+for centralization, rework, or design change rather than a one-off fix.
+
+See [REWORK.md](REWORK.md) for the full ranked list with proposals.
+
+### Top 5
+
+1. [Pattern name] -- effort: small/medium/large
+   ...
+```
+
+Also write `_audit/latest/findings.json` (machine-readable):
+
+```json
+{
+  "run_id": "2026-04-25-1430",
+  "scope": "full",
+  "agents_launched": 153,
+  "validation": {"validated": 412, "false_positives": 67, "intentional": 12},
+  "findings": [
+    {
+      "id": "75:docs/roadmap.md:42",
+      "agent_id": 75,
+      "file": "docs/roadmap.md",
+      "line": 42,
+      "severity_raw": "medium",
+      "severity_normalized": "high",
+      "public_facing": true,
+      "effort": "small",
+      "validated": "confirmed",
+      "description": "Stale test count claim: doc says 13k, actual is X",
+      "evidence": "...bash output..."
+    }
+  ],
+  "clusters": [...],
+  "rework_recommendations": [...]
+}
+```
+
+Enables external tooling: GitHub Actions integration, dashboards, history analysis.
+
+### Phase 5 update: walk Architectural Recommendations separately
+
+Phase 5 triage gets one extra step: walk REWORK.md with the user. Each recommendation gets a per-item triage option: open RFC issue / open implementation issue / skip (judged YAGNI). This is separate from the per-line finding triage so structural reworks don't compete with surface bugs for attention.
+
+Plus the "Ignore permanently" option from the persistent ignore list above.
+
+### Phase 6: Diff-since-last-run (NEW)
+
+Runs after Phase 5. Generates `_audit/latest/DIFF.md`:
+
+- For each finding in the latest run, check whether its `finding-id` (file:line:agent) appeared in the previous run.
+- New findings: appeared this run, not in previous.
+- Disappeared findings: appeared in previous, not this. Likely fixed.
+- Persistent findings: appeared in both. Aging counter increments.
+
+```markdown
+# Diff: <date> vs. <prev-date>
+
+## New findings (12)
+- ...
+
+## Disappeared (likely fixed) (8)
+- ...
+
+## Persistent (47)
+| Age | Severity | File:Line | Issue |
+| 3 runs | high | ... | ... |
+```
+
+Persistent-finding age is a quality signal: critical findings that survive 3+ runs deserve escalation to "blocker" status and proactive user attention.
+
+### Per-agent FP metrics tracking
+
+`_audit/metrics/agent-quality.json` (created on first run, gitignored):
+
+```json
+{
+  "agent_id": "75",
+  "runs": [
+    {
+      "date": "2026-04-25",
+      "findings": 12,
+      "validated": 8,
+      "false_positive": 3,
+      "intentional": 1,
+      "fp_rate": 0.25
+    }
+  ],
+  "rolling_fp_rate_last_5": 0.22,
+  "rolling_finding_count_last_5_avg": 10
+}
+```
+
+Updated at end of each run from validation results. INDEX.md gets an "Agent Quality" section listing agents with rolling FP rate >30% (candidates for prompt revision) and agents with consistent zero findings (candidates for retirement or scope re-check).
+
+### Agent prompt regression tests
+
+Optional, best-effort. Each agent can have a golden-input test:
+- `_audit/tests/<agent-id>/seed-input.md` -- short snippet that contains the issue the agent should catch
+- `_audit/tests/<agent-id>/expected-finding.md` -- the finding the agent must produce
+
+A new command `/codebase-audit self-test` runs each agent against its golden input and verifies it finds the seeded issue. Catches prompt rot.
+
+Bootstrap: not all 153 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
+
+If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 
 ---
 
