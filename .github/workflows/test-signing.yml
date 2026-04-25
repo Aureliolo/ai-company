@@ -250,16 +250,20 @@ jobs:
           echo "Auto-rollover path: verified=$verified reason=$reason"
 
   report-failure:
-    name: Open / update tracking issue on regression
+    name: Open / update tracking issue on schedule regression
     needs:
       - rp-release-commit-signature
       - dev-release-tag-signature
       - auto-rollover-commit-signature
+    # Only the schedule path gets the issue sink. Manual `workflow_dispatch`
+    # failures from a debugging branch shouldn't open repo-wide CI-health
+    # issues; the operator already sees the run output directly.
     if: >-
-      always() &&
-      (needs.rp-release-commit-signature.result != 'success'
-       || needs.dev-release-tag-signature.result != 'success'
-       || needs.auto-rollover-commit-signature.result != 'success')
+      always()
+      && github.event_name == 'schedule'
+      && (needs.rp-release-commit-signature.result != 'success'
+          || needs.dev-release-tag-signature.result != 'success'
+          || needs.auto-rollover-commit-signature.result != 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
