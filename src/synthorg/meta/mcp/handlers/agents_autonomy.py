@@ -137,11 +137,12 @@ async def autonomy_update(
         _log_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
 
+    actor_str = _actor_id(actor)
     try:
         update = _AutonomyUpdate(
             requested_level=level,
             reason=reason,
-            requested_by=NotBlankStr(_actor_id(actor)) if _actor_id(actor) else None,
+            requested_by=NotBlankStr(actor_str) if actor_str else None,
         )
     except ValidationError as exc:
         _log_invalid(tool, exc)

@@ -112,9 +112,19 @@ class SubworkflowService:
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                SUBWORKFLOW_INVALID_REQUEST,
+                reason="invalid_offset",
+                offset=offset,
+            )
             raise ValueError(msg)
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                SUBWORKFLOW_INVALID_REQUEST,
+                reason="invalid_limit",
+                limit=limit,
+            )
             raise ValueError(msg)
 
         if query is not None and query.strip():
