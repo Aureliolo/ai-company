@@ -61,6 +61,12 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.gh-token }}
+        # `gh issue list` etc. infer the repo from git remote when
+        # neither `--repo` nor `GH_REPO` is set; in a job that does
+        # not check out the source this fails with `fatal: not a git
+        # repository`. Set `GH_REPO` explicitly so the composite
+        # action works whether or not the caller checked out.
+        GH_REPO: ${{ github.repository }}
         TITLE: ${{ inputs.title }}
         LABELS: ${{ inputs.labels }}
         BODY: ${{ inputs.body }}
