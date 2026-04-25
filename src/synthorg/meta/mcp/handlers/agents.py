@@ -1,12 +1,15 @@
 """Agent domain MCP handlers.
 
-Shims the 18 agent tools onto the existing HR services -- ``agent_registry``
-(``AgentRegistryService``), ``performance_tracker``, ``training_service``.
-Tools whose underlying service surface is not yet exposed on
-``app_state`` (personality registry, rich update, activity feed,
-health aggregation, autonomy mutation) return a structured
-``capability_gap`` envelope so the tool stays visible to ops without
-pretending a service call succeeded.
+Shims the 18 agent tools onto the existing HR services --
+``agent_registry`` (``AgentRegistryService``), ``performance_tracker``,
+``training_service``. Identity create / update / autonomy update /
+collaboration calibration are all live as of META-MCP-3.
+
+The remaining ``capability_gap`` returns are reserved for genuinely
+optional services (personality registry, agent activity feed, agent
+health aggregation, training session metadata) that are not always
+wired on ``app_state`` -- those handlers fall back to the gap envelope
+only when their ``has_<service>`` flag is False.
 
 Destructive ops
 ---------------
@@ -40,6 +43,18 @@ from synthorg.meta.mcp.errors import (
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
+from synthorg.meta.mcp.handlers.agents_autonomy import (
+    autonomy_get as autonomy_get_impl,
+)
+from synthorg.meta.mcp.handlers.agents_autonomy import (
+    autonomy_update as autonomy_update_impl,
+)
+from synthorg.meta.mcp.handlers.agents_autonomy import (
+    collaboration_get_calibration as collaboration_get_calibration_impl,
+)
+from synthorg.meta.mcp.handlers.agents_autonomy import (
+    collaboration_get_score as collaboration_get_score_impl,
+)
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
@@ -62,7 +77,6 @@ from synthorg.observability.events.mcp import (
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
-    from synthorg.core.enums import AutonomyLevel
 
 logger = get_logger(__name__)
 
@@ -670,164 +684,14 @@ def _parse_training_plan(arguments: dict[str, Any]) -> TrainingPlan:
         raise invalid_argument(arg_plan, expected_plan) from exc
 
 
-# --- Autonomy -------------------------------------------------------------
+# --- Autonomy + Collaboration ---------------------------------------------
+# Live handlers live in ``agents_autonomy.py`` to keep this module
+# under the project's 800-line ceiling.
 
-
-async def _autonomy_get(
-    *,
-    app_state: Any,
-    arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    tool = "synthorg_autonomy_get"
-    try:
-        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
-    except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
-        return err(exc)
-    try:
-        identity = await app_state.agent_registry.get(agent_id)
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        _log_failed(tool, exc)
-        return err(exc)
-    if identity is None:
-        missing = AgentNotFoundError(f"Agent {agent_id!r} not found")
-        _log_failed(tool, missing)
-        return err(missing, domain_code="not_found")
-
-    level: AutonomyLevel | None = identity.autonomy_level
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(
-        data={
-            "agent_id": str(identity.id),
-            "agent_name": str(identity.name),
-            "autonomy_level": level.value if level is not None else None,
-        },
-    )
-
-
-async def _autonomy_update(
-    *,
-    app_state: Any,
-    arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,
-) -> str:
-    tool = "synthorg_autonomy_update"
-    arg_reason = "reason"
-    try:
-        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
-        level_raw = _require_non_blank(arguments, "level")
-        reason_raw = arguments.get(arg_reason)
-        if not isinstance(reason_raw, str) or not reason_raw.strip():
-            raise invalid_argument(arg_reason, _TY_NON_BLANK)
-        reason = reason_raw.strip()
-    except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
-        return err(exc)
-
-    # Local imports: keep the meta handlers from eagerly pulling
-    # security and Pydantic dependency graphs into every handler import.
-    from synthorg.core.enums import AutonomyLevel as _AutonomyLevel  # noqa: PLC0415
-    from synthorg.security.autonomy.models import (  # noqa: PLC0415
-        AutonomyUpdate as _AutonomyUpdate,
-    )
-
-    try:
-        level = _AutonomyLevel(level_raw)
-    except ValueError as exc:
-        _log_invalid(tool, exc)
-        return err(exc, domain_code="invalid_argument")
-
-    try:
-        update = _AutonomyUpdate(
-            requested_level=level,
-            reason=reason,
-            requested_by=NotBlankStr(_actor_id(actor)) if _actor_id(actor) else None,
-        )
-    except ValidationError as exc:
-        _log_invalid(tool, exc)
-        return err(exc, domain_code="invalid_argument")
-
-    approval_store = getattr(app_state, "approval_store", None)
-    try:
-        result = await app_state.agent_registry.update_autonomy(
-            NotBlankStr(agent_id),
-            update,
-            approval_store=approval_store,
-        )
-    except AgentNotFoundError as exc:
-        _log_failed(tool, exc)
-        return err(exc, domain_code="not_found")
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        _log_failed(tool, exc)
-        return err(exc)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=result.model_dump(mode="json"))
-
-
-# --- Collaboration --------------------------------------------------------
-
-
-async def _collaboration_get_score(
-    *,
-    app_state: Any,
-    arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    tool = "synthorg_collaboration_get_score"
-    try:
-        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
-    except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
-        return err(exc)
-    try:
-        score = await app_state.performance_tracker.get_collaboration_score(
-            agent_id,
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        _log_failed(tool, exc)
-        return err(exc)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    # ``CollaborationScoreResult`` is a Pydantic model; dump it to JSON-mode
-    # primitives before handing to ``ok()`` since ``ok()`` only ``json.dumps``
-    # the payload and would otherwise raise ``TypeError`` on the real tracker.
-    return ok(
-        data={
-            "agent_id": agent_id,
-            "score": score.model_dump(mode="json"),
-        },
-    )
-
-
-async def _collaboration_get_calibration(
-    *,
-    app_state: Any,
-    arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    tool = "synthorg_collaboration_get_calibration"
-    try:
-        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
-    except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
-        return err(exc)
-    try:
-        calibration = await app_state.performance_tracker.get_collaboration_calibration(
-            NotBlankStr(agent_id),
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        _log_failed(tool, exc)
-        return err(exc)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=calibration.model_dump(mode="json"))
+_autonomy_get = autonomy_get_impl
+_autonomy_update = autonomy_update_impl
+_collaboration_get_score = collaboration_get_score_impl
+_collaboration_get_calibration = collaboration_get_calibration_impl
 
 
 AGENT_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

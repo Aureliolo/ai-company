@@ -224,7 +224,11 @@ class AutonomyUpdate(BaseModel):
     requested_level: AutonomyLevel = Field(description="Requested autonomy level")
     reason: NotBlankStr = Field(
         max_length=2048,
-        description="Why the change is requested (min length 3)",
+        description=(
+            "Why the change is requested. Must contain at least 3 "
+            "non-whitespace characters after stripping (raw whitespace "
+            "padding does not count toward the floor)."
+        ),
     )
     requested_by: NotBlankStr | None = Field(
         default=None,
@@ -251,6 +255,12 @@ class AutonomyUpdateResult(BaseModel):
     requested. ``promotion_pending`` is ``True`` whenever a human review
     is still required; ``approval_id`` is populated when an approval
     store is wired and an item was successfully enqueued.
+
+    Note:
+        ``promotion_pending`` defaults to ``True`` because every change
+        currently pends approval -- the registry never returns
+        ``False`` from this path. Callers reading the model in the
+        future should not assume the default flips.
 
     Attributes:
         agent_id: The agent whose autonomy was requested to change.

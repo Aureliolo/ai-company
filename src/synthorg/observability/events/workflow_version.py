@@ -32,3 +32,8 @@ WORKFLOW_VERSION_SNAPSHOT_FAILED: Final[str] = (
     "persistence.workflow_version.snapshot_failed"
 )
 """Supplementary version snapshot failed after successful definition save."""
+
+WORKFLOW_VERSION_INVALID_REQUEST: Final[str] = (
+    "persistence.workflow_version.invalid_request"
+)
+"""Caller passed an out-of-range pagination or revision argument."""

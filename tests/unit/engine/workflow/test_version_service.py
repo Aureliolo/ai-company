@@ -1,16 +1,73 @@
 """Tests for WorkflowVersionService."""
 
-from typing import Any, cast
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.definition import (
+    WorkflowDefinition,
+    WorkflowEdge,
+    WorkflowNode,
+)
 from synthorg.engine.workflow.version_service import WorkflowVersionService
+from synthorg.versioning.models import VersionSnapshot
 
 
 def _service(repo: AsyncMock | None = None) -> WorkflowVersionService:
     return WorkflowVersionService(version_repo=repo or AsyncMock())
+
+
+def _definition(revision: int = 1) -> WorkflowDefinition:
+    return WorkflowDefinition(
+        id=NotBlankStr("wfdef-1"),
+        name=NotBlankStr("Test"),
+        workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
+        version=NotBlankStr(f"1.0.{revision}"),
+        nodes=(
+            WorkflowNode(
+                id=NotBlankStr("start"),
+                type=WorkflowNodeType.START,
+                label=NotBlankStr("Start"),
+            ),
+            WorkflowNode(
+                id=NotBlankStr("end"),
+                type=WorkflowNodeType.END,
+                label=NotBlankStr("End"),
+            ),
+        ),
+        edges=(
+            WorkflowEdge(
+                id=NotBlankStr("e1"),
+                source_node_id=NotBlankStr("start"),
+                target_node_id=NotBlankStr("end"),
+                type=WorkflowEdgeType.SEQUENTIAL,
+            ),
+        ),
+        created_by=NotBlankStr("test"),
+        created_at=datetime(2026, 4, 25, tzinfo=UTC),
+        updated_at=datetime(2026, 4, 25, tzinfo=UTC),
+        revision=revision,
+    )
+
+
+def _snapshot(revision: int = 1) -> VersionSnapshot[WorkflowDefinition]:
+    """Build a real VersionSnapshot wrapping a real WorkflowDefinition.
+
+    The service does not unpack the snapshot fields; the test only
+    needs equality-comparable instances so we can compare returned
+    pages against the input mock data.
+    """
+    return VersionSnapshot[WorkflowDefinition](
+        entity_id=NotBlankStr("wfdef-1"),
+        version=revision,
+        content_hash=NotBlankStr(f"{revision:064x}"),
+        snapshot=_definition(revision),
+        saved_by=NotBlankStr("test"),
+        saved_at=datetime(2026, 4, 25, tzinfo=UTC),
+    )
 
 
 class TestListVersions:
@@ -18,7 +75,9 @@ class TestListVersions:
     async def test_returns_page_and_total(self) -> None:
         repo = AsyncMock()
         repo.count_versions.return_value = 7
-        repo.list_versions.return_value = ("snapshot-a", "snapshot-b")
+        snap_a = _snapshot(2)
+        snap_b = _snapshot(1)
+        repo.list_versions.return_value = (snap_a, snap_b)
         service = _service(repo)
         page, total = await service.list_versions(
             NotBlankStr("wfdef-1"),
@@ -26,7 +85,7 @@ class TestListVersions:
             limit=2,
         )
         assert total == 7
-        assert cast("tuple[Any, ...]", page) == ("snapshot-a", "snapshot-b")
+        assert page == (snap_a, snap_b)
         repo.list_versions.assert_awaited_once_with(
             NotBlankStr("wfdef-1"),
             limit=2,
@@ -58,11 +117,20 @@ class TestGetVersion:
     @pytest.mark.unit
     async def test_returns_snapshot(self) -> None:
         repo = AsyncMock()
-        repo.get_version.return_value = "snapshot-1"
+        snap = _snapshot(3)
+        repo.get_version.return_value = snap
         service = _service(repo)
         result = await service.get_version(NotBlankStr("wfdef-1"), 3)
-        assert cast("Any", result) == "snapshot-1"
+        assert result == snap
         repo.get_version.assert_awaited_once_with(NotBlankStr("wfdef-1"), 3)
+
+    @pytest.mark.unit
+    async def test_returns_none_when_missing(self) -> None:
+        repo = AsyncMock()
+        repo.get_version.return_value = None
+        service = _service(repo)
+        result = await service.get_version(NotBlankStr("wfdef-1"), 99)
+        assert result is None
 
     @pytest.mark.unit
     async def test_invalid_revision_rejected(self) -> None:

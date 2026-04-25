@@ -174,10 +174,17 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "level": {
                 "type": "string",
                 "description": "New autonomy level",
-                "enum": ["NONE", "LIMITED", "SEMI", "FULL"],
+                "enum": ["full", "semi", "supervised", "locked"],
+            },
+            "reason": {
+                "type": "string",
+                "description": (
+                    "Why the change is requested (min 3 non-whitespace "
+                    "chars after strip)"
+                ),
             },
         },
-        required=("agent_id", "level"),
+        required=("agent_id", "level", "reason"),
     ),
     # --- Collaboration ---
     read_tool(

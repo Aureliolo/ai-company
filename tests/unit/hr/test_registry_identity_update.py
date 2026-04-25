@@ -7,37 +7,30 @@ blocklist, the model_copy semantics, and the audit/version-snapshot
 side effects.
 """
 
-from datetime import date
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 import structlog.testing
 
-from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import AgentStatus, AutonomyLevel, SeniorityLevel
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability.events.hr import HR_REGISTRY_IDENTITY_UPDATED
+from tests.unit.hr.conftest import make_agent_identity
 
 
 def _make_identity(
     *,
-    agent_id: str | None = None,
     name: str = "update-test",
     department: str = "engineering",
     level: SeniorityLevel = SeniorityLevel.MID,
 ) -> AgentIdentity:
-    return AgentIdentity(
-        id=UUID(agent_id) if agent_id else uuid4(),
+    return make_agent_identity(
         name=name,
         role="test-role",
         department=department,
         level=level,
-        model=ModelConfig(
-            provider="test-provider",
-            model_id="test-small-001",
-        ),
-        hiring_date=date(2026, 1, 1),
     )
 
 

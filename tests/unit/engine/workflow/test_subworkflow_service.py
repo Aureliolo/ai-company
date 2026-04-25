@@ -102,7 +102,7 @@ class TestSubworkflowServiceList:
             _summary("a-1"),
         )
         service = _service(registry)
-        page, total = await service.list(offset=0, limit=10)
+        page, total = await service.list_summaries(offset=0, limit=10)
         assert total == 2
         # Sorted by (name, latest_version, subworkflow_id) -- both names
         # are "Inner" so the id tiebreaker rules.
@@ -114,7 +114,7 @@ class TestSubworkflowServiceList:
         registry = AsyncMock()
         registry.search.return_value = (_summary("a-1"),)
         service = _service(registry)
-        _page, total = await service.list(offset=0, limit=10, query="ner")
+        _page, total = await service.list_summaries(offset=0, limit=10, query="ner")
         assert total == 1
         registry.search.assert_awaited_once()
 
@@ -122,7 +122,7 @@ class TestSubworkflowServiceList:
     async def test_invalid_offset_rejected(self) -> None:
         service = _service()
         with pytest.raises(ValueError, match="offset"):
-            await service.list(offset=-1, limit=10)
+            await service.list_summaries(offset=-1, limit=10)
 
 
 class TestSubworkflowServiceGet:

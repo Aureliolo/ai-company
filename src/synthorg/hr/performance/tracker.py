@@ -21,7 +21,7 @@ from synthorg.hr.performance.models import (
     TrendResult,
     WindowMetrics,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.inflection import (
     PERF_INFLECTION_DETECTED,
     PERF_INFLECTION_EMISSION_FAILED,
@@ -482,7 +482,7 @@ class PerformanceTracker:
                 logger.warning(
                     PERF_SNAPSHOT_FAILED,
                     agent_id=str(agent_id),
-                    error=str(exc),
+                    error=safe_error_description(exc),
                     error_type=type(exc).__name__,
                     where="describe_weights",
                 )

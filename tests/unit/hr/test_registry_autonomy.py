@@ -6,21 +6,20 @@ audit events, and -- when an approval store is wired -- enqueues the
 request for human review.
 """
 
-from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 import structlog.testing
 
-from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
     AutonomyLevel,
-    SeniorityLevel,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability.events.autonomy import (
@@ -28,22 +27,16 @@ from synthorg.observability.events.autonomy import (
     AUTONOMY_PROMOTION_REQUESTED,
 )
 from synthorg.security.autonomy.models import AutonomyUpdate
+from tests.unit.hr.conftest import make_test_identity
 
 
 def _make_identity(
     *,
-    agent_id: str | None = None,
     autonomy_level: AutonomyLevel | None = AutonomyLevel.SUPERVISED,
 ) -> AgentIdentity:
-    return AgentIdentity(
-        id=UUID(agent_id) if agent_id else uuid4(),
+    return make_test_identity(
         name="autonomy-test",
-        role="engineer",
-        department="engineering",
-        level=SeniorityLevel.MID,
-        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         autonomy_level=autonomy_level,
-        hiring_date=datetime(2026, 1, 1, tzinfo=UTC).date(),
     )
 
 
@@ -67,7 +60,7 @@ class _RecordingApprovalStore:
         *,
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        action_type: Any | None = None,
+        action_type: NotBlankStr | None = None,
     ) -> tuple[ApprovalItem, ...]:
         return tuple(self.added)
 

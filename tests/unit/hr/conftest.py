@@ -2,12 +2,14 @@
 
 from datetime import UTC, date, datetime
 from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import (
     AgentStatus,
+    AutonomyLevel,
     SeniorityLevel,
     TaskStatus,
     TaskType,
@@ -37,15 +39,24 @@ def _default_model_config() -> ModelConfig:
 
 def make_agent_identity(  # noqa: PLR0913
     *,
+    agent_id: str | None = None,
     name: str = "test-agent",
     role: str = "developer",
     department: str = "engineering",
     level: SeniorityLevel = SeniorityLevel.MID,
     status: AgentStatus = AgentStatus.ACTIVE,
     hiring_date: date | None = None,
+    autonomy_level: AutonomyLevel | None = None,
 ) -> AgentIdentity:
-    """Build an AgentIdentity with sensible defaults."""
+    """Build an AgentIdentity with sensible defaults.
+
+    ``agent_id`` accepts a UUID-string for callers that need a stable
+    identity across test setups; otherwise a fresh ``uuid4`` is used.
+    ``autonomy_level`` defaults to ``None`` so per-agent autonomy
+    cascading (department / company defaults) still applies.
+    """
     return AgentIdentity(
+        id=UUID(agent_id) if agent_id else uuid4(),
         name=name,
         role=role,
         department=department,
@@ -53,7 +64,14 @@ def make_agent_identity(  # noqa: PLR0913
         model=_default_model_config(),
         status=status,
         hiring_date=hiring_date or date(2026, 1, 15),
+        autonomy_level=autonomy_level,
     )
+
+
+# Alias kept so test files importing ``make_test_identity`` (the name
+# used during the helper consolidation) continue to resolve. New tests
+# should import ``make_agent_identity`` directly.
+make_test_identity = make_agent_identity
 
 
 def make_candidate_card(  # noqa: PLR0913

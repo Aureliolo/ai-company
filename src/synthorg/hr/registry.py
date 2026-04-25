@@ -584,7 +584,10 @@ class AgentRegistryService:
 
         approval_id: str | None = None
         if approval_store is not None:
-            approval_id = f"approval-{uuid.uuid4().hex[:12]}"
+            # 16 hex chars (64 bits) keeps collision probability negligible
+            # for approval-queue volumes while still fitting compactly into
+            # log lines and audit trails.
+            approval_id = f"approval-{uuid.uuid4().hex[:16]}"
             requested_by = update.requested_by or "system"
             item = ApprovalItem(
                 id=approval_id,

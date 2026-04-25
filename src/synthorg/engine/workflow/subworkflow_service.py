@@ -54,6 +54,13 @@ class SubworkflowHasParentsError(SubworkflowIOError):
         version: str,
         parents: tuple[ParentReference, ...],
     ) -> None:
+        if not parents:
+            msg = (
+                "SubworkflowHasParentsError requires at least one parent "
+                "reference; raise SubworkflowNotFoundError instead when "
+                "the subworkflow has no live parents."
+            )
+            raise ValueError(msg)
         super().__init__(message)
         self.subworkflow_id = subworkflow_id
         self.version = version
@@ -81,7 +88,7 @@ class SubworkflowService:
         self._registry = registry
         self._definition_repo = definition_repo
 
-    async def list(
+    async def list_summaries(
         self,
         *,
         offset: int,
@@ -174,6 +181,15 @@ class SubworkflowService:
         actor_id: str,
     ) -> None:
         """Delete a subworkflow version after parent-cascade check.
+
+        The check-then-delete sequence is intentionally non-atomic at
+        the service layer: ``find_parents`` here is for early,
+        operator-friendly error reporting only. The actual safety net
+        is :meth:`SubworkflowRegistry.delete`, which delegates to the
+        repository's atomic ``delete_if_unreferenced``. A parent that
+        appears in the narrow TOCTOU window between this check and the
+        registry call still gets caught at the SQL level and surfaces
+        as a `SubworkflowIOError`.
 
         Raises:
             SubworkflowHasParentsError: If any live parent workflow

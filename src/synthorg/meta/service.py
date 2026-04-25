@@ -59,16 +59,19 @@ from synthorg.observability.events.meta import (
     META_SERVICE_CLOSE_FAILED,
 )
 
-# Module-level constants for ``get_config`` redaction.  Paths use the
-# dotted notation that ``model_dump`` produces (i.e., the JSON keys at
-# each nesting level).  Adding a new secret -> append the dotted path
-# here.  An unknown path is a no-op so misspellings fail loud only via
-# the unit-test coverage in ``test_service_get_config``.
 _SECRET_PATHS: frozenset[str] = frozenset(
     {
         "code_modification.github_token",
+        "cross_deployment_analytics.deployment_id_salt",
     }
 )
+"""Dotted JSON paths whose values are redacted by ``_redact_secrets``.
+
+Adding a new entry requires a matching test case in
+``tests/unit/meta/test_service_get_config.py``; the redactor silently
+ignores unknown paths, so a misspelled entry only fails in tests.
+"""
+
 _REDACTED: str = "***redacted***"
 
 
@@ -86,9 +89,11 @@ def _redact_secrets(
     for path in paths:
         keys = path.split(".")
         node: Any = redacted
-        # Walk down a copy at each level so the parent dict in
-        # ``redacted`` is updated in place without mutating any nested
-        # dict from the original ``dump``.
+        # Walk down a copy at each level. Each ``cloned`` dict replaces
+        # the parent's reference in ``redacted`` so the mutation stays
+        # local; the corresponding nested dict on the caller's original
+        # ``dump`` is never touched. This keeps ``get_config`` safe to
+        # call repeatedly without re-leaking secrets across calls.
         for key in keys[:-1]:
             child = node.get(key)
             if not isinstance(child, dict):

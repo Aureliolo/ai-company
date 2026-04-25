@@ -10,6 +10,9 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.observability import get_logger
+from synthorg.observability.events.workflow_version import (
+    WORKFLOW_VERSION_INVALID_REQUEST,
+)
 
 if TYPE_CHECKING:
     from synthorg.engine.workflow.definition import WorkflowDefinition
@@ -46,9 +49,21 @@ class WorkflowVersionService:
         a second round trip.
         """
         if offset < 0:
+            logger.warning(
+                WORKFLOW_VERSION_INVALID_REQUEST,
+                definition_id=str(definition_id),
+                param="offset",
+                value=offset,
+            )
             msg = f"offset must be >= 0, got {offset}"
             raise ValueError(msg)
         if limit < 1:
+            logger.warning(
+                WORKFLOW_VERSION_INVALID_REQUEST,
+                definition_id=str(definition_id),
+                param="limit",
+                value=limit,
+            )
             msg = f"limit must be >= 1, got {limit}"
             raise ValueError(msg)
         total = await self._repo.count_versions(definition_id)
@@ -66,6 +81,12 @@ class WorkflowVersionService:
     ) -> VersionSnapshot[WorkflowDefinition] | None:
         """Return a specific version snapshot, or ``None`` if absent."""
         if revision < 1:
+            logger.warning(
+                WORKFLOW_VERSION_INVALID_REQUEST,
+                definition_id=str(definition_id),
+                param="revision",
+                value=revision,
+            )
             msg = f"revision must be >= 1, got {revision}"
             raise ValueError(msg)
         return await self._repo.get_version(definition_id, revision)

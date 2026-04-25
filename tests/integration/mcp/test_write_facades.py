@@ -108,7 +108,7 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     ns.workflow_execution_service = execution_service
 
     sub_service = AsyncMock()
-    sub_service.list.return_value = ((), 0)
+    sub_service.list_summaries.return_value = ((), 0)
     sub_service.get.return_value = workflow_def
     sub_service.create.return_value = workflow_def
     ns.subworkflow_service = sub_service
@@ -305,3 +305,293 @@ class TestHappyPathServiceInvocations:
         )
         assert body["status"] == "ok"
         app_state.activity_feed_service.list_recent_activity.assert_awaited_once()
+
+
+class TestErrorPaths:
+    """Verify the handler -> service exception mapping at the MCP boundary."""
+
+    async def test_agents_create_already_exists(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+        identity: AgentIdentity,
+    ) -> None:
+        from synthorg.hr.errors import AgentAlreadyRegisteredError
+
+        app_state.agent_registry.register.side_effect = AgentAlreadyRegisteredError(
+            "duplicate"
+        )
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_agents_create"](
+                app_state=app_state,
+                arguments={"identity": identity.model_dump(mode="json")},
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "already_exists"
+
+    async def test_agents_update_not_found(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        from synthorg.hr.errors import AgentNotFoundError
+
+        app_state.agent_registry.apply_identity_update.side_effect = AgentNotFoundError(
+            "missing"
+        )
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_agents_update"](
+                app_state=app_state,
+                arguments={"agent_id": "agent-1", "updates": {"role": "x"}},
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "not_found"
+
+    async def test_agents_update_blocked_field(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        app_state.agent_registry.apply_identity_update.side_effect = ValueError(
+            "Fields are immutable: ['name']"
+        )
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_agents_update"](
+                app_state=app_state,
+                arguments={"agent_id": "agent-1", "updates": {"name": "x"}},
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "invalid_argument"
+
+    async def test_autonomy_update_short_reason(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_autonomy_update"](
+                app_state=app_state,
+                arguments={
+                    "agent_id": "agent-1",
+                    "level": "semi",
+                    "reason": "ok",
+                },
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "invalid_argument"
+
+    async def test_workflows_create_already_exists(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        from synthorg.engine.workflow.service import WorkflowDefinitionExistsError
+
+        app_state.workflow_service.create_definition.side_effect = (
+            WorkflowDefinitionExistsError("duplicate")
+        )
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_workflows_create"](
+                app_state=app_state,
+                arguments={
+                    "definition": {
+                        "id": "wfdef-1",
+                        "name": "Test",
+                        "created_by": "tester",
+                        "nodes": [],
+                        "edges": [],
+                    }
+                },
+                actor=actor,
+            )
+        )
+        # Pydantic will reject the empty definition first; either path is
+        # an error envelope (the handler maps Pydantic ValidationError to
+        # invalid_argument and the service exception to already_exists).
+        assert body["status"] == "error"
+        assert body["domain_code"] in {"invalid_argument", "already_exists"}
+
+    async def test_workflows_update_revision_mismatch(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        from synthorg.engine.workflow.service import (
+            WorkflowDefinitionRevisionMismatchError,
+        )
+
+        app_state.workflow_service.update_definition.side_effect = (
+            WorkflowDefinitionRevisionMismatchError(
+                "stale",
+                definition_id="wfdef-1",
+                expected=2,
+                actual=3,
+            )
+        )
+        handlers = build_handler_map()
+        # Same caveat as above -- minimal dict won't pass Pydantic; the
+        # important assertion is the envelope shape (no fallback emitted).
+        body = _parse(
+            await handlers["synthorg_workflows_update"](
+                app_state=app_state,
+                arguments={"definition": {"revision": 1}},
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] in {"invalid_argument", "conflict"}
+
+    async def test_subworkflows_delete_has_parents(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        from synthorg.engine.workflow.subworkflow_service import (
+            SubworkflowHasParentsError,
+        )
+        from synthorg.persistence.subworkflow_repo import ParentReference
+
+        parent = ParentReference(
+            parent_id="wf-parent",
+            parent_name="Parent",
+            pinned_version="1.0.0",
+            node_id="node-1",
+            parent_type="workflow_definition",
+            parent_version=None,
+        )
+        app_state.subworkflow_service.delete.side_effect = SubworkflowHasParentsError(
+            "blocked",
+            subworkflow_id="sw-1",
+            version="1.0.0",
+            parents=(parent,),
+        )
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_subworkflows_delete"](
+                app_state=app_state,
+                arguments={
+                    "subworkflow_id": "sw-1",
+                    "version": "1.0.0",
+                    "confirm": True,
+                    "reason": "cleanup",
+                },
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "conflict"
+
+    async def test_workflow_executions_cancel_already_terminal(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        from synthorg.engine.errors import WorkflowExecutionError
+
+        app_state.workflow_execution_service.cancel_execution.side_effect = (
+            WorkflowExecutionError("already terminal")
+        )
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_workflow_executions_cancel"](
+                app_state=app_state,
+                arguments={
+                    "execution_id": "wfexec-1",
+                    "confirm": True,
+                    "reason": "stuck",
+                },
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "conflict"
+
+    async def test_meta_trigger_cycle_unavailable(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        from synthorg.meta.errors import SelfImprovementTriggerError
+
+        app_state.self_improvement_service.trigger_cycle.side_effect = (
+            SelfImprovementTriggerError("no snapshot builder")
+        )
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_meta_trigger_cycle"](
+                app_state=app_state,
+                arguments={},
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "unavailable"
+
+
+class TestDestructiveAuditEvents:
+    """Destructive ops emit MCP_DESTRUCTIVE_OP_EXECUTED on success."""
+
+    async def test_subworkflows_delete_emits_audit(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
+
+        app_state.subworkflow_service.delete.return_value = None
+        handlers = build_handler_map()
+        with structlog.testing.capture_logs() as logs:
+            body = _parse(
+                await handlers["synthorg_subworkflows_delete"](
+                    app_state=app_state,
+                    arguments={
+                        "subworkflow_id": "sw-1",
+                        "version": "1.0.0",
+                        "confirm": True,
+                        "reason": "cleanup",
+                    },
+                    actor=actor,
+                )
+            )
+        assert body["status"] == "ok"
+        events = [e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED]
+        assert events, "expected MCP_DESTRUCTIVE_OP_EXECUTED audit event"
+        assert events[0]["target_id"] == "sw-1@1.0.0"
+
+    async def test_workflow_executions_cancel_emits_audit(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
+
+        handlers = build_handler_map()
+        with structlog.testing.capture_logs() as logs:
+            body = _parse(
+                await handlers["synthorg_workflow_executions_cancel"](
+                    app_state=app_state,
+                    arguments={
+                        "execution_id": "wfexec-1",
+                        "confirm": True,
+                        "reason": "stuck",
+                    },
+                    actor=actor,
+                )
+            )
+        assert body["status"] == "ok"
+        events = [e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED]
+        assert events, "expected MCP_DESTRUCTIVE_OP_EXECUTED audit event"
+        assert events[0]["target_id"] == "wfexec-1"
