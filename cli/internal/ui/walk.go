@@ -313,7 +313,7 @@ func (m walkModel) handleKey(key string) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.viewport.ScrollUp(1)
 		return m, nil
-	case "pgdown", " ", "space":
+	case "pgdown", "space":
 		m.viewport.PageDown()
 		return m, nil
 	case "pgup":
@@ -476,8 +476,12 @@ func separatorWidth(termWidth, tagWidth, posWidth int) int {
 }
 
 // tagPlainWidth returns the visible width of a version tag (no styling).
+// Uses lipgloss.Width for visual-cell semantics so non-ASCII characters
+// (e.g. emoji or wide CJK in a tag) line up with the other width math in
+// this file -- bare len(tag) returns bytes, which would over-count or
+// under-count vs. terminal columns for anything non-ASCII.
 func tagPlainWidth(tag string) int {
-	return len(tag)
+	return lipgloss.Width(tag)
 }
 
 // renderFooter renders the key-binding hint line at the bottom of the view.
