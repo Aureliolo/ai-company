@@ -608,23 +608,27 @@ jobs:
   # metadata read, which is sufficient for this read-only audit.
   branch-protection-audit:
     name: Branch-protection drift audit
-    # Accept push-to-main (informational) AND workflow_dispatch so the
-    # audit can be triggered ad-hoc from Actions -> "CI" -> Run workflow.
-    # The ``release`` environment's branch policy still restricts both
-    # paths to main -- a workflow_dispatch from a feature branch is
-    # blocked at the environment gate, not by the if: check.
+    # Accept push-to-main (informational) AND workflow_dispatch from
+    # main so the audit can be triggered ad-hoc from Actions -> "CI"
+    # -> Run workflow. The ``release`` environment's branch policy
+    # also restricts deploys to main, so allowing this job to attempt
+    # a deploy from a non-main ref would surface a noisy "deployment
+    # was rejected" annotation on every CI run dispatched against a
+    # release-please branch (the standard nudge used by release.yml
+    # to trigger CI on App-token-authored PRs). Gate at the if: check
+    # so non-main dispatches simply skip this job.
     #
     # Fork gate: skip in forks. The audit needs the release-bot App
     # token (env-scoped secret on `release`) and a fork won't have it.
     # ci-preflight reports the missing setup separately.
     #
     # Precedence: `&&` binds tighter than `||`, so the inner
-    # parentheses around `(push && main || dispatch)` are required
-    # to keep the trigger-OR group intact under the outer fork-AND.
+    # parentheses around `(push || dispatch)` are required to keep
+    # the trigger-OR group intact under the outer fork-AND-main-AND.
     if: >-
       !github.event.repository.fork
-      && ((github.event_name == 'push' && github.ref == 'refs/heads/main')
-          || github.event_name == 'workflow_dispatch')
+      && github.ref == 'refs/heads/main'
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     continue-on-error: true

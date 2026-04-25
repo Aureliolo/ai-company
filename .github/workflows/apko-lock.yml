@@ -9,7 +9,7 @@ permissions: {}
 
 jobs:
   update-lockfiles:
-    name: apko lock --update
+    name: apko lock
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Environment `apko-lock` carries a `main`-only branch allowlist so the
@@ -35,7 +35,7 @@ jobs:
         run: |
           for config in docker/*/apko.yaml; do
             echo "Updating lockfile for ${config}..."
-            apko lock --update "${config}"
+            apko lock "${config}"
           done
 
       - name: Check for changes
@@ -108,7 +108,7 @@ jobs:
           {
             echo 'body<<TRACKING_ISSUE_BODY_EOF'
             cat <<EOF
-          \`apko lock --update\` workflow failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\`.
+          \`apko lock\` workflow failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\`.
 
           Run: ${RUN_URL}
 
