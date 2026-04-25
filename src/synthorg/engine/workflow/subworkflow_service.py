@@ -22,6 +22,7 @@ from synthorg.engine.errors import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_DELETE_BLOCKED,
+    SUBWORKFLOW_DELETE_FAILED,
     SUBWORKFLOW_DELETED,
     SUBWORKFLOW_INVALID_REQUEST,
     SUBWORKFLOW_NOT_FOUND,
@@ -193,7 +194,15 @@ class SubworkflowService:
                 reason="not_subworkflow",
                 saved_by=saved_by,
             )
-            raise SubworkflowIOError(msg)
+            # ``SubworkflowIOError`` is the registry / storage error
+            # type; conflating it with caller-supplied bad input
+            # (``is_subworkflow=False``) would force handlers to
+            # second-guess whether a single exception class means
+            # "your input is wrong" or "the backend is down".
+            # Surface the validation failure as ``ValueError`` so
+            # the MCP handler maps it to ``invalid_argument`` and
+            # storage failures keep the dedicated IO type.
+            raise ValueError(msg)
         try:
             await self._registry.register(definition)
         except MemoryError, RecursionError:
@@ -296,8 +305,15 @@ class SubworkflowService:
             except MemoryError, RecursionError:
                 raise
             except Exception as recheck_exc:
+                # Use the neutral ``SUBWORKFLOW_DELETE_FAILED`` event
+                # rather than ``SUBWORKFLOW_DELETE_BLOCKED``: at this
+                # point we have NOT proven a parent-cascade conflict,
+                # only that the recheck itself failed. Logging the
+                # blocked-delete event here would otherwise inflate
+                # blocked-delete metrics with what are really storage
+                # / lookup failures.
                 logger.warning(
-                    SUBWORKFLOW_DELETE_BLOCKED,
+                    SUBWORKFLOW_DELETE_FAILED,
                     subworkflow_id=subworkflow_id,
                     version=version,
                     actor_id=actor_id,

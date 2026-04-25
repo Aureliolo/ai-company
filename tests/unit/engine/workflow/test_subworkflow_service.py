@@ -9,7 +9,6 @@ import pytest
 from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
-    SubworkflowIOError,
     SubworkflowNotFoundError,
 )
 from synthorg.engine.workflow.definition import (
@@ -173,7 +172,10 @@ class TestSubworkflowServiceCreate:
     async def test_rejects_non_subworkflow(self) -> None:
         service = _service()
         defn = _make_subdef(is_subworkflow=False)
-        with pytest.raises(SubworkflowIOError):
+        # Caller-error type: ``ValueError`` (not ``SubworkflowIOError``)
+        # so handlers can distinguish "your input is wrong" from
+        # registry / storage failures, which keep the IO type.
+        with pytest.raises(ValueError, match="is_subworkflow"):
             await service.create(defn, saved_by="alice")
 
 

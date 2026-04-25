@@ -100,6 +100,16 @@ metrics can separate successful removals from parent-cascade rejections
 without inspecting structured fields.
 """
 
+SUBWORKFLOW_DELETE_FAILED: Final[str] = "workflow.subworkflow.delete_failed"
+"""A subworkflow delete failed for a non-parent-conflict reason.
+
+Used when ``SubworkflowService.delete`` cannot prove a parent-cascade
+conflict (e.g. the registry's atomic delete raised, and the follow-up
+``find_parents`` re-check itself failed before producing a verdict).
+Distinct from :data:`SUBWORKFLOW_DELETE_BLOCKED` so blocked-delete
+metrics do not absorb storage / lookup failures.
+"""
+
 SUBWORKFLOW_CYCLE_DETECTED: Final[str] = "workflow.subworkflow.cycle_detected"
 """Static cycle detection rejected a subworkflow reference graph."""
 

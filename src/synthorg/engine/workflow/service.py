@@ -19,8 +19,6 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_DELETED,
     WORKFLOW_DEF_NOT_FOUND,
     WORKFLOW_DEF_UPDATED,
-    WORKFLOW_DEF_VALIDATED,
-    WORKFLOW_DEF_VALIDATION_FAILED,
     WORKFLOW_DEF_VERSION_CONFLICT,
 )
 from synthorg.observability.events.workflow_version import (
@@ -406,30 +404,16 @@ class WorkflowService:
         # Local import: ``validate_workflow`` lives alongside the
         # specialised graph checks and pulling it eagerly would create
         # an import cycle through ``WorkflowDefinition``.
+        # ``validate_workflow`` itself already emits
+        # ``WORKFLOW_DEF_VALIDATED`` / ``WORKFLOW_DEF_VALIDATION_FAILED``
+        # at INFO / WARNING -- so this facade does not re-emit them
+        # here. A second emission would double-count validation traffic
+        # and force consumers to dedup on event payload shape.
         from synthorg.engine.workflow.validation import (  # noqa: PLC0415
             validate_workflow,
         )
 
-        result = validate_workflow(definition)
-        # Emit observability events from the live facade so the new
-        # MCP ``synthorg_workflows_validate`` traffic shows up in the
-        # workflow-definition event stream alongside create / update /
-        # delete. Without these, validation calls disappear from
-        # operator dashboards once handlers route through the service.
-        if result.valid:
-            logger.info(
-                WORKFLOW_DEF_VALIDATED,
-                definition_id=str(definition.id),
-                version=str(definition.version),
-            )
-        else:
-            logger.warning(
-                WORKFLOW_DEF_VALIDATION_FAILED,
-                definition_id=str(definition.id),
-                version=str(definition.version),
-                error_count=len(result.errors),
-            )
-        return result
+        return validate_workflow(definition)
 
     async def delete_definition(
         self,
