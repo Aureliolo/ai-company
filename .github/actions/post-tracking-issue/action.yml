@@ -48,10 +48,15 @@ inputs:
     default: 'true'
   gh-token:
     description: |
-      GitHub token with `issues: write` scope. The default
-      `${{ github.token }}` works for repo-internal workflows; pass an
-      App installation token if write-on-fork or cross-repo behaviour
-      is needed.
+      GitHub token with `issues: write` scope on the workflow's own
+      repository. The default `${{ github.token }}` is sufficient for
+      every current caller. The action is single-repo: it always
+      targets `${{ github.repository }}` for both issue lookup/create
+      and pinning, which means it correctly self-targets a fork when
+      the workflow runs in a fork. To open a tracking issue in a
+      *different* repo, the action would need a `repository` input
+      plumbed through both `GH_REPO` and the pin URL -- out of scope
+      until a real cross-repo caller appears.
     required: true
 
 runs:
