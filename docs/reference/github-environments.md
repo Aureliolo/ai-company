@@ -150,10 +150,11 @@ installation token (valid ≤1 hour) via the
   rule blocks `pull_request` workflows for events created by the
   workflow's own installation token, so `ci.yml` does not auto-fire
   on the release PR. To unblock the required `CI Pass` check, the
-  job's final step issues `gh workflow run ci.yml --ref
-  release-please--branches--main--components--synthorg` with
-  `GITHUB_TOKEN` (which IS allowed to invoke `workflow_dispatch` --
-  the documented exception to the anti-recursion rule). The
+  job's final step issues
+  `gh workflow run ci.yml --ref release-please--branches--main--components--synthorg`
+  with `GITHUB_TOKEN` (which IS allowed to invoke
+  `workflow_dispatch` -- the documented exception to the
+  anti-recursion rule). The
   resulting `ci.yml` run dispatches against the release branch's
   HEAD, so its `CI Pass` check_run posts on the release PR's head
   SHA and satisfies the `protect-main` ruleset. The
