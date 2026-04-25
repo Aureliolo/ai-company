@@ -202,7 +202,7 @@ All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc)
 | Constant | Level | When fired |
 |----------|-------|------------|
 | `META_CYCLE_TRIGGERED` | INFO | `SelfImprovementService.trigger_cycle` completed successfully. Carries `cycle_id`, `proposals_count`, and `duration_seconds`. Emitted by both the in-process meta loop and the `synthorg_meta_trigger_cycle` MCP tool. |
-| `META_CYCLE_TRIGGER_FAILED` | WARNING | `trigger_cycle` could not produce a `ImprovementCycleResult`. `reason` is `"no_snapshot_builder"` (precondition), `"snapshot_builder_failed"` (builder raised), or `"run_cycle_failed"` (cycle body raised). Logs `error_type` and a `safe_error_description(exc)` on the latter two paths so callers see the failure even when they do not catch the re-raise. |
+| `META_CYCLE_TRIGGER_FAILED` | WARNING | `trigger_cycle` could not produce an `ImprovementCycleResult`. `reason` is `"no_snapshot_builder"` (precondition), `"snapshot_builder_failed"` (builder raised), or `"run_cycle_failed"` (cycle body raised). Logs `error_type` and a `safe_error_description(exc)` on the latter two paths so callers see the failure even when they do not catch the re-raise. |
 
 **Workflow version events (`observability/events/workflow_version.py`):**
 

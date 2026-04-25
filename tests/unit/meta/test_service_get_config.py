@@ -1,6 +1,5 @@
 """Tests for SelfImprovementService.get_config()."""
 
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -60,7 +59,3 @@ class TestGetConfig:
         # The internal config still has the real token (it's frozen
         # Pydantic; this guards against accidental in-place mutation).
         assert service._config.code_modification.github_token == "ghp_secret"
-
-
-# Silence unused import for static analysis.
-_ = (Any,)

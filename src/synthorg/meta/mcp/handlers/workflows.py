@@ -145,10 +145,25 @@ def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
     return raw.strip()
 
 
-def _require_int(arguments: dict[str, Any], key: str) -> int:
-    """Extract a strictly-positive integer arg; raise on miss/wrong-type."""
+def _require_int(
+    arguments: dict[str, Any],
+    key: str,
+    *,
+    positive: bool = False,
+) -> int:
+    """Extract an integer argument or raise ``ArgumentValidationError``.
+
+    Booleans are explicitly rejected because ``isinstance(True, int)``
+    is ``True`` in Python; ``positive=True`` additionally rejects
+    non-positive values so callers like ``_workflow_versions_get``
+    (where the service requires ``revision >= 1``) get the more
+    accurate ``invalid_argument`` envelope here instead of bouncing off
+    a deeper validation layer.
+    """
     raw = arguments.get(key)
     if not isinstance(raw, int) or isinstance(raw, bool):
+        raise invalid_argument(key, _TY_INT)
+    if positive and raw < 1:
         raise invalid_argument(key, _TY_INT)
     return raw
 
@@ -650,7 +665,7 @@ async def _workflow_versions_get(
         return capability_gap(tool, _WHY_VERSION_SERVICE)
     try:
         def_id = _require_non_blank(arguments, _ARG_DEF_ID)
-        revision = _require_int(arguments, _ARG_REVISION)
+        revision = _require_int(arguments, _ARG_REVISION, positive=True)
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)

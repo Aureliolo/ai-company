@@ -19,7 +19,7 @@ from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     AgentNotFoundError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.autonomy import (
     AUTONOMY_PROMOTION_DENIED,
     AUTONOMY_PROMOTION_REQUESTED,
@@ -515,7 +515,32 @@ class AgentRegistryService:
             if not updates:
                 # No-op: avoid an unnecessary model_copy + snapshot.
                 return identity
-            updated = identity.model_copy(update=dict(updates))
+            # ``model_copy(update=...)`` bypasses Pydantic validation,
+            # so callers (notably the MCP ``synthorg_agents_update``
+            # tool) could otherwise smuggle a wrong runtime type for
+            # any allowed field (e.g. an int for a ``NotBlankStr``).
+            # Re-run validation on the merged dump to enforce the same
+            # type / constraint guarantees the construction path
+            # already provides.
+            from pydantic import ValidationError  # noqa: PLC0415
+
+            from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
+
+            merged = identity.model_copy(update=dict(updates)).model_dump()
+            try:
+                updated = AgentIdentity.model_validate(merged)
+            except ValidationError as exc:
+                logger.warning(
+                    HR_REGISTRY_IDENTITY_UPDATED,
+                    agent_id=key,
+                    error="invalid update payload",
+                    updated_fields=sorted(updates.keys()),
+                )
+                msg = (
+                    f"Update payload for agent {agent_id!r} failed validation: "
+                    f"{safe_error_description(exc)}"
+                )
+                raise ValueError(msg) from exc
             self._agents[key] = updated
 
         logger.info(

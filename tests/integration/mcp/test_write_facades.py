@@ -289,7 +289,7 @@ class TestHappyPathServiceInvocations:
         body = _parse(
             await handlers["synthorg_meta_trigger_cycle"](
                 app_state=app_state,
-                arguments={},
+                arguments={"confirm": True, "reason": "operator-triggered cycle"},
                 actor=actor,
             )
         )
@@ -596,7 +596,7 @@ class TestErrorPaths:
         body = _parse(
             await handlers["synthorg_meta_trigger_cycle"](
                 app_state=app_state,
-                arguments={},
+                arguments={"confirm": True, "reason": "operator-triggered cycle"},
                 actor=actor,
             )
         )
@@ -717,7 +717,7 @@ class TestCapabilityGapFallbacks:
         body = _parse(
             await handlers["synthorg_meta_trigger_cycle"](
                 app_state=app_state,
-                arguments={},
+                arguments={"confirm": True, "reason": "operator-triggered cycle"},
                 actor=actor,
             )
         )

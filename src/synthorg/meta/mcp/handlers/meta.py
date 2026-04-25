@@ -26,7 +26,10 @@ if TYPE_CHECKING:
     from synthorg.meta.rules.service import CustomRulesService
 
 from synthorg.meta.errors import SelfImprovementTriggerError
-from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -36,10 +39,16 @@ from synthorg.meta.mcp.handlers.common import (
     coerce_pagination,
     err,
     ok,
+    require_destructive_guardrails,
+)
+from synthorg.meta.mcp.handlers.common import (
+    actor_id as _actor_id,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
+    MCP_DESTRUCTIVE_OP_EXECUTED,
     MCP_HANDLER_ARGUMENT_INVALID,
+    MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
     MCP_HANDLER_LAZY_SERVICE_INIT,
@@ -69,6 +78,14 @@ def _log_failed(tool: str, exc: Exception) -> None:
         tool_name=tool,
         error_type=type(exc).__name__,
         error=safe_error_description(exc),
+    )
+
+
+def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
+    logger.warning(
+        MCP_HANDLER_GUARDRAIL_VIOLATED,
+        tool_name=tool,
+        violation=exc.violation,
     )
 
 
@@ -205,12 +222,25 @@ async def _meta_get_mcp_server_config(
 async def _meta_trigger_cycle(
     *,
     app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_meta_trigger_cycle"
+    # ``synthorg_meta_trigger_cycle`` is declared via ``admin_tool`` in
+    # ``meta/mcp/domains/meta.py``, so it must enforce the destructive-op
+    # triple (identified actor + ``confirm=True`` + non-blank ``reason``)
+    # before invoking the service. Triggering a self-improvement cycle
+    # touches the proposal pipeline broadly, so the audit-trail
+    # guarantees the same admin tools (``approvals_reject``,
+    # ``workflow_executions_cancel``) already provide.
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+    except GuardrailViolationError as exc:
+        _log_guardrail(tool, exc)
+        return err(exc)
     if not getattr(app_state, "has_self_improvement_service", False):
         return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
+    actor_str = _actor_id(resolved_actor) or "mcp"
     try:
         result = await app_state.self_improvement_service.trigger_cycle()
     except SelfImprovementTriggerError as exc:
@@ -222,6 +252,13 @@ async def _meta_trigger_cycle(
         _log_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(
+        MCP_DESTRUCTIVE_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_str,
+        reason=reason,
+        target_id=str(result.cycle_id),
+    )
     return ok(data=result.model_dump(mode="json"))
 
 

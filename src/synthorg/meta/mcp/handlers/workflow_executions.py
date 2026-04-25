@@ -8,6 +8,7 @@ they just have enough error branches that grouping them with the rest
 pushed the parent module past budget.
 """
 
+import copy
 from typing import TYPE_CHECKING, Any
 
 from synthorg.engine.errors import (
@@ -127,7 +128,12 @@ def _parse_start_args(
     context_raw = arguments.get(arg_context, {})
     if not isinstance(context_raw, dict):
         raise invalid_argument(arg_context, ty_object)
-    return def_id, project, context_raw
+    # Deep-copy ``context`` at the handler boundary so downstream code
+    # cannot mutate caller-owned request state in place. The MCP
+    # transport hands us a parsed JSON dict; without this copy any
+    # service-layer code that scrubs / annotates / sorts the context
+    # would leak back into the caller's view of its own request.
+    return def_id, project, copy.deepcopy(context_raw)
 
 
 async def workflow_executions_list(
@@ -251,14 +257,18 @@ async def workflow_executions_cancel(  # noqa: PLR0911 -- error mapping
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
+    # Check service availability before parsing ``execution_id`` so
+    # deployments without ``workflow_execution_service`` surface
+    # ``capability_gap`` even when the caller's input is malformed --
+    # matching the order the other three execution handlers use.
+    service = _execution_service(app_state)
+    if service is None:
+        return capability_gap(tool, _WHY_EXECUTION_SERVICE)
     try:
         execution_id = _require_non_blank(arguments, _ARG_EXEC_ID)
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
-    service = _execution_service(app_state)
-    if service is None:
-        return capability_gap(tool, _WHY_EXECUTION_SERVICE)
     cancelled_by = _actor_id(resolved_actor) or "mcp"
     try:
         execution = await service.cancel_execution(

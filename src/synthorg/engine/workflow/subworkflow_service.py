@@ -252,7 +252,44 @@ class SubworkflowService:
                 version=str(version),
                 parents=parents,
             )
-        await self._registry.delete(subworkflow_id, version)
+        try:
+            await self._registry.delete(subworkflow_id, version)
+        except SubworkflowIOError as exc:
+            # The pre-check above closes the common case, but the real
+            # safety net is the repository's atomic
+            # ``delete_if_unreferenced``. A parent that appears in the
+            # narrow TOCTOU window between the check and this call is
+            # surfaced here as a plain ``SubworkflowIOError`` -- which
+            # the MCP handler would map to ``unavailable`` instead of
+            # the more accurate ``conflict``. Re-fetch parents and
+            # re-wrap so callers see the same envelope shape (and
+            # parent list) as the pre-check path.
+            late_parents = await self._registry.find_parents(
+                subworkflow_id,
+                version,
+            )
+            if late_parents:
+                logger.warning(
+                    SUBWORKFLOW_DELETE_BLOCKED,
+                    subworkflow_id=subworkflow_id,
+                    version=version,
+                    blocked_by_parents=len(late_parents),
+                    actor_id=actor_id,
+                    reason=reason,
+                    stage="service.delete.toctou",
+                )
+                msg = (
+                    f"Cannot delete subworkflow {subworkflow_id!r} version "
+                    f"{version!r}: still referenced by "
+                    f"{len(late_parents)} parent workflow(s)"
+                )
+                raise SubworkflowHasParentsError(
+                    msg,
+                    subworkflow_id=str(subworkflow_id),
+                    version=str(version),
+                    parents=late_parents,
+                ) from exc
+            raise
         logger.info(
             SUBWORKFLOW_DELETED,
             subworkflow_id=subworkflow_id,
