@@ -85,14 +85,22 @@ def _make_rate_limited_driver(
 ) -> tuple[LiteLLMDriver, dict[str, int], dict[str, asyncio.Event]]:
     """Build a ``max_concurrent=1`` driver wired for deterministic overlap.
 
-    Returns the driver, the shared ``in_flight`` counter dict, and a
-    pair of events:
+    Returns the driver, the shared ``in_flight`` counter dict, and
+    three events:
 
     - ``first_entered``: set by the first task once it has crossed
       into the rate-limited section (i.e. ``in_flight["current"] == 1``).
-    - ``release_first``: awaited by the first task; the test sets
-      this once the second task has been spawned, so the first task
-      can exit and free the rate-limit slot.
+    - ``second_entered``: set by the second task if it ever enters
+      the rate-limited section.  The orchestrator asserts this is
+      *unset* before releasing the first -- i.e. proves the rate
+      limiter is actively holding the second task back.  If the wrap
+      regressed to ``max_concurrent=0`` the second would slip through
+      and the assertion would catch it deterministically (no peak
+      racing required).
+    - ``release_first``: awaited by the first task; the orchestrator
+      sets this once the second task has been spawned and verified to
+      be blocked, so the first task can exit and free the rate-limit
+      slot.
 
     Wall-clock sleeps would be flaky under CI load and mask what the
     test is actually trying to assert about the rate limiter.
@@ -101,6 +109,7 @@ def _make_rate_limited_driver(
     in_flight = {"current": 0, "peak": 0}
     counter_lock = asyncio.Lock()
     first_entered = asyncio.Event()
+    second_entered = asyncio.Event()
     release_first = asyncio.Event()
 
     async def _stub_do(model: str) -> ModelCapabilities:
@@ -109,6 +118,8 @@ def _make_rate_limited_driver(
             in_flight["peak"] = max(in_flight["peak"], in_flight["current"])
             if model == "test-model-001":
                 first_entered.set()
+            elif model == "test-model-002":
+                second_entered.set()
         if model == "test-model-001":
             await release_first.wait()
         async with counter_lock:
@@ -121,6 +132,7 @@ def _make_rate_limited_driver(
         in_flight,
         {
             "first_entered": first_entered,
+            "second_entered": second_entered,
             "release_first": release_first,
         },
     )
@@ -133,10 +145,12 @@ async def _race_two_capability_tasks(
     """Spawn two ``get_model_capabilities`` calls in serial-via-rate-limit.
 
     The first task is started, allowed to enter the rate-limited
-    section, then held; the second task is spawned (and must wait on
-    the rate limiter); the first is released; both are awaited.  If
-    the wrap regresses to ``max_concurrent=0`` the test's caller will
-    observe ``in_flight["peak"] == 2``.
+    section, then held; the second task is spawned and given a
+    scheduling tick to make progress.  If the rate limiter is
+    working, the second task is parked on it and ``second_entered``
+    stays unset; if it regressed, the second task slips through and
+    the assertion below trips deterministically.  Then the first is
+    released; both are awaited.
     """
     first_task = asyncio.create_task(
         driver.get_model_capabilities("test-model-001"),
@@ -144,6 +158,15 @@ async def _race_two_capability_tasks(
     await events["first_entered"].wait()
     second_task = asyncio.create_task(
         driver.get_model_capabilities("test-model-002"),
+    )
+    # Give the event loop one tick so the second task gets scheduled.
+    # If the rate limiter regressed, the task would have entered
+    # ``_stub_do`` and set ``second_entered``.  Otherwise it is parked
+    # on the limiter and ``second_entered`` stays unset.
+    await asyncio.sleep(0)
+    assert not events["second_entered"].is_set(), (
+        "rate limiter regression: second task entered the critical "
+        "section while the first still holds the slot"
     )
     events["release_first"].set()
     await asyncio.gather(first_task, second_task)

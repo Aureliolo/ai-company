@@ -1,6 +1,5 @@
 """Root test configuration and shared fixtures."""
 
-import json
 import logging
 import os
 import shutil
@@ -210,17 +209,23 @@ def _load_baseline_for_conftest() -> tuple[float, int, float] | None:
 
     Returns ``None`` when the baseline is missing or malformed --
     callers skip the regression check rather than blocking the run.
+
+    Delegates to :func:`tests.baselines.loader.load_baseline_snapshot`
+    so the validation contract is identical to the pre-push runner
+    (``scripts/run_affected_tests.py``).  The legacy 3-tuple shape is
+    rebuilt here from the shared snapshot for the existing
+    :func:`pytest_sessionfinish` consumer.
     """
-    if not _BASELINE_PATH.exists():
+    from tests.baselines.loader import load_baseline_snapshot
+
+    snapshot = load_baseline_snapshot(_BASELINE_PATH)
+    if snapshot is None:
         return None
-    try:
-        baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
-        baseline_secs = float(baseline["unit_suite_seconds"])
-        baseline_count = int(baseline.get("test_count", 0))
-        threshold_ratio = float(baseline.get("regression_threshold_ratio", 1.3))
-    except json.JSONDecodeError, KeyError, ValueError, OSError:
-        return None
-    return baseline_secs, baseline_count, threshold_ratio
+    # The legacy hook signature returns ``unit_suite_seconds``; rebuild
+    # it from the per-test cost so callers downstream do not need to
+    # change shape.
+    baseline_secs = snapshot.per_test_ms * snapshot.baseline_test_count / 1000.0
+    return baseline_secs, snapshot.baseline_test_count, snapshot.threshold_ratio
 
 
 def _emit_regression_banner(

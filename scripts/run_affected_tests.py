@@ -14,17 +14,30 @@ Exit codes match pytest: 0 (passed/nothing to run), 1 (failures), etc.
 Git command failures fall back to running the full unit suite.
 """
 
-import json
 import math
 import os
 import re
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Make ``tests.baselines.loader`` importable when this script runs from
+# the command line (the script's own directory is on ``sys.path`` but
+# the repo root, which contains the ``tests`` package, is not).  Both
+# this script and ``tests/conftest.py`` use the same loader to keep the
+# baseline-validation contract identical across pre-push and pytest.
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from tests.baselines.loader import (  # noqa: E402
+    BaselineSnapshot as _BaselineSnapshot,
+)
+from tests.baselines.loader import (  # noqa: E402
+    load_baseline_snapshot as _shared_load_baseline_snapshot,
+)
 
 # Modules imported by nearly everything -- changes here mean "run all tests".
 _BLAST_RADIUS_MODULES = frozenset({"core", "config", "observability"})
@@ -177,117 +190,14 @@ def _parse_test_count(pytest_output: str) -> int | None:
     return None
 
 
-@dataclass(frozen=True)
-class _BaselineSnapshot:
-    """Validated numeric view of ``tests/baselines/unit_timing.json``.
-
-    The primary regression metric is ``per_test_ms``.  When present in
-    the baseline JSON, it is used directly; when absent, it is computed
-    at parse time from ``unit_suite_seconds * 1000 / test_count`` so
-    legacy baselines without an explicit ``per_test_ms`` field continue
-    to work.  Absolute-seconds checks are gone: mechanical test-count
-    growth (PRs adding new tests) was firing the old absolute threshold
-    without representing a real slowdown, so operators were forced to
-    refresh the baseline every time upstream landed new tests.  Per-test
-    cost is dimension-correct -- it normalizes against population size
-    and only fires when individual tests actually slow down.
-
-    ``threshold_ratio`` is always set: ``_load_baseline_snapshot``
-    defaults it to ``1.3`` when the JSON omits ``regression_threshold_ratio``,
-    so consumers can use it without a None-check.
-
-    ``baseline_test_count`` is retained for the partial-run guard in
-    ``tests/conftest.py::pytest_sessionfinish`` (skip the check when
-    the collected unit count is well below the full suite, e.g. the
-    user ran a single test file).  ``_load_baseline_snapshot``
-    rejects baselines that omit ``test_count``, so this field is
-    always populated on a valid snapshot -- consumers can use it
-    without a None-check.  This field is NOT used in ratio
-    computation.
-    """
-
-    per_test_ms: float
-    threshold_ratio: float
-    baseline_test_count: int
-
-
-def _positive_finite_float(raw: object) -> float | None:
-    """Coerce *raw* to a strictly positive finite float, or ``None``."""
-    if raw is None:
-        return None
-    try:
-        candidate = float(raw)  # type: ignore[arg-type]
-    except TypeError, ValueError:
-        return None
-    if not math.isfinite(candidate) or candidate <= 0:
-        return None
-    return candidate
-
-
-def _positive_int(raw: object) -> int | None:
-    """Coerce *raw* to a strictly positive int, or ``None``."""
-    if raw is None:
-        return None
-    try:
-        # ``int(raw)`` accepts str/bytes/SupportsInt/SupportsIndex; tolerate
-        # any of those (baseline JSON could store a string or float) and
-        # reject anything else as an unusable baseline value.
-        candidate = int(raw)  # type: ignore[call-overload]
-    except TypeError, ValueError:
-        return None
-    return candidate if candidate > 0 else None
-
-
 def _load_baseline_snapshot() -> _BaselineSnapshot | None:
-    """Parse and validate the baseline file.
+    """Thin wrapper around :func:`tests.baselines.loader.load_baseline_snapshot`.
 
-    Returns ``None`` when the file is missing, malformed, or missing
-    the required fields (``unit_suite_seconds`` + ``test_count``, OR
-    a directly-provided ``per_test_ms``). ``regression_threshold_ratio``
-    defaults to 1.3 if absent.
+    Centralised in ``tests/baselines/loader.py`` so the contract stays
+    identical between this script (pre-push) and
+    ``tests/conftest.py::pytest_sessionfinish`` (regression banner).
     """
-    if not _BASELINE_PATH.exists():
-        return None
-    try:
-        baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError, OSError:
-        return None
-    # ``json.loads`` happily returns a bare list/str/number for any
-    # syntactically-valid JSON, so guard the shape before indexing.
-    # Otherwise a malformed baseline crashes the hook instead of
-    # cleanly disabling the regression check.
-    if not isinstance(baseline, dict):
-        return None
-
-    test_count = _positive_int(baseline.get("test_count"))
-    if test_count is None:
-        # ``test_count`` is part of the snapshot contract and powers the
-        # mechanical-growth gate.  Reject the baseline outright instead
-        # of returning a half-populated snapshot that silently disables
-        # the count-based check.
-        return None
-    per_test_ms = _positive_finite_float(baseline.get("per_test_ms"))
-
-    # When the baseline omits ``per_test_ms`` derive it from
-    # ``unit_suite_seconds * 1000 / test_count``; both fields stay in
-    # the JSON so operators can read absolute numbers at a glance.
-    if per_test_ms is None:
-        baseline_secs = _positive_finite_float(baseline.get("unit_suite_seconds"))
-        if baseline_secs is None:
-            return None
-        per_test_ms = baseline_secs * 1000.0 / test_count
-
-    threshold_ratio = _positive_finite_float(
-        baseline.get("regression_threshold_ratio"),
-    )
-    if threshold_ratio is None:
-        threshold_ratio = 1.3
-
-    return _BaselineSnapshot(
-        per_test_ms=per_test_ms,
-        threshold_ratio=threshold_ratio,
-        baseline_test_count=test_count,
-    )
+    return _shared_load_baseline_snapshot(_BASELINE_PATH)
 
 
 def _parse_env_override() -> float | None:
