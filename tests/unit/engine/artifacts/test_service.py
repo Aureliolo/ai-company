@@ -69,6 +69,9 @@ async def test_create_emits_api_artifact_created() -> None:
         )
 
     assert result.id.startswith("artifact-")
+    # Persistence side-effect: catches a log-only impl that forgets
+    # to actually call the repo.
+    assert await repo.get(result.id) == result
     assert any(log["event"] == API_ARTIFACT_CREATED for log in logs), (
         f"expected {API_ARTIFACT_CREATED} in {logs}"
     )
@@ -90,10 +93,19 @@ async def test_save_emits_api_artifact_updated_when_row_exists() -> None:
         created_by=NotBlankStr("agent-1"),
     )
     await repo.save(artifact)
+    # Use a *different* artifact value on the second save so the
+    # post-call repo state proves ``service.save`` reached the repo
+    # (a log-only impl would leave the repo on the original value).
+    updated = artifact.model_copy(
+        update={"path": NotBlankStr("path/to/renamed.py")},
+    )
 
     with structlog.testing.capture_logs() as logs:
-        await service.save(artifact)
+        await service.save(updated)
 
+    fetched = await repo.get(artifact.id)
+    assert fetched is not None
+    assert fetched.path == "path/to/renamed.py"
     assert any(log["event"] == API_ARTIFACT_UPDATED for log in logs)
     assert not any(log["event"] == API_ARTIFACT_CREATED for log in logs)
     assert not any(log["event"] == "persistence.artifact.saved" for log in logs)
@@ -120,6 +132,9 @@ async def test_save_emits_api_artifact_created_on_first_write() -> None:
     with structlog.testing.capture_logs() as logs:
         await service.save(artifact)
 
+    # Persistence side-effect: catches a log-only impl that forgets
+    # to call ``self._repo.save``.
+    assert await repo.get(artifact.id) == artifact
     assert any(log["event"] == API_ARTIFACT_CREATED for log in logs)
     assert not any(log["event"] == API_ARTIFACT_UPDATED for log in logs)
     # Pin the first-write branch against the legacy persistence-layer

@@ -249,8 +249,15 @@ async def test_list_projects_filters_by_status_and_lead() -> None:
     service = ProjectService(repo=repo)
     p1 = _make_project(project_id="proj-1", lead="agent-a")
     p2 = _make_project(project_id="proj-2", lead="agent-b")
+    # ``p3`` is non-PLANNING -- otherwise the status-filter assertion
+    # below could pass even if ``list_projects`` ignored ``status``
+    # entirely (every project would default to PLANNING).
+    p3 = _make_project(project_id="proj-3", lead="agent-c").model_copy(
+        update={"status": ProjectStatus.ACTIVE},
+    )
     await repo.save(p1)
     await repo.save(p2)
+    await repo.save(p3)
 
     by_lead = await service.list_projects(
         status=None,
@@ -262,7 +269,13 @@ async def test_list_projects_filters_by_status_and_lead() -> None:
         status=ProjectStatus.PLANNING,
         lead=None,
     )
-    # Default project status is PLANNING.  Assert the tuple directly
-    # to pin the ordering contract documented on
+    # The PLANNING filter must exclude the ACTIVE row.  Asserting the
+    # exact tuple also pins the ordering contract documented on
     # ``ProjectRepository.list_projects`` (ascending id).
     assert all_planning == (p1, p2)
+
+    only_active = await service.list_projects(
+        status=ProjectStatus.ACTIVE,
+        lead=None,
+    )
+    assert only_active == (p3,)

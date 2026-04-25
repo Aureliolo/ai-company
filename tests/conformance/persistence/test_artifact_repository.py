@@ -110,6 +110,27 @@ class TestArtifactRepository:
         assert fetched is not None
         assert fetched.project_id == "proj-new"
 
+    async def test_project_id_clear_to_none_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Clearing ``project_id`` to ``None`` persists the unset.
+
+        Pins the regression-prone branch for nullable columns: a repo
+        that accidentally preserves the old non-null value on a
+        ``NULL`` update (e.g. ``UPDATE ... SET project_id =
+        COALESCE(?, project_id)``) would still pass the
+        non-null->non-null update test.
+        """
+        a = _artifact(artifact_id="cleared", project_id="proj-bound")
+        await backend.artifacts.save(a)
+
+        cleared = a.model_copy(update={"project_id": None})
+        await backend.artifacts.save(cleared)
+
+        fetched = await backend.artifacts.get(NotBlankStr("cleared"))
+        assert fetched is not None
+        assert fetched.project_id is None
+
     async def test_list_all(self, backend: PersistenceBackend) -> None:
         await backend.artifacts.save(_artifact(artifact_id="a1"))
         await backend.artifacts.save(_artifact(artifact_id="a2"))

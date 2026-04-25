@@ -336,6 +336,23 @@ def test_non_mutation_logs_inside_persistence_not_flagged(
         'logger.info("persistence.user.deleted", user_id=u.id)\n',
         # Mixed-case literal: matched case-insensitively.
         'logger.info("Persistence.User.Updated", user_id=u.id)\n',
+        # Module-level reassignment: ``AUDIT_EVENT = PERSISTENCE_USER_SAVED``
+        # then ``logger.info(AUDIT_EVENT, ...)``.  The assignment
+        # resolver follows one level of indirection and recovers the
+        # original constant name.
+        (
+            "from synthorg.observability.events.persistence import "
+            "PERSISTENCE_USER_SAVED\n"
+            "AUDIT_EVENT = PERSISTENCE_USER_SAVED\n"
+            "logger.info(AUDIT_EVENT, user_id=u.id)\n"
+        ),
+        # Module-level reassignment with annotation
+        # (``AUDIT_EVENT: Final = "persistence.user.saved"``).
+        (
+            "from typing import Final\n"
+            'AUDIT_EVENT: Final = "persistence.user.saved"\n'
+            "logger.info(AUDIT_EVENT, user_id=u.id)\n"
+        ),
     ],
 )
 def test_ast_scanner_catches_logger_shapes_regex_missed(

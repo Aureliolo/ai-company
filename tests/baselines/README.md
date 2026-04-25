@@ -42,17 +42,30 @@ intent so we do not silently mask regressions.
 
 To refresh the baseline yourself:
 
-1. Run the full unit suite on a clean `origin/main` checkout:
+1. Check out the exact branch / commit whose source change justifies
+   the refresh (the candidate revision -- NOT a clean
+   `origin/main` checkout).  The numbers must reflect the same code
+   the guard will compare against, otherwise `unit_timing.json`
+   drifts away from the suite as soon as the change merges.  Then
+   run the full unit suite:
 
    ```bash
    uv run python -m pytest tests/ -m unit -n 8 --durations=0
    ```
 
-2. Note the elapsed wall-clock and the `=== N passed in ... ===` count.
+2. Note the elapsed wall-clock and the *collected* unit-test count
+   that the regression guard uses.  pytest's
+   `=== N passed in ... ===` summary undercounts when skips / xfails
+   are present; prefer the collection count from `pytest --collect-only`
+   or the `_unit_elapsed_secs` accumulator's denominator (the
+   `unit_count` computed in `conftest.py::pytest_sessionfinish`).
+
 3. Update `unit_timing.json`:
 
    - Set `unit_suite_seconds` to the elapsed wall-clock.
-   - Set `test_count` to the passed count.
+   - Set `test_count` to the unit-test collection count (NOT the
+     passed count; skipped tests still cost setup time on the next
+     run).
    - Update `commit` and `measured_at`.
    - Add a `notes` entry explaining why the refresh was needed (e.g.
      "intentional infrastructure change reduced per-test cost by 12%").

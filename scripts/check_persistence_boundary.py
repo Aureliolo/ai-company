@@ -320,8 +320,39 @@ def _build_alias_map(tree: ast.AST) -> dict[str, str]:
     return aliases
 
 
-def _resolve_event_token(
-    node: ast.expr, aliases: dict[str, str]
+def _build_assignment_map(tree: ast.AST) -> dict[str, ast.expr]:
+    """Return ``{local_name: rhs_node}`` for module-level assignments.
+
+    Closes the second escape hatch: a repo could ``AUDIT_EVENT =
+    PERSISTENCE_PROJECT_SAVED`` (or the literal string form) and then
+    ``logger.info(AUDIT_EVENT, ...)``.  The aliased-import resolver
+    only catches ``import ... as ...``; this resolver catches
+    plain-`Assign` and `AnnAssign` redirections.
+
+    The map values are the right-hand-side AST expressions, which the
+    caller dereferences via :func:`_resolve_event_token` (one level
+    of indirection -- chains of more than one redirection are rare
+    enough that the extra complexity is not worth it).
+    """
+    assignments: dict[str, ast.expr] = {}
+    for node in tree.body if isinstance(tree, ast.Module) else ():
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    assignments[target.id] = node.value
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.value is not None
+        ):
+            assignments[node.target.id] = node.value
+    return assignments
+
+
+def _resolve_event_token(  # noqa: PLR0911
+    node: ast.expr,
+    aliases: dict[str, str],
+    assignments: dict[str, ast.expr],
 ) -> tuple[str | None, str | None]:
     """Resolve *node* to ``(canonical_name, literal_value)``.
 
@@ -330,11 +361,29 @@ def _resolve_event_token(
     :class:`ast.Name`/:class:`ast.Attribute`; ``literal_value`` is the
     string form (``"persistence.user.saved"``) when the event is
     written as a :class:`ast.Constant`.  Either may be ``None``.
-    Aliased Names are resolved through *aliases* so a renamed import
-    still surfaces its original constant name.
+
+    Resolution order for :class:`ast.Name`:
+
+    1. ``aliases`` -- ``import X as Y`` rewrites Y back to X.
+    2. ``assignments`` -- ``Y = X`` (or ``Y = "..."``) follows one
+       level of redirection so module-level reassignment cannot
+       bypass the suffix check.
+    3. Fall back to the local name itself -- the suffix check still
+       fires when an unresolved Name happens to end in a mutation
+       suffix on its own.
     """
     if isinstance(node, ast.Name):
-        return aliases.get(node.id, node.id), None
+        if node.id in aliases:
+            return aliases[node.id], None
+        if node.id in assignments:
+            rhs = assignments[node.id]
+            if isinstance(rhs, ast.Name):
+                return aliases.get(rhs.id, rhs.id), None
+            if isinstance(rhs, ast.Attribute):
+                return rhs.attr, None
+            if isinstance(rhs, ast.Constant) and isinstance(rhs.value, str):
+                return None, rhs.value
+        return node.id, None
     if isinstance(node, ast.Attribute):
         # ``events.PERSISTENCE_FOO`` -> the rightmost attribute is the
         # constant name we care about.  Module-prefix is irrelevant
@@ -386,6 +435,7 @@ def _scan_persistence_mutation_logs(file_path: Path, rel: str) -> list[str]:
     issues: list[str] = []
     lines = text.splitlines()
     aliases = _build_alias_map(tree)
+    assignments = _build_assignment_map(tree)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -394,7 +444,9 @@ def _scan_persistence_mutation_logs(file_path: Path, rel: str) -> list[str]:
         event_node = _extract_event_node(node)
         if event_node is None:
             continue
-        canonical_name, literal_value = _resolve_event_token(event_node, aliases)
+        canonical_name, literal_value = _resolve_event_token(
+            event_node, aliases, assignments
+        )
         # The event matches if either the canonical identifier OR the
         # literal string ends in a mutation suffix.  Resolved aliases
         # and ``module.CONST`` attribute references both surface as

@@ -516,6 +516,38 @@ class TestDeleteNamespace:
         assert events[0]["namespace"] == "budget"
         assert events[0]["count"] == 4
 
+    async def test_no_op_when_zero_rows_deleted(
+        self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
+    ) -> None:
+        """Zero-row delete: cache invalidates, no audit, no publish.
+
+        A namespace-clear that touched no rows is a no-op as far as
+        downstream subscribers are concerned; emitting
+        ``SETTINGS_VALUE_DELETED`` and per-key change notifications
+        would trigger phantom reload/restart work.
+        """
+        import structlog
+
+        from synthorg.observability.events.settings import SETTINGS_VALUE_DELETED
+
+        bus = MagicMock()
+        bus.is_running = True
+        bus.publish = AsyncMock()
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            message_bus=bus,
+        )
+        mock_repo.delete_namespace.return_value = 0
+
+        with structlog.testing.capture_logs() as logs:
+            deleted = await svc.delete_namespace("budget")
+
+        assert deleted == 0
+        assert not any(log["event"] == SETTINGS_VALUE_DELETED for log in logs)
+        bus.publish.assert_not_called()
+
 
 # ── Schema Tests ─────────────────────────────────────────────────
 

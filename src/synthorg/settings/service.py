@@ -818,6 +818,13 @@ class SettingsService:
 
         self._invalidate_namespace_cache(namespace)
 
+        # No-op short-circuit: a delete_namespace that removed zero rows
+        # must not fire the audit event or republish per-key change
+        # notifications.  Otherwise downstream subscribers (cache reload
+        # listeners, restart-required gates) react to a phantom change.
+        if deleted == 0:
+            return 0
+
         logger.info(
             SETTINGS_VALUE_DELETED,
             namespace=namespace,

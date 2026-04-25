@@ -159,6 +159,12 @@ DISALLOWED_VENDOR_NAMES: frozenset[str] = frozenset(
 _UNIT_TEST_WALL_CLOCK_LIMIT = 8.0  # seconds
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 _start_key = pytest.StashKey[float]()
+# Accumulator for unit-only wall-clock time, summed across tests in
+# ``pytest_runtest_teardown``.  Used by the suite regression guard
+# below to compare per-unit-test cost against the baseline without
+# polluting the math with non-unit (integration / e2e / conformance)
+# test elapsed time.
+_unit_elapsed_secs: float = 0.0
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -169,11 +175,14 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
 @pytest.hookimpl(trylast=True)
 def pytest_runtest_teardown(item: pytest.Item) -> None:
-    """Fail unit tests that exceed the wall-clock limit."""
+    """Fail unit tests that exceed the wall-clock limit + tally per-test elapsed."""
+    global _unit_elapsed_secs  # noqa: PLW0603
     start = item.stash.get(_start_key, None)
     if start is None:
         return
     elapsed = time.monotonic() - start
+    if item.get_closest_marker("unit"):
+        _unit_elapsed_secs += elapsed
     if (
         not _FUZZ_PROFILE_ACTIVE
         and item.get_closest_marker("unit")
@@ -199,9 +208,10 @@ _suite_start: float | None = None
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Record suite start time for regression detection."""
-    global _suite_start  # noqa: PLW0603
+    """Record suite start time + reset the unit-elapsed accumulator."""
+    global _suite_start, _unit_elapsed_secs  # noqa: PLW0603
     _suite_start = time.monotonic()
+    _unit_elapsed_secs = 0.0
 
 
 def _load_baseline_for_conftest() -> tuple[float, int, float] | None:
@@ -281,30 +291,21 @@ def pytest_sessionfinish(
         return
     baseline_secs, baseline_count, threshold_ratio = loaded
     unit_count = sum(1 for item in session.items if item.get_closest_marker("unit"))
-    non_unit_count = len(session.items) - unit_count
-    # Only compare against baseline when the session contains
-    # (roughly) the full unit suite.  ``non_unit_count`` is logged for
-    # diagnostics but does NOT disable the check -- mixed CI runs
-    # (``pytest tests/`` with ``RUN_INTEGRATION_TESTS=1``) still need
-    # regression detection.  ``elapsed`` includes the non-unit time so
-    # the per-test math here is conservative for the unit slice; that
-    # is intentional: when a unit test's per-test cost truly regresses,
-    # the rail still trips.  Pure non-unit runs (``unit_count == 0``)
-    # fall through to ``cannot_compute``.
+    # Only compare against baseline when the session contains (roughly)
+    # the full unit suite.  Mixed CI runs (``pytest tests/`` with
+    # ``RUN_INTEGRATION_TESTS=1``) still need regression detection
+    # because that's where slowdowns are most damaging -- but the
+    # comparison must use unit-only elapsed, not total session
+    # wall-clock, otherwise a single slow integration test can trip
+    # the rail even when the unit suite is unchanged.
+    # ``_unit_elapsed_secs`` is summed across only ``@unit``-marked
+    # items in ``pytest_runtest_teardown`` for exactly this reason.
     partial_run = bool(baseline_count) and unit_count < baseline_count * 0.8
     cannot_compute = baseline_count <= 0 or unit_count <= 0
     if partial_run or cannot_compute:
         return
-    elapsed = time.monotonic() - _suite_start
+    elapsed = _unit_elapsed_secs
     baseline_per_test_ms = baseline_secs * 1000.0 / baseline_count
-    # When the session is mixed (unit + integration), subtract a
-    # conservative per-non-unit budget so we are comparing per-unit-ms
-    # like-for-like with the baseline.  Use the baseline's own per-test
-    # cost as the budget -- non-unit tests are typically slower, so
-    # this errs on the side of *not* tripping the rail.
-    if non_unit_count > 0:
-        non_unit_budget_secs = non_unit_count * baseline_per_test_ms / 1000.0
-        elapsed = max(0.0, elapsed - non_unit_budget_secs)
     current_per_test_ms = elapsed * 1000.0 / unit_count
     if current_per_test_ms <= baseline_per_test_ms * threshold_ratio:
         return
