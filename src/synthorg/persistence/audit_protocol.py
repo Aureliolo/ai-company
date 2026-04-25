@@ -34,7 +34,7 @@ class AuditRepository(Protocol):
         self,
         *,
         agent_id: NotBlankStr | None = None,
-        action_type: str | None = None,
+        action_type: NotBlankStr | None = None,
         verdict: AuditVerdictStr | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         since: AwareDatetime | None = None,

@@ -57,7 +57,7 @@ To refresh the baseline yourself:
    - Add a `notes` entry explaining why the refresh was needed (e.g.
      "intentional infrastructure change reduced per-test cost by 12%").
 
-4. Commit with an explicit `chore(tests): refresh unit-timing baseline`
+4. Commit with an explicit `chore: refresh unit-timing baseline`
    message that links the source-code change which justifies the
    refresh.  Refreshing the baseline to mask a regression is a
    documented anti-pattern -- the regression guard exists precisely

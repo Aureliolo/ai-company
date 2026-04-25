@@ -20,6 +20,7 @@ Usage:
 
 import argparse
 import io
+import os
 import re
 import subprocess
 import sys
@@ -272,15 +273,24 @@ def _scan_persistence_mutation_logs(file_path: Path, rel: str) -> list[str]:
 
 
 def _resolve_root(root: Path, project_root: Path) -> Path | None:
-    """Resolve *root* to an absolute path anchored under *project_root*."""
+    """Resolve *root* to an absolute path strictly under *project_root*.
+
+    Uses :func:`os.path.commonpath` (rather than :meth:`Path.relative_to`)
+    as the containment check so CodeQL's path-injection data-flow
+    analysis recognises the sanitizer.
+    """
     candidate = root if root.is_absolute() else project_root / root
     try:
         resolved = candidate.resolve(strict=False)
     except OSError:
         return None
+    project_root_str = os.fspath(project_root.resolve(strict=False))
+    resolved_str = os.fspath(resolved)
     try:
-        resolved.relative_to(project_root)
+        common = os.path.commonpath([project_root_str, resolved_str])
     except ValueError:
+        return None
+    if common != project_root_str:
         return None
     return resolved
 
@@ -359,28 +369,29 @@ def _iter_persistence_targets(
     return targets
 
 
-def _resolve_project_root(repo_root: Path | None) -> Path | int:
+class ProjectRootError(Exception):
+    """Raised when ``--repo-root`` cannot be resolved to a usable directory.
+
+    Carries the diagnostic message intended for stderr so :func:`main`
+    can format it consistently and exit with a non-zero status.
+    """
+
+
+def _resolve_project_root(repo_root: Path | None) -> Path:
     """Resolve the project root from CLI arguments.
-
-    Returns a dual-typed value so the caller can collapse argument
-    validation and successful resolution into one helper without
-    raising:
-
-    - On success: returns a resolved :class:`Path` to the project root.
-    - On failure: returns an integer process exit code (currently
-      ``2``) after printing a diagnostic to stderr; the caller forwards
-      this directly to :func:`sys.exit`.
-
-    Callers MUST disambiguate via ``isinstance(result, Path)`` before
-    using the value.
 
     Args:
         repo_root: User-supplied repo root from ``--repo-root``, or
             ``None`` to fall back to the script's own parent directory.
 
     Returns:
-        A resolved :class:`Path` on success, or an ``int`` exit code on
-        failure.
+        A resolved :class:`Path` to the project root.
+
+    Raises:
+        ProjectRootError: If ``--repo-root`` is inaccessible (OSError on
+            resolve) or does not point at a directory.  The message
+            attached to the exception is suitable for printing directly
+            to stderr.
     """
     default_root = Path(__file__).resolve().parent.parent
     if repo_root is None:
@@ -388,17 +399,11 @@ def _resolve_project_root(repo_root: Path | None) -> Path | int:
     try:
         resolved = repo_root.resolve(strict=True)
     except OSError as exc:
-        print(
-            f"--repo-root not accessible: {repo_root} ({exc})",
-            file=sys.stderr,
-        )
-        return 2
+        msg = f"--repo-root not accessible: {repo_root} ({exc})"
+        raise ProjectRootError(msg) from exc
     if not resolved.is_dir():
-        print(
-            f"--repo-root must be a directory: {resolved}",
-            file=sys.stderr,
-        )
-        return 2
+        msg = f"--repo-root must be a directory: {resolved}"
+        raise ProjectRootError(msg)
     return resolved
 
 
@@ -445,9 +450,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    project_root = _resolve_project_root(args.repo_root)
-    if isinstance(project_root, int):
-        return project_root
+    try:
+        project_root = _resolve_project_root(args.repo_root)
+    except ProjectRootError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
     roots = [Path(p) for p in args.paths]
     for root in roots:

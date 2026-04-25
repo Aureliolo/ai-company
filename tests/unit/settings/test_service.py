@@ -435,6 +435,88 @@ class TestNotifications:
         assert entry.value == "200.0"
 
 
+# ── delete_namespace Tests ───────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDeleteNamespace:
+    """Tests for SettingsService.delete_namespace."""
+
+    async def test_returns_repository_count(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        """The deleted-row count is forwarded from the repository."""
+        mock_repo.delete_namespace.return_value = 3
+        deleted = await service.delete_namespace("budget")
+        assert deleted == 3
+        mock_repo.delete_namespace.assert_awaited_once()
+        # NotBlankStr coercion: assert via positional arg name
+        called_with = mock_repo.delete_namespace.call_args[0][0]
+        assert str(called_with) == "budget"
+
+    async def test_invalidates_namespace_cache(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        """Every cached entry under the namespace is dropped."""
+        mock_repo.get.return_value = ("100.0", "2026-04-25T10:00:00Z")
+        await service.get("budget", "total_monthly")
+        assert mock_repo.get.call_count == 1
+
+        mock_repo.delete_namespace.return_value = 1
+        await service.delete_namespace("budget")
+
+        # Subsequent get() must re-query the repo (not hit the cache)
+        mock_repo.get.return_value = None
+        result = await service.get("budget", "total_monthly")
+        assert result.source == SettingSource.YAML
+        assert mock_repo.get.call_count == 2
+
+    async def test_publishes_change_per_registered_key(
+        self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
+    ) -> None:
+        """Each registered key under the namespace gets a change publish."""
+        registry.register(
+            _make_definition(
+                key="another_key",
+                yaml_path="budget.another_key",
+            )
+        )
+        bus = MagicMock()
+        bus.is_running = True
+        bus.publish = AsyncMock()
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            message_bus=bus,
+        )
+        mock_repo.delete_namespace.return_value = 2
+
+        deleted = await svc.delete_namespace("budget")
+
+        assert deleted == 2
+        # registry has two definitions under the budget namespace; both
+        # should produce a publish call.
+        assert bus.publish.call_count == 2
+
+    async def test_emits_audit_event(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        """The namespace delete fires SETTINGS_VALUE_DELETED with count."""
+        import structlog
+
+        from synthorg.observability.events.settings import SETTINGS_VALUE_DELETED
+
+        mock_repo.delete_namespace.return_value = 4
+        with structlog.testing.capture_logs() as logs:
+            await service.delete_namespace("budget")
+
+        events = [log for log in logs if log["event"] == SETTINGS_VALUE_DELETED]
+        assert len(events) == 1, f"expected one event, got {logs}"
+        assert events[0]["namespace"] == "budget"
+        assert events[0]["count"] == 4
+
+
 # ── Schema Tests ─────────────────────────────────────────────────
 
 

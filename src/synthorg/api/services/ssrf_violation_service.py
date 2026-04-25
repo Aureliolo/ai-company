@@ -1,0 +1,172 @@
+"""SSRF violation service layer.
+
+Thin wrapper over :class:`SsrfViolationRepository` so callers do not
+reach into ``app_state.persistence.ssrf_violations`` directly.  Owns
+the audit trail for violation recording and resolution -- the
+underlying repository is intentionally silent on mutations (per the
+persistence boundary rule: repositories must not log mutations
+themselves).
+
+Resolution is a security-sensitive event: the WHO + WHEN of an
+operator allowing or denying a previously-blocked URL is captured at
+this layer via :data:`API_SSRF_VIOLATION_STATUS_UPDATED`.
+"""
+
+from typing import TYPE_CHECKING
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import (
+    API_SSRF_VIOLATION_LISTED,
+    API_SSRF_VIOLATION_RECORDED,
+    API_SSRF_VIOLATION_STATUS_UPDATED,
+)
+from synthorg.security.ssrf_violation import (
+    SsrfViolation,  # noqa: TC001
+    SsrfViolationStatus,  # noqa: TC001
+)
+
+if TYPE_CHECKING:
+    from pydantic import AwareDatetime
+
+    from synthorg.persistence.ssrf_violation_repo import SsrfViolationRepository
+
+logger = get_logger(__name__)
+
+
+class SsrfViolationService:
+    """Wraps :class:`SsrfViolationRepository` with uniform audit logging.
+
+    Errors from the underlying repository
+    (``DuplicateRecordError``, ``QueryError``, ``ValueError`` from
+    invalid status transitions) propagate unchanged so the controller
+    can map them to the appropriate HTTP response.
+
+    Args:
+        repo: SSRF violation repository implementation.
+    """
+
+    __slots__ = ("_repo",)
+
+    _repo: SsrfViolationRepository
+
+    def __init__(self, *, repo: SsrfViolationRepository) -> None:
+        self._repo = repo
+
+    async def record(self, violation: SsrfViolation) -> None:
+        """Persist a freshly-recorded violation and audit the event.
+
+        Args:
+            violation: The violation to persist.  Typically constructed
+                in :data:`SsrfViolationStatus.PENDING` state by the
+                self-healing security flow; the model validator allows
+                pre-resolved rows for migrations or imports.
+
+        Raises:
+            DuplicateRecordError: A violation with the same id already
+                exists.
+            QueryError: Repository write failure.
+        """
+        await self._repo.save(violation)
+        logger.info(
+            API_SSRF_VIOLATION_RECORDED,
+            violation_id=violation.id,
+            hostname=violation.hostname,
+            port=violation.port,
+            provider_name=violation.provider_name,
+            status=violation.status.value,
+        )
+
+    async def get(
+        self,
+        violation_id: NotBlankStr,
+    ) -> SsrfViolation | None:
+        """Fetch a violation by id.
+
+        Args:
+            violation_id: Identifier of the violation to fetch.
+
+        Returns:
+            The violation, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: Repository read failure.
+        """
+        return await self._repo.get(violation_id)
+
+    async def list_violations(
+        self,
+        *,
+        status: SsrfViolationStatus | None = None,
+        limit: int = 100,
+    ) -> tuple[SsrfViolation, ...]:
+        """List violations with an optional ``status`` filter.
+
+        Emits :data:`API_SSRF_VIOLATION_LISTED` at DEBUG with the
+        result count for traceability.
+
+        Args:
+            status: Filter by status (``None`` for all).
+            limit: Maximum number of results (must be positive).
+
+        Returns:
+            Tuple of matching violations, ordered by timestamp DESC.
+
+        Raises:
+            ValueError: If *limit* is not positive.
+            QueryError: Repository read failure.
+        """
+        rows = await self._repo.list_violations(status=status, limit=limit)
+        logger.debug(
+            API_SSRF_VIOLATION_LISTED,
+            count=len(rows),
+            status_filter=status.value if status is not None else None,
+        )
+        return rows
+
+    async def update_status(
+        self,
+        violation_id: NotBlankStr,
+        *,
+        status: SsrfViolationStatus,
+        resolved_by: NotBlankStr,
+        resolved_at: AwareDatetime,
+    ) -> bool:
+        """Transition a pending violation to ALLOWED or DENIED.
+
+        Audit-critical: emits :data:`API_SSRF_VIOLATION_STATUS_UPDATED`
+        with the resolver identity and resolution timestamp on success.
+        Skipped when the row was missing or already resolved -- in
+        those cases the repository returns ``False`` and no audit fires.
+
+        Args:
+            violation_id: Identifier of the violation to update.
+            status: New status (must NOT be
+                :data:`SsrfViolationStatus.PENDING`).
+            resolved_by: Operator (or system principal) resolving the
+                violation.
+            resolved_at: Timestamp of the resolution decision.
+
+        Returns:
+            ``True`` if a pending violation was found and transitioned,
+            ``False`` if the violation was not found or already
+            resolved.
+
+        Raises:
+            ValueError: If *status* is :data:`SsrfViolationStatus.PENDING`.
+            QueryError: Repository write failure.
+        """
+        updated = await self._repo.update_status(
+            violation_id,
+            status=status,
+            resolved_by=resolved_by,
+            resolved_at=resolved_at,
+        )
+        if updated:
+            logger.info(
+                API_SSRF_VIOLATION_STATUS_UPDATED,
+                violation_id=violation_id,
+                status=status.value,
+                resolved_by=resolved_by,
+            )
+        return updated

@@ -36,7 +36,7 @@ class SettingsRepository(Protocol):
     async def get_namespace(
         self,
         namespace: NotBlankStr,
-    ) -> tuple[tuple[str, str, str], ...]:
+    ) -> tuple[tuple[NotBlankStr, str, str], ...]:
         """Retrieve all settings in a namespace.
 
         Args:
@@ -50,7 +50,9 @@ class SettingsRepository(Protocol):
         """
         ...
 
-    async def get_all(self) -> tuple[tuple[str, str, str, str], ...]:
+    async def get_all(
+        self,
+    ) -> tuple[tuple[NotBlankStr, NotBlankStr, str, str], ...]:
         """Retrieve all settings across all namespaces.
 
         Returns:
@@ -94,7 +96,9 @@ class SettingsRepository(Protocol):
         self,
         items: Sequence[tuple[NotBlankStr, NotBlankStr, str, str]],
         *,
-        expected_updated_at_map: (Mapping[tuple[str, str], str] | None) = None,
+        expected_updated_at_map: (
+            Mapping[tuple[NotBlankStr, NotBlankStr], str] | None
+        ) = None,
     ) -> bool:
         """Atomically upsert multiple settings in a single transaction.
 

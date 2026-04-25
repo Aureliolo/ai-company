@@ -391,3 +391,67 @@ def test_iter_persistence_targets_returns_only_persistence() -> None:
     assert prefix == "src/synthorg/persistence/"
     assert "src/synthorg/persistence/sqlite/user_repo.py".startswith(prefix)
     assert not "src/synthorg/api/controllers/projects.py".startswith(prefix)
+
+
+# ── _resolve_project_root ───────────────────────────────────────
+
+
+def test_resolve_project_root_returns_default_when_repo_root_none() -> None:
+    """``--repo-root`` defaults to the script's parent directory."""
+    resolved = _MODULE._resolve_project_root(None)  # type: ignore[attr-defined]
+    assert isinstance(resolved, Path)
+    assert resolved.is_dir()
+
+
+def test_resolve_project_root_returns_resolved_path_for_valid_dir(
+    tmp_path: Path,
+) -> None:
+    """A valid directory passed via ``--repo-root`` is returned resolved."""
+    resolved = _MODULE._resolve_project_root(tmp_path)  # type: ignore[attr-defined]
+    assert isinstance(resolved, Path)
+    assert resolved == tmp_path.resolve(strict=True)
+
+
+def test_resolve_project_root_raises_when_path_inaccessible(
+    tmp_path: Path,
+) -> None:
+    """A non-existent ``--repo-root`` raises ``ProjectRootError``."""
+    project_root_error = _MODULE.ProjectRootError  # type: ignore[attr-defined]
+    missing = tmp_path / "does-not-exist"
+    with pytest.raises(project_root_error, match="not accessible"):
+        _MODULE._resolve_project_root(missing)  # type: ignore[attr-defined]
+
+
+def test_resolve_project_root_raises_when_path_is_file(tmp_path: Path) -> None:
+    """A regular file passed via ``--repo-root`` raises ``ProjectRootError``."""
+    project_root_error = _MODULE.ProjectRootError  # type: ignore[attr-defined]
+    file_path = tmp_path / "regular.txt"
+    file_path.write_text("hello", encoding="utf-8")
+    with pytest.raises(project_root_error, match="must be a directory"):
+        _MODULE._resolve_project_root(file_path)  # type: ignore[attr-defined]
+
+
+# ── _resolve_root containment ───────────────────────────────────
+
+
+def test_resolve_root_returns_none_for_path_outside_project_root(
+    tmp_path: Path,
+) -> None:
+    """Paths outside ``project_root`` return ``None`` (CodeQL sanitizer)."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    resolved = _MODULE._resolve_root(outside, project_root)  # type: ignore[attr-defined]
+    assert resolved is None
+
+
+def test_resolve_root_accepts_path_inside_project_root(tmp_path: Path) -> None:
+    """Paths anchored under ``project_root`` resolve cleanly."""
+    project_root = tmp_path / "project"
+    inside = project_root / "src"
+    inside.mkdir(parents=True)
+
+    resolved = _MODULE._resolve_root(inside, project_root)  # type: ignore[attr-defined]
+    assert resolved == inside.resolve(strict=False)

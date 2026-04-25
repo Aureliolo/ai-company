@@ -194,6 +194,12 @@ API_ARTIFACT_CREATED: Final[str] = "api.artifact.created"
 API_ARTIFACT_UPDATED: Final[str] = "api.artifact.updated"
 API_ARTIFACT_DELETED: Final[str] = "api.artifact.deleted"
 
+# SSRF violation mutations (recorded by self-healing security flow,
+# resolved by an operator via the dashboard).
+API_SSRF_VIOLATION_RECORDED: Final[str] = "api.ssrf_violation.recorded"
+API_SSRF_VIOLATION_STATUS_UPDATED: Final[str] = "api.ssrf_violation.status_updated"
+API_SSRF_VIOLATION_LISTED: Final[str] = "api.ssrf_violation.listed"
+
 # Pagination / cursor
 API_CURSOR_SECRET_EPHEMERAL: Final[str] = "api.cursor.secret.ephemeral"  # noqa: S105 -- event name, not a secret
 API_CURSOR_INVALID: Final[str] = "api.cursor.invalid"

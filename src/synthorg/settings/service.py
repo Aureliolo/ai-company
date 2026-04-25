@@ -542,6 +542,11 @@ class SettingsService:
         self._cache = {k: v for k, v in self._cache.items() if k != cache_key}
         logger.debug(SETTINGS_CACHE_INVALIDATED, namespace=namespace, key=key)
 
+    def _invalidate_namespace_cache(self, namespace: str) -> None:
+        """Drop every cache entry under *namespace*."""
+        self._cache = {k: v for k, v in self._cache.items() if k[0] != namespace}
+        logger.debug(SETTINGS_CACHE_INVALIDATED, namespace=namespace)
+
     async def get_versioned(
         self,
         namespace: str,
@@ -789,6 +794,40 @@ class SettingsService:
         )
 
         await self._publish_change(namespace, key, definition)
+
+    async def delete_namespace(self, namespace: str) -> int:
+        """Delete every DB override under *namespace*.
+
+        Reverts each affected key to the next source in its chain
+        (env, default).  Emits a single
+        :data:`SETTINGS_VALUE_DELETED` audit log carrying the namespace
+        and the affected count, then publishes per-key change
+        notifications for every registered definition under the
+        namespace so downstream caches/listeners stay in sync.
+
+        Args:
+            namespace: Setting namespace to clear.
+
+        Returns:
+            Number of override rows actually removed.
+
+        Raises:
+            PersistenceError: If the persistence layer fails.
+        """
+        deleted = await self._repository.delete_namespace(NotBlankStr(namespace))
+
+        self._invalidate_namespace_cache(namespace)
+
+        logger.info(
+            SETTINGS_VALUE_DELETED,
+            namespace=namespace,
+            count=deleted,
+        )
+
+        for definition in self._registry.list_namespace(namespace):
+            await self._publish_change(namespace, definition.key, definition)
+
+        return deleted
 
     def get_schema(self, namespace: str | None = None) -> tuple[SettingDefinition, ...]:
         """Return setting definitions for schema introspection.
