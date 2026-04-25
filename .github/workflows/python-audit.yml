@@ -29,3 +29,46 @@ jobs:
           uv run pip-audit \
             --ignore-vuln GHSA-xqmj-j6mv-4862 \
             --ignore-vuln CVE-2026-3219
+
+  report-failure:
+    name: Open / update tracking issue on failure
+    needs: pip-audit
+    if: always() && needs.pip-audit.result != 'success' && needs.pip-audit.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Post / update tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.pip-audit.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE='Python audit regression'
+          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:ci-health' \
+            --search "in:title \"$TITLE\"" --json number,title \
+            --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
+
+          BODY=$(cat <<EOF
+          \`pip-audit\` failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\`.
+
+          Run: ${RUN_URL}
+
+          Likely cause: a new CVE landed against a pinned dependency. Check
+          the run log for the offending package + advisory ID, then either
+          bump the dependency, add it to the \`--ignore-vuln\` list (with
+          a comment explaining why), or accept the risk explicitly.
+          EOF
+          )
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            ISSUE_URL=$(gh issue create --title "$TITLE" \
+              --label 'automation:ci-health,type:ci,prio:high' \
+              --body "$BODY")
+            ISSUE_NUMBER="${ISSUE_URL##*/}"
+            echo "Created tracking issue #$ISSUE_NUMBER"
+          else
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          fi

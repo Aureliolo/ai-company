@@ -67,3 +67,46 @@ jobs:
             type:ci
             scope:docker
           reviewers: Aureliolo
+
+  report-failure:
+    name: Open / update tracking issue on failure
+    needs: update-lockfiles
+    if: always() && needs.update-lockfiles.result != 'success' && needs.update-lockfiles.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Post / update tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.update-lockfiles.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE='apko lockfile update regression'
+          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:ci-health' \
+            --search "in:title \"$TITLE\"" --json number,title \
+            --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
+
+          BODY=$(cat <<EOF
+          \`apko lock --update\` workflow failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\`.
+
+          Run: ${RUN_URL}
+
+          Likely cause: a Wolfi package was renamed/removed, an apko CLI
+          breaking change, or the \`peter-evans/create-pull-request\`
+          action could not push (App token / branch protection drift).
+          When this stays red for >1 weekly cycle, base images go stale.
+          EOF
+          )
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            ISSUE_URL=$(gh issue create --title "$TITLE" \
+              --label 'automation:ci-health,type:ci,prio:medium' \
+              --body "$BODY")
+            ISSUE_NUMBER="${ISSUE_URL##*/}"
+            echo "Created tracking issue #$ISSUE_NUMBER"
+          else
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          fi
