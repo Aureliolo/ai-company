@@ -62,9 +62,11 @@ runs:
         # Single-shot retry to absorb transient API hiccups; on a hard
         # failure (e.g. token can't read environments) we degrade to a
         # skipped check rather than flagging every env as missing.
+        # The `sleep 1` between attempts gives a transient rate-limit
+        # or brief outage a moment to clear before re-firing.
         envs_block=""
         if existing_envs_json=$(gh api "repos/$GH_REPO/environments" --jq '[.environments[]?.name]' 2>/dev/null \
-            || gh api "repos/$GH_REPO/environments" --jq '[.environments[]?.name]'); then
+            || (sleep 1 && gh api "repos/$GH_REPO/environments" --jq '[.environments[]?.name]')); then
           missing_envs=()
           for env in "${EXPECTED_ENVS[@]}"; do
             if ! jq -e --arg n "$env" 'index($n) != null' <<<"$existing_envs_json" >/dev/null; then
@@ -147,11 +149,17 @@ runs:
         body="${body//\{\{BRANCH_PROTECTION_BLOCK\}\}/$bp_block}"
 
         # ── Emit outputs ─────────────────────────────────────────
+        # Random delimiter so a body that happens to contain the
+        # marker on its own line cannot truncate the output. Per
+        # GitHub Actions docs the delimiter must not appear in the
+        # value; salting with a per-run random suffix makes that
+        # condition vacuous.
+        delim="PREFLIGHT_BODY_EOF_$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
         echo "gaps-found=$gaps_found" >> "$GITHUB_OUTPUT"
         {
-          echo "body<<PREFLIGHT_BODY_EOF"
+          printf 'body<<%s\n' "$delim"
           printf '%s\n' "$body"
-          echo "PREFLIGHT_BODY_EOF"
+          printf '%s\n' "$delim"
         } >> "$GITHUB_OUTPUT"
 
         echo "::group::Preflight result"

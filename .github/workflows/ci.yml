@@ -617,6 +617,10 @@ jobs:
     # Fork gate: skip in forks. The audit needs the release-bot App
     # token (env-scoped secret on `release`) and a fork won't have it.
     # ci-preflight reports the missing setup separately.
+    #
+    # Precedence: `&&` binds tighter than `||`, so the inner
+    # parentheses around `(push && main || dispatch)` are required
+    # to keep the trigger-OR group intact under the outer fork-AND.
     if: >-
       !github.event.repository.fork
       && ((github.event_name == 'push' && github.ref == 'refs/heads/main')
