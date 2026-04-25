@@ -485,6 +485,7 @@ jobs:
           persist-credentials: false
 
       - name: Build and scan backend image
+        id: build_scan
         uses: ./.github/actions/build-scan-image
         with:
           image-name: backend
@@ -498,6 +499,42 @@ jobs:
           base-image-tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
           extra-build-args: |
             DEPLOYMENT_ENV=${{ needs.version.outputs.deployment_env }}
+
+      # Smoke-test the just-built backend image. Runs on EVERY event
+      # that builds the image (PR, push to main, v* tag pushes,
+      # workflow_dispatch) -- intentionally NOT gated to PRs only.
+      # Catches broken boot paths (404 on the wrong probe URL,
+      # missing migration, entrypoint crash, etc.) before publish.
+      #
+      # Why every event, not just PRs:
+      #   - PR path: fails the originating PR with a red ❌ on the
+      #     commit row.
+      #   - push to main: catches regressions in commits that did
+      #     NOT come through PR CI -- auto-rollover empty commits
+      #     (auto-rollover.yml), release-please bumps, hotfixes
+      #     pushed via the CLI, etc. Without smoke here, those
+      #     commits would let build-backend-publish push a broken
+      #     image straight to GHCR.
+      #   - tag push: same story for graduate.yml + manual tags.
+      #   - workflow_dispatch: protects ad-hoc rebuilds.
+      #
+      # Earlier the smoke lived in finalize-release.yml and ran
+      # only after a tag was already cut -- catching the same
+      # regression after the entire Docker matrix + GoReleaser
+      # signing had already run. Running here makes it the SOURCE
+      # OF TRUTH gate; finalize-release no longer re-tests because
+      # Docker images are content-addressed and pulling from GHCR
+      # at release time can never produce different bytes than the
+      # image just smoked here.
+      #
+      # The image is already loaded into the local Docker daemon
+      # by build-scan-image (it builds with `outputs: type=docker,
+      # dest=...` and re-loads); we run it in the same job, no
+      # registry pull. Probes /api/v1/healthz with a 120s deadline.
+      - name: Smoke-test backend image
+        uses: ./.github/actions/smoke-test-backend-image
+        with:
+          image: ${{ steps.build_scan.outputs.ref_amd64 }}
 
   build-backend-publish:
     name: Publish Backend

@@ -1,0 +1,82 @@
+name: 'Smoke-test CLI binary'
+description: |
+  Run the just-built `synthorg` CLI binary against a sane invocation
+  to catch:
+    - exit-non-zero on a basic command (`unknown flag`, panics, missing
+      cgo deps, etc.)
+    - missing version embedding (when `expected-version` is set)
+
+  This composite action is the single source of truth for the CLI
+  smoke test. It runs at build time in `cli.yml` (every PR / push) so
+  a broken binary fails the originating PR with a red ❌ on the
+  commit row, and is reused by GoReleaser-archive verification at
+  release time. Build-time invocation is the primary gate; release-
+  time is defensive only (Docker image digests + asset SHA-256s mean
+  the artifact identity does not drift between build and release).
+
+inputs:
+  binary-path:
+    description: |
+      Path to the compiled `synthorg` binary on disk. The binary must
+      be executable on the runner (smoke must run from a job whose
+      `goos`/`goarch` match the runner -- e.g. linux/amd64 on
+      ubuntu-latest). Cross-compiled darwin/windows binaries cannot
+      be smoked from Linux runners.
+    required: true
+  expected-version:
+    description: |
+      Optional version-string substring expected in the binary's
+      output. When set, the smoke fails if the output does not
+      contain this exact substring. Use the bare semver (e.g.
+      `0.7.3-dev.18`) -- never the leading `v`. When unset (default
+      for PR builds where no canonical tag exists), the smoke only
+      verifies non-zero exit.
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run synthorg version
+      shell: bash
+      env:
+        BINARY_PATH: ${{ inputs.binary-path }}
+        EXPECTED_VERSION: ${{ inputs.expected-version }}
+      run: |
+        set -euo pipefail
+
+        if [ ! -x "$BINARY_PATH" ]; then
+          echo "::error::Binary not found or not executable at $BINARY_PATH"
+          exit 1
+        fi
+
+        # synthorg uses Cobra subcommands -- invoke `version`, not `--version`.
+        # `--version` returns "unknown flag" and exit 1, which would cause
+        # this smoke to fail when in fact the binary is healthy. The CLI
+        # exposes the version via a dedicated subcommand registered in
+        # cli/cmd/version.go.
+        # Capture stdout AND stderr; explicit rc check after `set +e` so a
+        # crashing binary that printed before dying does not silently pass
+        # the grep check below.
+        set +e
+        VERSION_OUT=$("$BINARY_PATH" version 2>&1)
+        version_rc=$?
+        set -e
+
+        echo "synthorg version output:"
+        printf '%s\n' "$VERSION_OUT"
+
+        if [ "$version_rc" -ne 0 ]; then
+          echo "::error::synthorg version exited non-zero (rc=$version_rc)"
+          exit 1
+        fi
+
+        if [ -n "$EXPECTED_VERSION" ]; then
+          if ! printf '%s\n' "$VERSION_OUT" | grep -qF "$EXPECTED_VERSION"; then
+            echo "::error::synthorg version output does not contain expected substring '$EXPECTED_VERSION'"
+            exit 1
+          fi
+          echo "Version string contains expected '$EXPECTED_VERSION'."
+        fi
+
+        echo "CLI binary smoke OK."

@@ -130,114 +130,19 @@ jobs:
 
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
-      # ── Smoke-test the artifacts before publishing ──
-      # Blocks draft -> published transition if the backend image cannot
-      # serve /healthz or the CLI binary cannot report its version. Runs
-      # in ~5 min, scoped tightly so unrelated image regressions do not
-      # permanently block publishes (the upstream docker.yml / cli.yml
-      # already gate on this; this step catches the subset of failures
-      # that only manifest at actual run-time).
-      - name: Smoke-test backend image /healthz
-        if: steps.preflight.outputs.proceed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.workflow_run.head_branch }}
-        run: |
-          set -euo pipefail
-          IMAGE="ghcr.io/aureliolo/synthorg-backend:${TAG#v}"
-          echo "Pulling $IMAGE"
-          docker pull "$IMAGE"
-          echo "Starting container"
-          # The image's setup wizard falls back to ephemeral SQLite when
-          # no DATABASE_URL is provided -- sufficient for a /healthz
-          # smoke-test without provisioning external state.
-          CID=$(docker run -d --rm -p 3001:3001 "$IMAGE")
-          trap 'docker logs "$CID" 2>&1 | tail -50; docker stop "$CID" >/dev/null 2>&1 || true' EXIT
-
-          # Poll the API liveness endpoint for 120s. 200 means readiness;
-          # non-200 / connection refused means keep trying. Exit 1 if
-          # still failing at deadline. Each attempt captures the HTTP
-          # status so debug logs show WHY the probe was still failing
-          # (boot time, 5xx, conn-refused) -- ``curl -sf`` on its own
-          # silently returns exit 22 on any non-2xx and leaves nothing to
-          # investigate in a flake postmortem.
-          # NOTE: routes are mounted under ``/api/v1`` (see
-          # ``synthorg.api.controllers.health``); bare ``/healthz`` returns
-          # 404. Liveness (always 200 while event loop is alive) is the
-          # right probe for a smoke test -- readiness needs persistence
-          # + bus to be up, which is overkill for "the binary booted".
-          PROBE_URL="http://localhost:3001/api/v1/healthz"
-          deadline=$((SECONDS + 120))
-          while [ "$SECONDS" -lt "$deadline" ]; do
-            attempt_code=$(curl -s -o /dev/null -w '%{http_code}' "$PROBE_URL" 2>/dev/null || echo "conn-refused")
-            if [ "$attempt_code" = "200" ]; then
-              echo "$PROBE_URL returned 200 after ${SECONDS}s"
-              exit 0
-            fi
-            echo "$PROBE_URL attempt at ${SECONDS}s: ${attempt_code}"
-            sleep 3
-          done
-          echo "::error::$PROBE_URL did not return 200 within 120s; blocking publish"
-          exit 1
-
-      - name: Smoke-test CLI binary --version
-        if: steps.preflight.outputs.proceed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.workflow_run.head_branch }}
-        run: |
-          set -euo pipefail
-          TMP=$(mktemp -d)
-          trap 'rm -rf "$TMP"' EXIT
-
-          # GoReleaser name_template in cli/.goreleaser.yml is
-          # ``synthorg_{{ .Os }}_{{ .Arch }}`` -- GoReleaser substitutes
-          # GOOS / GOARCH lowercase, so the Linux amd64 archive is
-          # published as ``synthorg_linux_amd64.tar.gz``. Verified against
-          # the v0.7.2 release assets list; the prior ``Linux_x86_64``
-          # spelling never existed on any published release. The
-          # companion ``checksums.txt`` is cosign-signed + SLSA-attested
-          # (cli.yml "Sign checksums with cosign" step) so trusting its
-          # contents is reasonable for a smoke-test gate. We pull that
-          # file alongside the archive and verify SHA-256 before exec.
-          VER="${TAG#v}"
-          ASSET="synthorg_linux_amd64.tar.gz"
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "$ASSET" --dir "$TMP"
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern 'checksums.txt' --dir "$TMP"
-
-          EXPECTED=$(grep -E "  ${ASSET}$" "$TMP/checksums.txt" | awk '{print $1}')
-          if [ -z "$EXPECTED" ] || ! [[ "$EXPECTED" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "::error::Could not extract SHA-256 for $ASSET from checksums.txt; blocking publish"
-            exit 1
-          fi
-          ACTUAL=$(sha256sum "$TMP/$ASSET" | awk '{print $1}')
-          if [ "$EXPECTED" != "$ACTUAL" ]; then
-            echo "::error::Checksum mismatch for $ASSET (expected $EXPECTED, got $ACTUAL); blocking publish"
-            exit 1
-          fi
-          echo "Checksum verified for $ASSET"
-
-          tar -xzf "$TMP/$ASSET" -C "$TMP"
-
-          # Capture BOTH the binary's stdout/stderr AND its exit code.
-          # The prior ``|| true`` let a crashing binary that happened to
-          # print the version before dying silently pass the grep below;
-          # ``set +e`` + explicit rc check blocks that path.
-          set +e
-          VERSION_OUT=$("$TMP/synthorg" --version 2>&1)
-          version_rc=$?
-          set -e
-          echo "CLI --version output: $VERSION_OUT"
-          if [ "$version_rc" -ne 0 ]; then
-            echo "::error::synthorg --version exited non-zero (rc=$version_rc); blocking publish"
-            exit 1
-          fi
-          if ! printf '%s\n' "$VERSION_OUT" | grep -qF "$VER"; then
-            echo "::error::CLI --version output does not contain '$VER'; blocking publish"
-            exit 1
-          fi
+      # NOTE: artifact smoke testing happens at BUILD time in
+      # cli.yml (smoke-test-cli-binary composite action) and
+      # docker.yml (smoke-test-backend-image composite action), so a
+      # broken binary or backend image fails the originating PR with
+      # a red ❌ on the commit row -- not the finalize-release step
+      # after a tag has already been cut. The previous smoke steps
+      # here were redundant (Docker images are content-addressed, so
+      # the GHCR-pulled image is bit-identical to the one tested at
+      # build time; CLI archive integrity is already verified by the
+      # cosign-signed checksums.txt before publish), and they were
+      # also the only place either probe ran -- meaning a regression
+      # was caught only after a tag was already cut, which is too
+      # late. Build-time smoke makes this gate redundant.
 
       - name: Assemble + publish draft
         if: steps.preflight.outputs.proceed == 'true'
