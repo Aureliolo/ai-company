@@ -148,7 +148,7 @@ Rules:
 
 ### Batch Execution
 
-Launch agents in 13 batches of ~10 each. All agents within a batch run in parallel (`run_in_background: true`). Wait for each batch to complete before launching the next.
+Launch agents in 17 batches (A-Q). Most batches are ~10 agents each; batches M (121-123), N (124-130), and Q (151-153) are smaller because they cap each section at 153. All agents within a batch run in parallel (`run_in_background: true`). Wait for each batch to complete before launching the next.
 
 | Batch | Agents |
 |-------|----------|
@@ -170,7 +170,7 @@ Launch agents in 13 batches of ~10 each. All agents within a batch run in parall
 | P | 141-150 (second half of Wave 28) |
 | Q | 151-153 (Waves 29 + 30) |
 
-Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is the total number of agents launched for the current scope (123 for `full`, fewer for scoped runs).
+Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is the total number of agents launched for the current scope (153 for `full`, fewer for scoped runs).
 
 ---
 
@@ -2700,7 +2700,7 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 **Required for standard runs.** For `--quick` runs or when fewer than 5 critical+high findings exist, validation may be skipped.
 
-After all launched audit agents complete, launch validation agents to verify findings. The number of agents depends on scope (123 for `full`, fewer for scoped runs).
+After all launched audit agents complete, launch validation agents to verify findings. The number of agents depends on scope (153 for `full`, fewer for scoped runs).
 
 ### Process
 
