@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -33,13 +34,20 @@ type CommitWalkInput struct {
 	Width     int
 	Height    int
 	Options   Options
+	// Output is the writer bubbletea drives. Falls back to os.Stdout when
+	// nil so existing call sites that haven't been updated still work.
+	Output io.Writer
 }
 
 // RunCommitWalk runs the dev-channel commit list view in a single bubbletea
 // program and returns the outcome.
 func RunCommitWalk(ctx context.Context, in CommitWalkInput) (CommitWalkOutcome, error) {
 	m := newCommitWalkModel(in)
-	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithOutput(os.Stdout))
+	out := in.Output
+	if out == nil {
+		out = os.Stdout
+	}
+	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithOutput(out))
 	final, err := p.Run()
 	if err != nil {
 		return CommitWalkQuit, err
@@ -63,29 +71,60 @@ type commitWalkModel struct {
 	outcome   CommitWalkOutcome
 }
 
-// commitWalkViewportHeight reserves chrome for the dev-channel walk layout:
-// the title line + viewport trailing newline + footer line = 3 lines. There
-// are no optional fallback / flashMsg rows, so the chrome budget is constant.
-func commitWalkViewportHeight(termHeight int) int {
-	return viewportHeightForChrome(termHeight, 3)
+// commitWalkFooterText is the keymap line at the bottom of the commit walk.
+// Kept as a package constant so viewportHeight can probe its visible width
+// without re-rendering.
+const commitWalkFooterText = "[j/k] scroll  [g/G] top/bottom  [enter] continue  [q] quit"
+
+// titleVisibleWidth returns the visible width of the rendered title line
+// `<prefix><title>  <count>` so the viewportHeight chrome calculation can
+// detect when the title wraps on narrow terminals.
+func (m commitWalkModel) titleVisibleWidth() int {
+	prefix := "── "
+	if m.opts.Plain {
+		prefix = "-- "
+	}
+	title := fmt.Sprintf("dev channel: %s -> %s", m.installed, m.target)
+	count := fmt.Sprintf("%d commits", m.commits.TotalCommits)
+	return lipgloss.Width(prefix) + lipgloss.Width(title) + 2 + lipgloss.Width(count)
+}
+
+// viewportHeight reserves chrome for the dev-channel walk layout: the
+// title line + viewport trailing newline + footer line. The base budget
+// is 3 lines, but on narrow terminals the title or footer can wrap onto
+// a second line, so we add 1 chrome line per element that would not fit
+// in m.width. This keeps the viewport from overflowing on small windows
+// or with long dev-version labels.
+func (m commitWalkModel) viewportHeight() int {
+	chrome := 3
+	if m.width > 0 {
+		if m.titleVisibleWidth() > m.width {
+			chrome++
+		}
+		if lipgloss.Width(commitWalkFooterText) > m.width {
+			chrome++
+		}
+	}
+	return viewportHeightForChrome(m.height, chrome)
 }
 
 // newCommitWalkModel pre-renders the commit list and wires up the viewport.
 func newCommitWalkModel(in CommitWalkInput) commitWalkModel {
 	w, h := initialDimensions(in.Width, in.Height)
-	vp := viewport.New(viewport.WithWidth(w), viewport.WithHeight(commitWalkViewportHeight(h)))
-	vp.SoftWrap = true
-	vp.SetContent(RenderCommitList(in.Commits, w, in.Options))
-	return commitWalkModel{
+	m := commitWalkModel{
 		installed: in.Installed,
 		target:    in.Target,
 		commits:   in.Commits,
-		viewport:  vp,
 		width:     w,
 		height:    h,
 		opts:      in.Options,
 		outcome:   CommitWalkQuit, // default if program exits unexpectedly
 	}
+	vp := viewport.New(viewport.WithWidth(w), viewport.WithHeight(m.viewportHeight()))
+	vp.SoftWrap = true
+	vp.SetContent(RenderCommitList(in.Commits, w, in.Options))
+	m.viewport = vp
+	return m
 }
 
 // Init implements tea.Model.
@@ -100,7 +139,7 @@ func (m commitWalkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.SetWidth(msg.Width)
-		m.viewport.SetHeight(commitWalkViewportHeight(msg.Height))
+		m.viewport.SetHeight(m.viewportHeight())
 		// Re-render with the new width so subject truncation tracks resize.
 		m.viewport.SetContent(RenderCommitList(m.commits, msg.Width, m.opts))
 		return m, nil
@@ -170,6 +209,6 @@ func (m commitWalkModel) renderView() string {
 	sb.WriteByte('\n')
 	sb.WriteString(m.viewport.View())
 	sb.WriteByte('\n')
-	sb.WriteString(muted.Render("[j/k] scroll  [g/G] top/bottom  [enter] continue  [q] quit"))
+	sb.WriteString(muted.Render(commitWalkFooterText))
 	return sb.String()
 }

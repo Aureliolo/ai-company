@@ -8,6 +8,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -59,6 +60,12 @@ type WalkBatchInput struct {
 	Width, Height int
 	// Options carries colour / plain / quiet flags from GlobalOpts.
 	Options Options
+	// Output is the writer bubbletea drives. The walk gate guarantees the
+	// writer is a TTY before RunWalkBatch is invoked, so this is the same
+	// stream the surrounding command writes summary / fallback lines to.
+	// Falls back to os.Stdout when nil so existing call sites that haven't
+	// been updated still work.
+	Output io.Writer
 }
 
 // WalkBatchResult is what RunWalkBatch returns to the orchestrator.
@@ -79,7 +86,11 @@ func RunWalkBatch(ctx context.Context, in WalkBatchInput) (WalkBatchResult, erro
 	}
 
 	m := newWalkModel(in)
-	progOpts := []tea.ProgramOption{tea.WithContext(ctx), tea.WithOutput(os.Stdout)}
+	out := in.Output
+	if out == nil {
+		out = os.Stdout
+	}
+	progOpts := []tea.ProgramOption{tea.WithContext(ctx), tea.WithOutput(out)}
 	p := tea.NewProgram(m, progOpts...)
 	final, err := p.Run()
 	if err != nil {

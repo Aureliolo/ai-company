@@ -81,6 +81,7 @@ func runStableHighlightsWalk(ctx context.Context, cmd *cobra.Command, result sel
 			Width:        width,
 			Height:       height,
 			Options:      opts.UIOptions(),
+			Output:       cmd.OutOrStdout(),
 		})
 		if err != nil {
 			out.Warn(fmt.Sprintf("walk batch %d: %v", batchIdx, err))
@@ -116,6 +117,7 @@ func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate
 		Width:     width,
 		Height:    height,
 		Options:   opts.UIOptions(),
+		Output:    cmd.OutOrStdout(),
 	}); err != nil {
 		out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 		out.Warn(fmt.Sprintf("commit walk: %v", err))
