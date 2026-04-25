@@ -128,3 +128,54 @@ jobs:
       - name: Stop backend
         if: always()
         run: docker compose -f docker/compose.yml down
+
+  report-failure:
+    name: Open / update tracking issue on schedule failure
+    needs: zap-scan
+    # Only the schedule path gets the issue sink. Manual `workflow_dispatch`
+    # failures from a debugging branch shouldn't open repo-wide CI-health
+    # issues; the operator already sees the run output directly.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.zap-scan.result != 'success'
+      && needs.zap-scan.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / pin
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RESULT: ${{ needs.zap-scan.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
+          ZAP DAST scan workflow failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\`.
+
+          Run: ${RUN_URL}
+
+          Likely cause: backend image failed to boot, OpenAPI spec
+          regression broke the scanner target, or ZAP itself errored.
+          The scan-finding issue (created by the ZAP action) is separate
+          -- this tracking issue is for the workflow plumbing itself.
+          EOF
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'DAST scan regression'
+          labels: 'automation:ci-health,type:ci,prio:medium'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}

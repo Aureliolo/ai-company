@@ -252,28 +252,37 @@ jobs:
           echo "failures=" >> "$GITHUB_OUTPUT"
 
   report-failure:
-    name: Open / update tracking issue on regression
+    name: Open / update tracking issue on schedule regression
     needs: health-check
-    if: always() && needs.health-check.result != 'success'
+    # Only the schedule path opens an `automation:release-events`
+    # tracker. Manual `workflow_dispatch` failures from a debugging
+    # branch shouldn't open repo-wide trackers; the operator already
+    # sees the run output directly.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.health-check.result != 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      issues: write
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / pin
     steps:
-      - name: Post / update tracking issue
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
         env:
-          GH_TOKEN: ${{ github.token }}
           FAILURES: ${{ needs.health-check.outputs.failures }}
           TAG: ${{ needs.health-check.outputs.tag }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          TITLE='Release pipeline health regression'
-          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:release-events' \
-            --search "in:title \"$TITLE\"" --json number,title \
-            --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
-
-          BODY=$(cat <<EOF
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
           Nightly release-pipeline health check failed at $(date -u +%Y-%m-%dT%H:%M:%SZ).
 
           - **Release:** \`$TAG\`
@@ -284,37 +293,18 @@ jobs:
           - \`commit-signatures\`: one or more commits in the release range do not verify as \`{verified: true, reason: "valid"}\`.
           - \`asset-signatures\`: \`checksums.txt\` or \`checksums.txt.cosign.bundle\` missing from the release assets, or no CLI archives attached.
           - \`sbom-assets\`: no \`sbom-*.cdx.json\` asset attached to the release.
-          - \`provenance-attestations\`: no SLSA attestations returned from \`repos/.../attestations/<sha>\`.
+          - \`provenance-attestations\`: no SLSA attestations returned from \`repos/.../attestations/<digest>\` for one or more container image digests referenced in the release body.
           - \`release-body\`: the Verification section appended by finalize-release.yml is missing required subsections.
 
           See docs/reference/github-environments.md and docs/reference/claude-reference.md§Releasing.
           EOF
-          )
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
 
-          if [ -z "$ISSUE_NUMBER" ]; then
-            # Parse ``gh issue create``'s stdout URL for the issue
-            # number rather than relying on ``--json`` (see release-
-            # events.yml for the version-compatibility rationale).
-            ISSUE_URL=$(gh issue create --title "$TITLE" \
-              --label 'automation:release-events,type:ci,prio:high' \
-              --body "$BODY")
-            ISSUE_NUMBER="${ISSUE_URL##*/}"
-            echo "Created tracking issue #$ISSUE_NUMBER"
-          else
-            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
-          fi
-
-          # Pin the tracking issue so it stays visible at the top of
-          # Issues until the regression is acknowledged + closed. A repo
-          # can pin at most 3 issues; if pinning fails (quota hit, race
-          # on an already-pinned issue, permission revoked), log a
-          # ::warning:: rather than failing the whole workflow -- the
-          # comment / create above is the primary signal, pinning is
-          # best-effort affordance.
-          if ! gh api --method PUT \
-              "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/pin" \
-              --silent 2>/dev/null; then
-            echo "::warning::could not pin tracking issue #$ISSUE_NUMBER (quota / race / permission)"
-          else
-            echo "Pinned tracking issue #$ISSUE_NUMBER"
-          fi
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'Release pipeline health regression'
+          labels: 'automation:release-events,type:ci,prio:high'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'true'
+          gh-token: ${{ github.token }}

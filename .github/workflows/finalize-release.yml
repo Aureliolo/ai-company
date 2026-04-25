@@ -49,7 +49,28 @@ jobs:
     permissions:
       actions: read
       contents: write
+      statuses: write
     steps:
+      # ── Surface this run's outcome on the head commit's status row ──
+      # ``workflow_run``-triggered jobs do not produce commit checks by
+      # default, so a failure in finalize-release is invisible from the
+      # commit list, the PR/branch rollup, and the status API. We post
+      # an explicit "finalize-release" status: ``pending`` here, then
+      # ``success`` / ``failure`` from the final reporter step below.
+      - name: Report status (pending)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state=pending \
+            -f context=finalize-release \
+            -f description="Finalising $TAG" \
+            -f target_url="$RUN_URL"
+
       - name: Preflight (both workflows succeeded + draft exists)
         id: preflight
         env:
@@ -133,23 +154,30 @@ jobs:
           CID=$(docker run -d --rm -p 3001:3001 "$IMAGE")
           trap 'docker logs "$CID" 2>&1 | tail -50; docker stop "$CID" >/dev/null 2>&1 || true' EXIT
 
-          # Poll /healthz for 120s. 200 means readiness; non-200 / connection
-          # refused means keep trying. Exit 1 if still failing at deadline.
-          # Each attempt captures the HTTP status so debug logs show WHY
-          # the probe was still failing (boot time, 5xx, conn-refused) --
-          # ``curl -sf`` on its own silently returns exit 22 on any non-2xx
-          # and leaves nothing to investigate in a flake postmortem.
+          # Poll the API liveness endpoint for 120s. 200 means readiness;
+          # non-200 / connection refused means keep trying. Exit 1 if
+          # still failing at deadline. Each attempt captures the HTTP
+          # status so debug logs show WHY the probe was still failing
+          # (boot time, 5xx, conn-refused) -- ``curl -sf`` on its own
+          # silently returns exit 22 on any non-2xx and leaves nothing to
+          # investigate in a flake postmortem.
+          # NOTE: routes are mounted under ``/api/v1`` (see
+          # ``synthorg.api.controllers.health``); bare ``/healthz`` returns
+          # 404. Liveness (always 200 while event loop is alive) is the
+          # right probe for a smoke test -- readiness needs persistence
+          # + bus to be up, which is overkill for "the binary booted".
+          PROBE_URL="http://localhost:3001/api/v1/healthz"
           deadline=$((SECONDS + 120))
           while [ "$SECONDS" -lt "$deadline" ]; do
-            attempt_code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/healthz 2>/dev/null || echo "conn-refused")
+            attempt_code=$(curl -s -o /dev/null -w '%{http_code}' "$PROBE_URL" 2>/dev/null || echo "conn-refused")
             if [ "$attempt_code" = "200" ]; then
-              echo "/healthz returned 200 after ${SECONDS}s"
+              echo "$PROBE_URL returned 200 after ${SECONDS}s"
               exit 0
             fi
-            echo "/healthz attempt at ${SECONDS}s: ${attempt_code}"
+            echo "$PROBE_URL attempt at ${SECONDS}s: ${attempt_code}"
             sleep 3
           done
-          echo "::error::/healthz did not return 200 within 120s; blocking publish"
+          echo "::error::$PROBE_URL did not return 200 within 120s; blocking publish"
           exit 1
 
       - name: Smoke-test CLI binary --version
@@ -438,3 +466,61 @@ jobs:
             done
 
           echo "Dev pre-release cleanup complete"
+
+      # ── Final commit-status report ──
+      # Always runs, regardless of earlier step outcomes. Decides the
+      # status state from the job's overall conclusion + the preflight /
+      # publish output flags so the commit row shows:
+      #   - success   when this run actually published OR the release
+      #               was already published by a concurrent run OR we
+      #               are still legitimately waiting for the sibling
+      #               workflow (CLI/Docker) to complete (a definitive
+      #               status will be posted by its own trigger)
+      #   - failure   when the job failed at any step, OR preflight
+      #               proved the release will never publish (the
+      #               triggering workflow itself failed)
+      # The pending status posted in the first step is overwritten by
+      # this final state.
+      - name: Report status (final)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+          PROCEED: ${{ steps.preflight.outputs.proceed }}
+          ALREADY_PUBLISHED: ${{ steps.preflight.outputs.already_published }}
+          PUBLISHED: ${{ steps.publish.outputs.published }}
+          TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          set -euo pipefail
+
+          if [ "$JOB_STATUS" = "failure" ] || [ "$JOB_STATUS" = "cancelled" ]; then
+            STATE=failure
+            DESC="Finalize-release ${JOB_STATUS} for ${TAG}"
+          elif [ "$PUBLISHED" = "true" ] || [ "$ALREADY_PUBLISHED" = "true" ]; then
+            STATE=success
+            DESC="Released ${TAG}"
+          elif [ "$PROCEED" != "true" ] && [ "$TRIGGER_CONCLUSION" != "success" ]; then
+            # Triggering workflow (Docker/CLI) failed -- release will not publish.
+            STATE=failure
+            DESC="Upstream ${TRIGGER_CONCLUSION} blocked publish of ${TAG}"
+          elif [ "$PROCEED" != "true" ]; then
+            # Sibling workflow (Docker / CLI) still pending; its
+            # completion will retrigger this workflow and post the
+            # definitive status. Stay in `pending` so the commit row
+            # does not falsely render a green check before the release
+            # has actually published.
+            STATE=pending
+            DESC="Awaiting sibling workflow before publishing ${TAG}"
+          else
+            STATE=success
+            DESC="Finalize-release completed for ${TAG}"
+          fi
+
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state="$STATE" \
+            -f context=finalize-release \
+            -f description="$DESC" \
+            -f target_url="$RUN_URL"

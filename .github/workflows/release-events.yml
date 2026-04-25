@@ -60,7 +60,30 @@ jobs:
     permissions:
       issues: write
       actions: read
+      statuses: write
     steps:
+      # Commit-status surfacing for the workflow_run path. Without this,
+      # release-events failures are invisible: the originating commit is
+      # already on main with all green checks (Auto Rollover / Test
+      # Signing finished before this fan-in fired), and a workflow_run-
+      # triggered job posts no status of its own. Skipped on the
+      # ``release`` path because that event has no single commit to
+      # attach to (it points at a tag).
+      - name: Report status (pending)
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          UPSTREAM: ${{ github.event.workflow_run.name }}
+        run: |
+          set -euo pipefail
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state=pending \
+            -f context=release-events \
+            -f description="Posting ${UPSTREAM} event" \
+            -f target_url="$RUN_URL"
+
       - name: Compose + post event
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,7 +104,10 @@ jobs:
           # Resolve / create the pinned tracking issue by label.
           TITLE='Release pipeline events'
           LABEL='automation:release-events'
-          ISSUE_NUMBER=$(gh issue list --state open --label "$LABEL" \
+          # Search by title alone -- a label filter here would miss any
+          # issue created via the label-less fallback (see below) and
+          # fork the rolling event log into duplicate trackers.
+          ISSUE_NUMBER=$(gh issue list --state open \
             --search "in:title \"$TITLE\"" --json number,title \
             --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
 
@@ -103,9 +129,16 @@ jobs:
             # across gh versions; parsing the URL works on every
             # version). Extract the trailing issue number from
             # ``https://github.com/owner/repo/issues/<N>``.
-            ISSUE_URL=$(gh issue create --title "$TITLE" \
-              --label "$LABEL" \
-              --body "$ISSUE_BODY")
+            # If the label is missing (e.g. someone deleted it from the
+            # repo's label set), gh exits non-zero -- fall back to a
+            # label-less create so the event still lands and the
+            # missing-label condition surfaces as a workflow warning.
+            if ! ISSUE_URL=$(gh issue create --title "$TITLE" \
+                --label "$LABEL" \
+                --body "$ISSUE_BODY" 2>&1); then
+              echo "::warning::labeled issue create failed: $ISSUE_URL -- retrying without labels"
+              ISSUE_URL=$(gh issue create --title "$TITLE" --body "$ISSUE_BODY")
+            fi
             ISSUE_NUMBER="${ISSUE_URL##*/}"
             echo "Created tracking issue #$ISSUE_NUMBER"
           fi
@@ -145,3 +178,30 @@ jobs:
           fi
 
           gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+
+      # Final commit-status report (workflow_run path only -- the
+      # ``release`` path has no single commit to attach to). Always runs
+      # so a step failure above produces a visible red ❌ on the commit
+      # row instead of disappearing into the Actions tab.
+      - name: Report status (final)
+        if: always() && github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          UPSTREAM: ${{ github.event.workflow_run.name }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          if [ "$JOB_STATUS" = "failure" ] || [ "$JOB_STATUS" = "cancelled" ]; then
+            STATE=failure
+            DESC="release-events ${JOB_STATUS} for ${UPSTREAM}"
+          else
+            STATE=success
+            DESC="${UPSTREAM} event recorded"
+          fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state="$STATE" \
+            -f context=release-events \
+            -f description="$DESC" \
+            -f target_url="$RUN_URL"

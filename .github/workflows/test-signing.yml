@@ -250,38 +250,42 @@ jobs:
           echo "Auto-rollover path: verified=$verified reason=$reason"
 
   report-failure:
-    name: Open / update tracking issue on regression
+    name: Open / update tracking issue on schedule regression
     needs:
       - rp-release-commit-signature
       - dev-release-tag-signature
       - auto-rollover-commit-signature
+    # Only the schedule path gets the issue sink. Manual `workflow_dispatch`
+    # failures from a debugging branch shouldn't open repo-wide CI-health
+    # issues; the operator already sees the run output directly.
     if: >-
-      always() &&
-      (needs.rp-release-commit-signature.result != 'success'
-       || needs.dev-release-tag-signature.result != 'success'
-       || needs.auto-rollover-commit-signature.result != 'success')
+      always()
+      && github.event_name == 'schedule'
+      && (needs.rp-release-commit-signature.result != 'success'
+          || needs.dev-release-tag-signature.result != 'success'
+          || needs.auto-rollover-commit-signature.result != 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      issues: write
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / pin
     steps:
-      - name: Post / update tracking issue
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
         env:
-          GH_TOKEN: ${{ github.token }}
           RP_RESULT: ${{ needs.rp-release-commit-signature.result }}
           DEV_RESULT: ${{ needs.dev-release-tag-signature.result }}
           ROLLOVER_RESULT: ${{ needs.auto-rollover-commit-signature.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          TITLE='Release pipeline signing regression'
-          # Look for an open tracking issue by label. Use the most recent
-          # open match so concurrent regressions re-use a single thread.
-          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:release-events' \
-            --search "in:title \"$TITLE\"" --json number,title \
-            --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
-
-          BODY=$(cat <<EOF
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
           Nightly signing test failed at $(date -u +%Y-%m-%dT%H:%M:%SZ).
 
           | Path | Result |
@@ -299,30 +303,13 @@ jobs:
           (permissions / installation scope). See
           docs/reference/github-environments.md#release_bot_app_.
           EOF
-          )
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
 
-          if [ -z "$ISSUE_NUMBER" ]; then
-            # Parse ``gh issue create``'s stdout URL for the issue
-            # number rather than relying on ``--json`` (see release-
-            # events.yml for the version-compatibility rationale).
-            ISSUE_URL=$(gh issue create --title "$TITLE" \
-              --label 'automation:release-events,type:ci,prio:high' \
-              --body "$BODY")
-            ISSUE_NUMBER="${ISSUE_URL##*/}"
-            echo "Created tracking issue #$ISSUE_NUMBER"
-          else
-            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
-          fi
-
-          # Pin the tracking issue -- same best-effort pattern as
-          # release-pipeline-health.yml; failure is a ::warning::, not a
-          # hard fail. A repo can hold at most 3 pinned issues; across
-          # the release automation that ceiling covers: release events
-          # log, signing regression tracker, health regression tracker.
-          if ! gh api --method PUT \
-              "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/pin" \
-              --silent 2>/dev/null; then
-            echo "::warning::could not pin tracking issue #$ISSUE_NUMBER (quota / race / permission)"
-          else
-            echo "Pinned tracking issue #$ISSUE_NUMBER"
-          fi
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'Release pipeline signing regression'
+          labels: 'automation:release-events,type:ci,prio:high'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'true'
+          gh-token: ${{ github.token }}

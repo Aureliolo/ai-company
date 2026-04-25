@@ -35,3 +35,54 @@ jobs:
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
         with:
           sarif_file: results.sarif
+
+  report-failure:
+    name: Open / update tracking issue on schedule failure
+    needs: scorecard
+    # Only the schedule path gets the issue sink. Push runs already
+    # surface as commit checks on main; workflow_dispatch is visible to
+    # the triggerer.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.scorecard.result != 'success'
+      && needs.scorecard.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / pin
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RESULT: ${{ needs.scorecard.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
+          Scheduled OSSF Scorecard scan failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\`.
+
+          Run: ${RUN_URL}
+
+          Likely cause: scorecard-action upgrade, OSSF endpoint outage,
+          or repo-side permissions drift. The push-triggered run on the
+          next merge to main will independently re-surface this if the
+          underlying issue persists.
+          EOF
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'Scorecard scan regression'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}
