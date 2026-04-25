@@ -90,21 +90,15 @@ func (m commitWalkModel) titleVisibleWidth() int {
 }
 
 // viewportHeight reserves chrome for the dev-channel walk layout: the
-// title line + viewport trailing newline + footer line. The base budget
-// is 3 lines, but on narrow terminals the title or footer can wrap onto
-// a second line, so we add 1 chrome line per element that would not fit
-// in m.width. This keeps the viewport from overflowing on small windows
-// or with long dev-version labels.
+// title line + viewport trailing newline + footer line. On narrow
+// terminals the title or footer can each wrap to multiple rows; we use
+// wrappedLines so the chrome budget accounts for the actual row count
+// instead of assuming one line each. This keeps the viewport from
+// overflowing on small windows or with long dev-version labels.
 func (m commitWalkModel) viewportHeight() int {
-	chrome := 3
-	if m.width > 0 {
-		if m.titleVisibleWidth() > m.width {
-			chrome++
-		}
-		if lipgloss.Width(commitWalkFooterText) > m.width {
-			chrome++
-		}
-	}
+	chrome := 1 // viewport trailing newline
+	chrome += wrappedLines(m.titleVisibleWidth(), m.width)
+	chrome += wrappedLines(lipgloss.Width(commitWalkFooterText), m.width)
 	return viewportHeightForChrome(m.height, chrome)
 }
 

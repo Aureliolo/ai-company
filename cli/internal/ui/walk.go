@@ -197,15 +197,40 @@ func viewportHeightForChrome(termHeight, chrome int) int {
 	return termHeight - chrome
 }
 
+// wrappedLines returns the number of terminal rows a string of the given
+// visible width occupies inside termWidth columns. Returns 1 for empty /
+// unknown widths so callers always reserve at least one chrome line.
+func wrappedLines(visibleWidth, termWidth int) int {
+	if termWidth <= 0 || visibleWidth <= 0 {
+		return 1
+	}
+	return max(1, (visibleWidth+termWidth-1)/termWidth)
+}
+
 // viewportHeight returns the viewport height for the current model state.
 // Chrome is computed dynamically because renderView's layout depends on
-// runtime flags: the version header is always 1 line, the trailing newline
-// after the viewport is 1 line, and the footer is 1 line. A non-toggleable
-// version adds a fallback-note line; a non-empty flashMsg adds another.
-// Static-chrome implementations risk overflowing the terminal on small
-// windows when those optional rows appear.
+// runtime flags: the version header and key-binding footer can each wrap
+// to multiple rows on narrow terminals, the trailing newline after the
+// viewport is always 1 line, a non-toggleable version adds a fallback-
+// note line, and a non-empty flashMsg adds another. Static-chrome
+// implementations either overflow the terminal on small windows or
+// over-allocate viewport rows on wide ones.
 func (m walkModel) viewportHeight() int {
-	chrome := 3 // header + viewport trailing newline + footer
+	chrome := 1 // viewport trailing newline
+	if len(m.versions) == 0 {
+		// Empty batch: renderView short-circuits to "" so only the
+		// trailing-newline chrome would even be visible. Pre-allocate a
+		// fixed 3-line chrome (header + nl + footer) so the viewport
+		// still has a sensible size for any future code path.
+		return viewportHeightForChrome(m.height, 3)
+	}
+	chrome += wrappedLines(lipgloss.Width(m.renderHeader()), m.width)
+	plain := m.opts.NoColor || m.opts.Plain
+	muted := lipgloss.NewStyle()
+	if !plain {
+		muted = muted.Foreground(colorMuted)
+	}
+	chrome += wrappedLines(lipgloss.Width(m.renderFooter(muted)), m.width)
 	if m.idx < len(m.toggleable) && !m.toggleable[m.idx] {
 		chrome++
 	}
