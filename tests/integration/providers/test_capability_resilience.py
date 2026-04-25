@@ -80,6 +80,75 @@ def _stub_capabilities(model_id: str) -> ModelCapabilities:
     )
 
 
+def _make_rate_limited_driver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[LiteLLMDriver, dict[str, int], dict[str, asyncio.Event]]:
+    """Build a ``max_concurrent=1`` driver wired for deterministic overlap.
+
+    Returns the driver, the shared ``in_flight`` counter dict, and a
+    pair of events:
+
+    - ``first_entered``: set by the first task once it has crossed
+      into the rate-limited section (i.e. ``in_flight["current"] == 1``).
+    - ``release_first``: awaited by the first task; the test sets
+      this once the second task has been spawned, so the first task
+      can exit and free the rate-limit slot.
+
+    Wall-clock sleeps would be flaky under CI load and mask what the
+    test is actually trying to assert about the rate limiter.
+    """
+    driver = LiteLLMDriver("test-provider", _make_config(max_concurrent=1))
+    in_flight = {"current": 0, "peak": 0}
+    counter_lock = asyncio.Lock()
+    first_entered = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async def _stub_do(model: str) -> ModelCapabilities:
+        async with counter_lock:
+            in_flight["current"] += 1
+            in_flight["peak"] = max(in_flight["peak"], in_flight["current"])
+            if model == "test-model-001":
+                first_entered.set()
+        if model == "test-model-001":
+            await release_first.wait()
+        async with counter_lock:
+            in_flight["current"] -= 1
+        return _stub_capabilities(model)
+
+    monkeypatch.setattr(driver, "_do_get_model_capabilities", _stub_do)
+    return (
+        driver,
+        in_flight,
+        {
+            "first_entered": first_entered,
+            "release_first": release_first,
+        },
+    )
+
+
+async def _race_two_capability_tasks(
+    driver: LiteLLMDriver,
+    events: dict[str, asyncio.Event],
+) -> None:
+    """Spawn two ``get_model_capabilities`` calls in serial-via-rate-limit.
+
+    The first task is started, allowed to enter the rate-limited
+    section, then held; the second task is spawned (and must wait on
+    the rate limiter); the first is released; both are awaited.  If
+    the wrap regresses to ``max_concurrent=0`` the test's caller will
+    observe ``in_flight["peak"] == 2``.
+    """
+    first_task = asyncio.create_task(
+        driver.get_model_capabilities("test-model-001"),
+    )
+    await events["first_entered"].wait()
+    second_task = asyncio.create_task(
+        driver.get_model_capabilities("test-model-002"),
+    )
+    events["release_first"].set()
+    await asyncio.gather(first_task, second_task)
+
+
 class TestGetModelCapabilitiesResilience:
     """``get_model_capabilities`` honours retry + rate-limit budget."""
 
@@ -157,49 +226,8 @@ class TestGetModelCapabilitiesResilience:
         to ``max_concurrent=0`` the counter would still update consistently
         and the peak assertion would catch the parallelism.
         """
-        driver = LiteLLMDriver(
-            "test-provider",
-            _make_config(max_concurrent=1),
-        )
-        in_flight = {"current": 0, "peak": 0}
-        counter_lock = asyncio.Lock()
-        # Deterministic synchronization: the first task signals it has
-        # entered the rate-limited section (``first_entered``) before
-        # we spawn the second task, then we release the first task
-        # (``release_first``) so it exits and the second task can
-        # proceed.  Wall-clock sleeps are flaky under CI load and mask
-        # what the test is actually trying to assert.
-        first_entered = asyncio.Event()
-        release_first = asyncio.Event()
-
-        async def _stub_do(model: str) -> ModelCapabilities:
-            async with counter_lock:
-                in_flight["current"] += 1
-                in_flight["peak"] = max(in_flight["peak"], in_flight["current"])
-                if model == "test-model-001":
-                    first_entered.set()
-            if model == "test-model-001":
-                await release_first.wait()
-            async with counter_lock:
-                in_flight["current"] -= 1
-            return _stub_capabilities(model)
-
-        monkeypatch.setattr(driver, "_do_get_model_capabilities", _stub_do)
-
-        first_task = asyncio.create_task(
-            driver.get_model_capabilities("test-model-001"),
-        )
-        # Wait until the first task has entered the rate-limited
-        # section -- this is the moment ``in_flight["current"]`` is 1.
-        await first_entered.wait()
-        # Now spawn the second task.  With ``max_concurrent=1`` it
-        # must block on the rate limiter until the first task exits.
-        second_task = asyncio.create_task(
-            driver.get_model_capabilities("test-model-002"),
-        )
-        # Release the first task; the second one can now make progress.
-        release_first.set()
-        await asyncio.gather(first_task, second_task)
+        driver, in_flight, events = _make_rate_limited_driver(monkeypatch)
+        await _race_two_capability_tasks(driver, events)
         # ``max_concurrent=1`` means only one in-flight at a time.  If
         # the rate limiter was bypassed, ``peak`` would reach 2.
         assert in_flight["peak"] == 1
@@ -255,9 +283,10 @@ class TestBatchGetCapabilitiesResilience:
     ) -> None:
         """``MemoryError`` / ``RecursionError`` escape uncaught.
 
-        These are bare ``BaseException`` subclasses that signal runtime
-        resource exhaustion -- the batch loop must NOT degrade them to
-        ``None`` (would silently mask a critical signal).  Verifies the
+        Both are :class:`Exception` subclasses (not :class:`BaseException`
+        directly) but they signal runtime resource exhaustion -- the
+        batch loop must NOT degrade them to ``None`` (would silently
+        mask a critical signal).  Verifies the
         ``except (MemoryError, RecursionError, RetryExhaustedError)``
         re-raise path in ``_one()``.
         """

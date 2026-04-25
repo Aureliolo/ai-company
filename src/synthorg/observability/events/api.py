@@ -200,6 +200,7 @@ API_ARTIFACT_DELETED: Final[str] = "api.artifact.deleted"
 API_SSRF_VIOLATION_RECORDED: Final[str] = "api.ssrf_violation.recorded"
 API_SSRF_VIOLATION_STATUS_UPDATED: Final[str] = "api.ssrf_violation.status_updated"
 API_SSRF_VIOLATION_LISTED: Final[str] = "api.ssrf_violation.listed"
+API_SSRF_VIOLATION_FETCH_FAILED: Final[str] = "api.ssrf_violation.fetch_failed"
 
 # Pagination / cursor
 API_CURSOR_SECRET_EPHEMERAL: Final[str] = "api.cursor.secret.ephemeral"  # noqa: S105 -- event name, not a secret

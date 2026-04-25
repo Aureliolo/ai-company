@@ -331,12 +331,13 @@ class ConnectionCatalog:
             await self._repo.delete(name)
             for ref in existing.secret_refs:
                 try:
-                    await self._secret_backend.delete(ref.secret_id)
-                    logger.debug(
-                        SECRET_DELETED,
-                        connection_name=name,
-                        secret_id=ref.secret_id,
-                    )
+                    deleted = await self._secret_backend.delete(ref.secret_id)
+                    if deleted:
+                        logger.debug(
+                            SECRET_DELETED,
+                            connection_name=name,
+                            secret_id=ref.secret_id,
+                        )
                 except Exception:
                     logger.exception(
                         CONNECTION_DELETED,
@@ -521,12 +522,13 @@ class ConnectionCatalog:
             # whole rotation.
             for old_ref in old_refs:
                 try:
-                    await self._secret_backend.delete(old_ref.secret_id)
-                    logger.debug(
-                        SECRET_DELETED,
-                        connection_name=name,
-                        secret_id=old_ref.secret_id,
-                    )
+                    deleted = await self._secret_backend.delete(old_ref.secret_id)
+                    if deleted:
+                        logger.debug(
+                            SECRET_DELETED,
+                            connection_name=name,
+                            secret_id=old_ref.secret_id,
+                        )
                 except Exception as del_exc:
                     logger.warning(
                         OAUTH_TOKEN_EXCHANGED,

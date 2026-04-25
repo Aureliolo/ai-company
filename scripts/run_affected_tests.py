@@ -199,15 +199,16 @@ class _BaselineSnapshot:
     ``baseline_test_count`` is retained for the partial-run guard in
     ``tests/conftest.py::pytest_sessionfinish`` (skip the check when
     the collected unit count is well below the full suite, e.g. the
-    user ran a single test file).  It is ``None`` only when the
-    baseline JSON is malformed or missing the ``test_count`` field --
-    a healthy baseline always carries it.  This field is NOT used in
-    ratio computation.
+    user ran a single test file).  ``_load_baseline_snapshot``
+    rejects baselines that omit ``test_count``, so this field is
+    always populated on a valid snapshot -- consumers can use it
+    without a None-check.  This field is NOT used in ratio
+    computation.
     """
 
     per_test_ms: float
     threshold_ratio: float
-    baseline_test_count: int | None
+    baseline_test_count: int
 
 
 def _positive_finite_float(raw: object) -> float | None:
@@ -374,11 +375,7 @@ def _check_per_test_regression(
     max_per_test_ms = snapshot.per_test_ms * snapshot.threshold_ratio
     if current_per_test_ms <= max_per_test_ms:
         return False
-    baseline_count_label = (
-        str(snapshot.baseline_test_count)
-        if snapshot.baseline_test_count is not None
-        else "unknown"
-    )
+    baseline_count_label = str(snapshot.baseline_test_count)
     _print_regression_banner(
         f"REGRESSION DETECTED: per-test cost {current_per_test_ms:.2f}ms "
         f"exceeds {max_per_test_ms:.2f}ms "

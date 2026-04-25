@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import time
 from collections.abc import AsyncGenerator, Iterable
@@ -20,6 +21,35 @@ from hypothesis.database import (
 )
 
 from synthorg.persistence import atlas
+
+# ── Windows console-flash suppression ──────────────────────────────
+#
+# On Windows, `subprocess.Popen` (and everything that funnels through
+# it -- `subprocess.run`, `asyncio.create_subprocess_exec`, every git
+# / python / aws / etc. shell-out across the suite) creates the child
+# process with the parent's console attached by default.  When the
+# parent is itself a console process (pytest under `python.exe` or
+# `uv run python`), the child briefly flashes a console window
+# before exiting.  This is purely a UX annoyance during local test
+# runs but it stacks up across thousands of tests.
+#
+# Globally injecting `creationflags=CREATE_NO_WINDOW` at `Popen`
+# construction silences every site at once (instead of patching each
+# subprocess call individually).  No production code path imports
+# this conftest, so the patch is strictly test-only.
+if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
+    from typing import Any, cast
+
+    _original_popen_init: Any = subprocess.Popen.__init__
+
+    def _no_console_popen_init(self: Any, *args: Any, **kwargs: Any) -> None:
+        existing = kwargs.get("creationflags", 0)
+        if not isinstance(existing, int):
+            existing = 0
+        kwargs["creationflags"] = existing | subprocess.CREATE_NO_WINDOW
+        _original_popen_init(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = cast(Any, _no_console_popen_init)  # type: ignore[method-assign]
 
 
 class _WriteOnlyDatabase(ExampleDatabase):

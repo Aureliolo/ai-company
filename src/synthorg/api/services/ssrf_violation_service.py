@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_SSRF_VIOLATION_FETCH_FAILED,
     API_SSRF_VIOLATION_LISTED,
     API_SSRF_VIOLATION_RECORDED,
     API_SSRF_VIOLATION_STATUS_UPDATED,
@@ -110,8 +111,11 @@ class SsrfViolationService:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
+            # Single-violation fetch failures get their own event so
+            # endpoint-specific alerting can distinguish them from
+            # list-level failures (``API_SSRF_VIOLATION_LISTED``).
             logger.warning(
-                API_SSRF_VIOLATION_LISTED,
+                API_SSRF_VIOLATION_FETCH_FAILED,
                 violation_id=violation_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
