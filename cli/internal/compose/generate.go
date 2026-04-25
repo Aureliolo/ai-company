@@ -199,6 +199,15 @@ func (p Params) DistributedEnabled() bool {
 // field.
 func Generate(p Params) ([]byte, error) {
 	applyComposeDefaults(&p)
+	// Trim secret fields in place so a whitespace-padded operator value
+	// (e.g. accidentally captured trailing newline) cannot pass the
+	// boolean truthiness checks below and then leak into the rendered
+	// env block as a value with embedded whitespace -- the backend would
+	// either reject it or, worse, accept a subtly-different secret.
+	p.JWTSecret = strings.TrimSpace(p.JWTSecret)
+	p.SettingsKey = strings.TrimSpace(p.SettingsKey)
+	p.CursorSecret = strings.TrimSpace(p.CursorSecret)
+	p.MasterKey = strings.TrimSpace(p.MasterKey)
 	if err := validateParams(p); err != nil {
 		return nil, fmt.Errorf("validating params: %w", err)
 	}
@@ -396,10 +405,12 @@ func validateParams(p Params) error {
 	// without SettingsKey, SettingsKey without JWT, or JWT/SettingsKey
 	// without a CursorSecret -- emitting that compose.yml would produce a
 	// boot loop on ``synthorg start``.
-	hasJWT := strings.TrimSpace(p.JWTSecret) != ""
-	hasKey := strings.TrimSpace(p.SettingsKey) != ""
-	cursor := strings.TrimSpace(p.CursorSecret)
-	hasCursor := cursor != ""
+	// Generate trims these fields before calling validateParams, so
+	// truthiness here is equivalent to "operator supplied a non-blank
+	// value" -- no second TrimSpace pass needed.
+	hasJWT := p.JWTSecret != ""
+	hasKey := p.SettingsKey != ""
+	hasCursor := p.CursorSecret != ""
 	if hasJWT && !hasKey {
 		return fmt.Errorf("SYNTHORG_SETTINGS_KEY is required when JWT secret is set")
 	}
@@ -409,8 +420,8 @@ func validateParams(p Params) error {
 	if (hasJWT || hasKey) && !hasCursor {
 		return fmt.Errorf("SYNTHORG_PAGINATION_CURSOR_SECRET is required when JWT/SettingsKey are set: backend refuses to start without it")
 	}
-	if hasCursor && len(cursor) < 16 {
-		return fmt.Errorf("SYNTHORG_PAGINATION_CURSOR_SECRET must be >= 16 bytes, got %d", len(cursor))
+	if hasCursor && len(p.CursorSecret) < 16 {
+		return fmt.Errorf("SYNTHORG_PAGINATION_CURSOR_SECRET must be >= 16 bytes, got %d", len(p.CursorSecret))
 	}
 	for name, d := range p.DigestPins {
 		if !verify.IsValidDigest(d) {

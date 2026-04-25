@@ -90,6 +90,8 @@ func TestGenerateCustomPorts(t *testing.T) {
 	assertContains(t, yaml, "test-secret-value")
 	assertContains(t, yaml, "SYNTHORG_SETTINGS_KEY")
 	assertContains(t, yaml, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	assertContains(t, yaml, "SYNTHORG_PAGINATION_CURSOR_SECRET")
+	assertContains(t, yaml, "test-cursor-secret-stable-value")
 
 	compareGolden(t, "compose_custom_ports.yml", out)
 }
