@@ -258,14 +258,28 @@ runs:
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
         EVENT_NAME: ${{ github.event_name }}
+        ENABLE_ARM64: ${{ inputs.enable-arm64 }}
       run: |
         SHORT_SHA="${GITHUB_SHA::7}"
         if [ "$EVENT_NAME" = "pull_request" ]; then
+          # PR path is always single-arch amd64. arm64 ref is empty so
+          # downstream callers cannot accidentally consume it.
           echo "ref_amd64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "ref_arm64=" >> "$GITHUB_OUTPUT"
         else
           echo "ref_amd64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-amd64" >> "$GITHUB_OUTPUT"
-          echo "ref_arm64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-arm64" >> "$GITHUB_OUTPUT"
+          # arm64 ref is gated on enable-arm64 -- fine-tune images set
+          # this to "false" because torch / CUDA wheels have no arm64
+          # coverage. Emitting a non-empty ref_arm64 when no arm64
+          # tarball was actually built would let downstream callers
+          # (e.g. smoke-test-backend-image) docker-run an image that
+          # does not exist on the runner. Always emit empty when arm64
+          # was skipped.
+          if [ "$ENABLE_ARM64" = "true" ]; then
+            echo "ref_arm64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref_arm64=" >> "$GITHUB_OUTPUT"
+          fi
         fi
 
     - name: Report image size (amd64)

@@ -149,11 +149,31 @@ jobs:
             go build -ldflags="-s -w" -o /dev/null ./main.go
           fi
 
-      # Smoke-test only the linux/amd64 cell -- it is the only matrix
-      # combination the runner can execute. Catches `unknown flag`,
-      # crashes on startup, missing cgo deps, etc. at PR time so a
-      # broken CLI fails the originating PR rather than the
-      # finalize-release step after a tag has already been cut.
+      # Smoke-test only the linux/amd64 matrix cell -- it is the
+      # only goos/goarch combination the runner can execute (cross-
+      # compiled darwin / windows binaries cannot run on Linux).
+      # The matrix gate is the ONLY scoping; the smoke runs on every
+      # event that triggers cli-build (PR, push to main, v* tag
+      # pushes, workflow_dispatch) -- intentionally NOT gated to
+      # PRs only. Catches `unknown flag`, crashes on startup,
+      # missing cgo deps, etc.
+      #
+      # Why every event, not just PRs:
+      #   - PR path: fails the originating PR with a red ❌ on the
+      #     commit row.
+      #   - push to main: catches regressions in commits that did
+      #     NOT come through PR CI -- auto-rollover empty commits,
+      #     release-please bumps, hotfixes pushed via the CLI, etc.
+      #     Without smoke here, those commits would let cli-release
+      #     ship a broken binary straight to a release.
+      #   - tag push: same for graduate.yml + manual tags. The
+      #     cli-release job downstream runs GoReleaser; if the
+      #     binary was broken, the GoReleaser archive ships broken.
+      #   - workflow_dispatch: protects ad-hoc rebuilds.
+      #
+      # Earlier the smoke lived in finalize-release.yml and ran
+      # only after a tag was already cut. Running here makes it the
+      # SOURCE OF TRUTH gate; finalize-release no longer re-tests.
       - name: Smoke-test CLI binary
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         uses: ./.github/actions/smoke-test-cli-binary
