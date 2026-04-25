@@ -38,6 +38,14 @@ type State struct {
 	LogLevel      string `json:"log_level"`
 	JWTSecret     string `json:"jwt_secret,omitempty"`
 	SettingsKey   string `json:"settings_key,omitempty"`
+	// CursorSecret is the HMAC signing key for opaque pagination cursor
+	// tokens (>= 16 bytes URL-safe base64). Generated at init time and
+	// preserved across re-init: rotating it would invalidate every
+	// outstanding pagination cursor on every restart, which the backend
+	// refuses to start without. Wired into the backend container as
+	// SYNTHORG_PAGINATION_CURSOR_SECRET unconditionally -- the boot
+	// guard is the same in dev, pre-release, and prod.
+	CursorSecret string `json:"cursor_secret,omitempty"`
 	// MasterKey is a Fernet-compatible URL-safe base64 of 32 bytes used
 	// to encrypt connection secrets at rest. Generated at init time and
 	// preserved across re-init (regenerating would orphan every stored

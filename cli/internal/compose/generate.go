@@ -40,6 +40,7 @@ type Params struct {
 	LogLevel           string
 	JWTSecret          string
 	SettingsKey        string
+	CursorSecret       string // HMAC key for opaque pagination cursor tokens (>= 16 bytes)
 	MasterKey          string // Fernet key for encrypted secret backend
 	EncryptSecrets     bool   // whether to wire SYNTHORG_MASTER_KEY into backend
 	Sandbox            bool
@@ -150,6 +151,7 @@ func ParamsFromState(s config.State) (Params, error) {
 		LogLevel:              s.LogLevel,
 		JWTSecret:             s.JWTSecret,
 		SettingsKey:           s.SettingsKey,
+		CursorSecret:          s.CursorSecret,
 		MasterKey:             s.MasterKey,
 		EncryptSecrets:        s.EncryptSecrets,
 		Sandbox:               s.Sandbox,
@@ -390,6 +392,13 @@ func validateParams(p Params) error {
 	}
 	if hasKey && !hasJWT {
 		return fmt.Errorf("JWT secret is required when SYNTHORG_SETTINGS_KEY is set")
+	}
+	// Pagination cursor secret: when set, it must be at least 16 bytes so the
+	// backend boot guard (synthorg.api.app create_app) accepts it. Empty is
+	// permitted at template level for back-compat with upgrade flows that
+	// migrate older installs; init.go always generates one for fresh installs.
+	if cs := strings.TrimSpace(p.CursorSecret); cs != "" && len(cs) < 16 {
+		return fmt.Errorf("SYNTHORG_PAGINATION_CURSOR_SECRET must be >= 16 bytes, got %d", len(cs))
 	}
 	for name, d := range p.DigestPins {
 		if !verify.IsValidDigest(d) {

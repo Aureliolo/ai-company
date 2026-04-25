@@ -108,7 +108,11 @@ jobs:
         id: pr-body
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
+          # Null-safe: env is evaluated before the step's `if` is checked, so
+          # `fromJSON('')` would fail the workflow whenever release-please has
+          # no PR to surface (typically the post-release-merge run, when no
+          # commits sit past the freshly-tagged release).
+          PR_NUMBER: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
         run: |
           set -euo pipefail
           BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
@@ -221,7 +225,8 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
+          # See null-safe rationale on the matching env block above.
+          PR_NUMBER: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
           HIGHLIGHTS: ${{ steps.highlights.outputs.response }}
         run: |
           set -euo pipefail
