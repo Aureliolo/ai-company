@@ -2749,7 +2749,7 @@ Findings to validate:
 
 ## Phase 4: Build INDEX.md
 
-After validation, read all finding files and build `_audit/INDEX.md`:
+After validation, read all finding files and build `_audit/latest/INDEX.md`:
 
 ```markdown
 # Codebase Audit Index
@@ -2852,7 +2852,7 @@ Verify `_audit/` is in `.gitignore` (existing behavior). The `_audit/.ignore.yam
   expires: 2026-05-25
 ```
 
-When building INDEX (Phase 4), read `.ignore.yaml`. Findings with a matching `finding`/`agent` pair are filtered out before counting and triage. Add a footer: "N findings suppressed by .ignore.yaml; run with `--show-ignored` to see them."
+When building INDEX (Phase 4), read `.ignore.yaml`. Findings with a matching `finding`/`agent` pair are filtered out before counting and triage. Add a footer: "N findings suppressed by `.ignore.yaml`."
 
 Phase 5 triage gets a new option: "Ignore permanently" -- appends to `.ignore.yaml` with reason and optional expiry.
 
@@ -2929,9 +2929,9 @@ Also write `_audit/latest/findings.json` (machine-readable):
 
 ```json
 {
-  "run_id": "2026-04-25-1430",
+  "run_id": "<run-id-timestamp>",
   "scope": "full",
-  "agents_launched": 153,
+  "agents_launched": 152,
   "validation": {"validated": 412, "false_positives": 67, "intentional": 12},
   "findings": [
     {

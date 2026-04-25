@@ -22,10 +22,24 @@ The skill uses `mcp__github__issue_write`. In OpenCode, use `gh issue create` vi
 
 This runs on Windows with PowerShell. Self-correct when bash syntax fails.
 
-The new run-history layout (`_audit/runs/<date>/` plus `_audit/latest` symlink) needs PowerShell substitutes for the bash setup commands:
+The new run-history layout (`_audit/runs/<run-id>/` plus `_audit/latest` link) needs PowerShell substitutes for the bash setup commands. Use a timestamped run-id (`Get-Date -Format 'yyyy-MM-dd-HHmmss'`) so back-to-back runs do not collide:
 
-- `mkdir -p _audit/runs/<date>/findings` -> `New-Item -ItemType Directory -Force -Path _audit/runs/<date>/findings`
-- `ln -sfn runs/<date> _audit/latest` -> `New-Item -ItemType SymbolicLink -Force -Path _audit/latest -Target runs/<date>` (requires Developer Mode on Windows or running as admin; if symlink creation fails, fall back to writing the run directory path into `_audit/latest.txt`)
+```powershell
+$runId = Get-Date -Format 'yyyy-MM-dd-HHmmss'
+$runDir = "_audit/runs/$runId"
+New-Item -ItemType Directory -Force -Path "$runDir/findings" | Out-Null
+
+# Try symlink first (requires Developer Mode or admin), fall back to junction
+# (no privileges needed) so `_audit/latest/findings/...` writes resolve to the
+# current run dir either way.
+try {
+    New-Item -ItemType SymbolicLink -Force -Path "_audit/latest" -Target "runs/$runId" -ErrorAction Stop | Out-Null
+} catch {
+    New-Item -ItemType Junction -Force -Path "_audit/latest" -Target "runs/$runId" | Out-Null
+}
+```
+
+Both SymbolicLink and Junction make `_audit/latest` resolve as a directory, so downstream writes to `_audit/latest/findings/<file>` succeed without changes to the rest of the skill.
 
 ---
 
