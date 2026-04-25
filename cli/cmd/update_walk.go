@@ -204,17 +204,18 @@ func normalizeVersionRef(v string) string {
 // Falls back to the tag for builds without a stamped commit, e.g. local
 // `go build` or `go run` where Commit is "none" / "dev".
 func effectiveBaseRef(tagRef, commitSHA string) string {
-	if isStableCommitSHA(commitSHA) {
+	if isLikelyCommitSHA(commitSHA) {
 		return commitSHA
 	}
 	return tagRef
 }
 
-// isStableCommitSHA reports whether s looks like a real git commit SHA
+// isLikelyCommitSHA reports whether s has the shape of a git commit SHA
 // (>= 7 hex chars). Sentinel ldflags values like "none", "dev", and the
 // empty string fail this check, which is the trigger for falling back to
-// the tag-based ref.
-func isStableCommitSHA(s string) bool {
+// the tag-based ref. The name avoids "stable" because that term is already
+// used in this file for the release channel (see runStableHighlightsWalk).
+func isLikelyCommitSHA(s string) bool {
 	if len(s) < 7 {
 		return false
 	}

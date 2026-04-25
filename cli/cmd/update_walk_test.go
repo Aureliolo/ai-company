@@ -475,7 +475,7 @@ func TestEffectiveBaseRef(t *testing.T) {
 	}
 }
 
-func TestIsStableCommitSHA(t *testing.T) {
+func TestIsLikelyCommitSHA(t *testing.T) {
 	tests := []struct {
 		in   string
 		want bool
@@ -494,8 +494,8 @@ func TestIsStableCommitSHA(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
-			if got := isStableCommitSHA(tt.in); got != tt.want {
-				t.Errorf("isStableCommitSHA(%q) = %v, want %v", tt.in, got, tt.want)
+			if got := isLikelyCommitSHA(tt.in); got != tt.want {
+				t.Errorf("isLikelyCommitSHA(%q) = %v, want %v", tt.in, got, tt.want)
 			}
 		})
 	}
