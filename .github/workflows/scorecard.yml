@@ -60,7 +60,11 @@ jobs:
         run: |
           set -euo pipefail
           TITLE='Scorecard scan regression'
-          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:ci-health' \
+          # Search by title alone -- a label filter here would miss any
+          # issue created via the label-less fallback (see below) and
+          # cause the next run to open a duplicate tracker instead of
+          # commenting on the existing one.
+          ISSUE_NUMBER=$(gh issue list --state open \
             --search "in:title \"$TITLE\"" --json number,title \
             --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
 

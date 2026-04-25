@@ -13,7 +13,7 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | Environment | Branch policy | Triggered by |
 |---|---|---|
 | `github-pages` | `main` | `pages.yml` push to main |
-| `release` | `main` | `release.yml` + `dev-release.yml` + `auto-rollover.yml` + `graduate.yml` + `test-signing.yml` (main-scoped), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main; carries `statuses: write` so the publish job can post a `finalize-release` commit status against `workflow_run.head_sha`). Holds `RELEASE_BOT_APP_ID` + `RELEASE_BOT_APP_PRIVATE_KEY`. `release-events.yml` is workflow_run + release-event triggered and ungated by environment, but also requires `statuses: write` for the workflow_run path. |
+| `release` | `main` | `release.yml` + `dev-release.yml` + `auto-rollover.yml` + `graduate.yml` + `test-signing.yml` (main-scoped), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main; carries `statuses: write` so the publish job can post a `finalize-release` commit status against `workflow_run.head_sha`). Holds `RELEASE_BOT_APP_ID` + `RELEASE_BOT_APP_PRIVATE_KEY`. |
 | `release-tags` | `v*` | `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes). Structural ref gate only; no privileged secrets. |
 | `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
 | `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch |

@@ -104,7 +104,10 @@ jobs:
           # Resolve / create the pinned tracking issue by label.
           TITLE='Release pipeline events'
           LABEL='automation:release-events'
-          ISSUE_NUMBER=$(gh issue list --state open --label "$LABEL" \
+          # Search by title alone -- a label filter here would miss any
+          # issue created via the label-less fallback (see below) and
+          # fork the rolling event log into duplicate trackers.
+          ISSUE_NUMBER=$(gh issue list --state open \
             --search "in:title \"$TITLE\"" --json number,title \
             --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
 

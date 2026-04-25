@@ -277,7 +277,10 @@ jobs:
           TITLE='Release pipeline signing regression'
           # Look for an open tracking issue by label. Use the most recent
           # open match so concurrent regressions re-use a single thread.
-          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:release-events' \
+          # Search by title alone -- a label filter here would miss any
+          # issue created via the label-less fallback (see below) and
+          # cause the next nightly regression to open a duplicate tracker.
+          ISSUE_NUMBER=$(gh issue list --state open \
             --search "in:title \"$TITLE\"" --json number,title \
             --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
 

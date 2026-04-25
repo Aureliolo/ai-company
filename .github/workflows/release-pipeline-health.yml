@@ -269,7 +269,10 @@ jobs:
         run: |
           set -euo pipefail
           TITLE='Release pipeline health regression'
-          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:release-events' \
+          # Search by title alone -- a label filter here would miss any
+          # issue created via the label-less fallback (see below) and
+          # cause the next regression check to open a duplicate tracker.
+          ISSUE_NUMBER=$(gh issue list --state open \
             --search "in:title \"$TITLE\"" --json number,title \
             --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
 

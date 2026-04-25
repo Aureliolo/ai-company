@@ -130,9 +130,16 @@ jobs:
         run: docker compose -f docker/compose.yml down
 
   report-failure:
-    name: Open / update tracking issue on failure
+    name: Open / update tracking issue on schedule failure
     needs: zap-scan
-    if: always() && needs.zap-scan.result != 'success' && needs.zap-scan.result != 'skipped'
+    # Only the schedule path gets the issue sink. Manual `workflow_dispatch`
+    # failures from a debugging branch shouldn't open repo-wide CI-health
+    # issues; the operator already sees the run output directly.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.zap-scan.result != 'success'
+      && needs.zap-scan.result != 'skipped'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -146,7 +153,11 @@ jobs:
         run: |
           set -euo pipefail
           TITLE='DAST scan regression'
-          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:ci-health' \
+          # Search by title alone -- a label filter here would miss any
+          # issue created via the label-less fallback (see below) and
+          # cause the next run to open a duplicate tracker instead of
+          # commenting on the existing one.
+          ISSUE_NUMBER=$(gh issue list --state open \
             --search "in:title \"$TITLE\"" --json number,title \
             --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
 

@@ -507,9 +507,12 @@ jobs:
             STATE=failure
             DESC="Upstream ${TRIGGER_CONCLUSION} blocked publish of ${TAG}"
           elif [ "$PROCEED" != "true" ]; then
-            # Sibling workflow still pending; its completion will retrigger
-            # this workflow and post the definitive status.
-            STATE=success
+            # Sibling workflow (Docker / CLI) still pending; its
+            # completion will retrigger this workflow and post the
+            # definitive status. Stay in `pending` so the commit row
+            # does not falsely render a green check before the release
+            # has actually published.
+            STATE=pending
             DESC="Awaiting sibling workflow before publishing ${TAG}"
           else
             STATE=success
