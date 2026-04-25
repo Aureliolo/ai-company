@@ -101,9 +101,20 @@ outputs:
     value: ${{ steps.scan-ref.outputs.ref_amd64 }}
   ref_arm64:
     description: |
-      Local docker image reference for the arm64 build. Empty string on
-      PR events (arm64 is non-PR-only). Same naming convention as
-      ref_amd64 with `-arm64` suffix.
+      Local docker image reference for the arm64 build. Same naming
+      convention as ref_amd64 with `-arm64` suffix.
+
+      Emitted as an empty string when no arm64 tarball was produced.
+      Two cases produce empty:
+        - PR events (arm64 is non-PR-only -- PR builds are always
+          single-arch amd64).
+        - Non-PR events when `enable-arm64="false"` (fine-tune
+          variants set this because torch / CUDA wheels have no arm64
+          coverage).
+
+      Callers that consume this output MUST check for empty before
+      using it -- otherwise they will operate on a tag pointing at a
+      tarball that was never built.
     value: ${{ steps.scan-ref.outputs.ref_arm64 }}
 
 runs:
