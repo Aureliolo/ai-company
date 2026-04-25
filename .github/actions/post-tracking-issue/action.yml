@@ -1,0 +1,111 @@
+name: 'Post Tracking Issue'
+description: |
+  Open or update a tracking GitHub Issue used by `report-failure` jobs
+  across CI workflows. Centralises the issue-sink shell flow so future
+  fixes (e.g., title-only search, label-less fallback, pinning policy)
+  only need to land in one place.
+
+  Behaviour:
+    1. Search open issues by title alone (no label filter) so issues
+       created via the label-less fallback below remain discoverable
+       and the next failure comments on them instead of opening a
+       duplicate tracker.
+    2. If a match is found -> append a comment with the supplied body.
+    3. Otherwise -> create a new issue with the supplied labels. If the
+       labelled create fails (e.g., a referenced label has been deleted
+       from the repo), retry without labels and emit a workflow
+       warning so the missing-label condition surfaces in the run UI.
+    4. If `pin: true` (default), best-effort pin the issue. Pin
+       failures (3-issue cap, race, permissions) emit a warning but do
+       NOT fail the action -- the comment / create above is the
+       primary signal.
+
+  Caller contract:
+    - The job invoking this action must declare `permissions:
+      issues: write`.
+    - `gh-token` is a passthrough for `GH_TOKEN`; pass
+      `${{ github.token }}` unless a higher-permission token is needed.
+
+inputs:
+  title:
+    description: |
+      Issue title; used as the dedup key (in:title exact match). Pick
+      a stable, descriptive string -- the action looks up open issues
+      by this exact title, so changing it forks the tracker.
+    required: true
+  labels:
+    description: |
+      Comma-separated labels to apply on issue creation, e.g.
+      `automation:ci-health,type:ci,prio:medium`. The lookup ignores
+      labels so dedup works even if a label gets deleted.
+    required: true
+  body:
+    description: 'Issue body (on create) / comment body (on update). Markdown.'
+    required: true
+  pin:
+    description: 'Pin the issue after create / comment. Best-effort -- failures degrade to a warning. default: true'
+    required: false
+    default: 'true'
+  gh-token:
+    description: |
+      GitHub token with `issues: write` scope. The default
+      `${{ github.token }}` works for repo-internal workflows; pass an
+      App installation token if write-on-fork or cross-repo behaviour
+      is needed.
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Post / update tracking issue
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        TITLE: ${{ inputs.title }}
+        LABELS: ${{ inputs.labels }}
+        BODY: ${{ inputs.body }}
+        PIN: ${{ inputs.pin }}
+      run: |
+        set -euo pipefail
+        # Search by title alone -- a label filter here would miss any
+        # issue created via the label-less fallback below and cause
+        # the next failure to open a duplicate tracker instead of
+        # commenting on the existing one.
+        ISSUE_NUMBER=$(gh issue list --state open \
+          --search "in:title \"$TITLE\"" --json number,title \
+          --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
+
+        if [ -z "$ISSUE_NUMBER" ]; then
+          # Parse `gh issue create`'s stdout URL for the issue number
+          # rather than relying on `--json` (gh's JSON support on
+          # `issue create` has been historically inconsistent across
+          # versions; URL parsing works on every version).
+          # Fallback path: if a referenced label has been deleted,
+          # `gh` exits non-zero. Re-attempt label-less so the
+          # report still lands and the missing-label condition
+          # surfaces as a workflow warning.
+          if ! ISSUE_URL=$(gh issue create --title "$TITLE" \
+              --label "$LABELS" \
+              --body "$BODY" 2>&1); then
+            echo "::warning::labeled issue create failed: $ISSUE_URL -- retrying without labels"
+            ISSUE_URL=$(gh issue create --title "$TITLE" --body "$BODY")
+          fi
+          ISSUE_NUMBER="${ISSUE_URL##*/}"
+          echo "Created tracking issue #$ISSUE_NUMBER"
+        else
+          gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          echo "Commented on tracking issue #$ISSUE_NUMBER"
+        fi
+
+        if [ "$PIN" = "true" ]; then
+          # Best-effort pin. A repo can hold at most 3 pinned issues;
+          # quota / race / permission failures degrade to a warning so
+          # the comment / create above remains the primary signal.
+          if ! gh api --method PUT \
+              "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/pin" \
+              --silent 2>/dev/null; then
+            echo "::warning::could not pin tracking issue #$ISSUE_NUMBER (quota / race / permission)"
+          else
+            echo "Pinned tracking issue #$ISSUE_NUMBER"
+          fi
+        fi

@@ -53,7 +53,7 @@ runs:
           exit 1
         fi
 
-    # A missing RELEASE_BOT_APP_ID / RELEASE_BOT_APP_PRIVATE_KEY secret
+    # A missing RELEASE_BOT_APP_CLIENT_ID / RELEASE_BOT_APP_PRIVATE_KEY secret
     # fails this step fast with an informative error, so callers do not
     # need a separate preflight. App-token-authored API commits are
     # GitHub-signed (verify via `gh api .../commits/<sha> --jq

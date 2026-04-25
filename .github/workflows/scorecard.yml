@@ -52,23 +52,20 @@ jobs:
     permissions:
       issues: write
     steps:
-      - name: Post / update tracking issue
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
         env:
-          GH_TOKEN: ${{ github.token }}
           RESULT: ${{ needs.scorecard.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          TITLE='Scorecard scan regression'
-          # Search by title alone -- a label filter here would miss any
-          # issue created via the label-less fallback (see below) and
-          # cause the next run to open a duplicate tracker instead of
-          # commenting on the existing one.
-          ISSUE_NUMBER=$(gh issue list --state open \
-            --search "in:title \"$TITLE\"" --json number,title \
-            --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
-
-          BODY=$(cat <<EOF
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
           Scheduled OSSF Scorecard scan failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\`.
 
           Run: ${RUN_URL}
@@ -78,17 +75,13 @@ jobs:
           next merge to main will independently re-surface this if the
           underlying issue persists.
           EOF
-          )
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
 
-          if [ -z "$ISSUE_NUMBER" ]; then
-            if ! ISSUE_URL=$(gh issue create --title "$TITLE" \
-                --label 'automation:ci-health,type:ci,prio:low' \
-                --body "$BODY" 2>&1); then
-              echo "::warning::labeled issue create failed: $ISSUE_URL -- retrying without labels"
-              ISSUE_URL=$(gh issue create --title "$TITLE" --body "$BODY")
-            fi
-            ISSUE_NUMBER="${ISSUE_URL##*/}"
-            echo "Created tracking issue #$ISSUE_NUMBER"
-          else
-            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
-          fi
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'Scorecard scan regression'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}
