@@ -22,17 +22,14 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_COLLAB_METRIC_QUERIED,
     PERSISTENCE_COLLAB_METRIC_QUERY_FAILED,
     PERSISTENCE_COLLAB_METRIC_SAVE_FAILED,
-    PERSISTENCE_COLLAB_METRIC_SAVED,
     PERSISTENCE_LIFECYCLE_EVENT_DESERIALIZE_FAILED,
     PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED,
     PERSISTENCE_LIFECYCLE_EVENT_LISTED,
     PERSISTENCE_LIFECYCLE_EVENT_SAVE_FAILED,
-    PERSISTENCE_LIFECYCLE_EVENT_SAVED,
     PERSISTENCE_TASK_METRIC_DESERIALIZE_FAILED,
     PERSISTENCE_TASK_METRIC_QUERIED,
     PERSISTENCE_TASK_METRIC_QUERY_FAILED,
     PERSISTENCE_TASK_METRIC_SAVE_FAILED,
-    PERSISTENCE_TASK_METRIC_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -76,10 +73,6 @@ INSERT INTO lifecycle_events (
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_LIFECYCLE_EVENT_SAVED,
-            event_id=str(event.id),
-        )
 
     def _row_to_event(self, row: aiosqlite.Row) -> AgentLifecycleEvent:
         """Reconstruct a lifecycle event from a database row."""
@@ -180,10 +173,6 @@ INSERT INTO task_metrics (
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_TASK_METRIC_SAVED,
-            metric_id=str(record.id),
-        )
 
     def _row_to_record(self, row: aiosqlite.Row) -> TaskMetricRecord:
         """Reconstruct a task metric record from a database row."""
@@ -280,10 +269,6 @@ INSERT INTO collaboration_metrics (
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_COLLAB_METRIC_SAVED,
-            metric_id=str(record.id),
-        )
 
     def _row_to_record(self, row: aiosqlite.Row) -> CollaborationMetricRecord:
         """Reconstruct a collaboration metric record from a database row."""

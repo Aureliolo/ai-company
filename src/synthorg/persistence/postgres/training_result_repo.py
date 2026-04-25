@@ -20,7 +20,6 @@ from synthorg.hr.training.models import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
-    HR_TRAINING_RESULT_PERSISTED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -185,11 +184,6 @@ class PostgresTrainingResultRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            HR_TRAINING_RESULT_PERSISTED,
-            result_id=str(result.id),
-            plan_id=str(result.plan_id),
-        )
 
     async def get_by_plan(
         self,

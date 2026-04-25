@@ -8,13 +8,11 @@ from pydantic import ValidationError
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
-    PERSISTENCE_PARKED_CONTEXT_DELETED,
     PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
     PERSISTENCE_PARKED_CONTEXT_NOT_FOUND,
     PERSISTENCE_PARKED_CONTEXT_QUERIED,
     PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
     PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
-    PERSISTENCE_PARKED_CONTEXT_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 from synthorg.security.timeout.parked_context import ParkedContext
@@ -56,11 +54,6 @@ INSERT OR REPLACE INTO parked_contexts (
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_PARKED_CONTEXT_SAVED,
-            parked_id=context.id,
-            agent_id=context.agent_id,
-        )
 
     async def get(self, parked_id: str) -> ParkedContext | None:
         """Retrieve a parked context by ID."""
@@ -160,13 +153,7 @@ INSERT OR REPLACE INTO parked_contexts (
             )
             raise QueryError(msg) from exc
 
-        deleted = cursor.rowcount > 0
-        if deleted:
-            logger.debug(
-                PERSISTENCE_PARKED_CONTEXT_DELETED,
-                parked_id=parked_id,
-            )
-        return deleted
+        return cursor.rowcount > 0
 
     def _row_to_model(self, row: dict[str, object]) -> ParkedContext:
         """Convert a database row to a ``ParkedContext`` model.

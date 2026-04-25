@@ -21,7 +21,6 @@ from synthorg.hr.training.models import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
-    HR_TRAINING_PLAN_PERSISTED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -181,7 +180,6 @@ class SQLiteTrainingPlanRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(HR_TRAINING_PLAN_PERSISTED, plan_id=str(plan.id))
 
     async def get(
         self,

@@ -25,15 +25,15 @@ In-memory fallbacks in `persistence/integration_stubs.py` are named `InMemoryXRe
 
 ## Service layer
 
-Controllers and API endpoints access persistence through domain-scoped **service layers** (`ArtifactService`, `WorkflowService`, `MemoryService`, `CustomRulesService`, `UserService`) rather than reaching into repositories directly.
+Controllers and API endpoints access persistence through domain-scoped **service layers** (`ArtifactService`, `WorkflowService`, `MemoryService`, `CustomRulesService`, `UserService`, `ProjectService`) rather than reaching into repositories directly.
 
 Services:
 
 - Keep controllers thin (parse / shape / return).
-- Centralise `PERSISTENCE_*` / `API_USER_*` / `META_CUSTOM_RULE_*` / `WORKFLOW_DEF_*` audit logging in one place.
+- Centralise `API_*` / `META_*` / `WORKFLOW_DEF_*` audit logging in one place.
 - Own cross-repo orchestration (e.g. workflow-definition delete cascading to version snapshots).
 
-Repositories should not log mutations themselves; the service layer is the canonical logging point so audit trails do not duplicate when multiple callers share a repo.
+Repositories **must not** log mutations themselves (enforced by `scripts/check_persistence_boundary.py`). The service layer is the canonical logging point so audit trails do not duplicate when multiple callers share a repo. Repos may still log fetch telemetry (`*_FETCHED`, `*_LISTED`, `*_COUNTED`) and error paths (`*_SAVE_FAILED`, `*_DELETE_FAILED`, `*_DUPLICATE`); the rule targets entity-mutation audit specifically.
 
 ## Migrations
 

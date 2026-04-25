@@ -227,3 +227,142 @@ def test_self_is_allowlisted() -> None:
     assert (
         "scripts/check_persistence_boundary.py" in _MODULE._ALLOWLIST  # type: ignore[attr-defined]
     )
+
+
+# ── mutation-log gate ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "logger.info(PERSISTENCE_USER_SAVED, user_id=user.id)\n",
+        "logger.info(PERSISTENCE_USER_DELETED, user_id=uid)\n",
+        "logger.debug(PERSISTENCE_TASK_SAVED, task_id=task.id)\n",
+        "logger.warning(PERSISTENCE_USER_UPDATED, user_id=uid)\n",
+        "logger.info(HR_TRAINING_PLAN_PERSISTED, plan_id=str(plan.id))\n",
+        "logger.info(API_PROJECT_CREATED, project_id=p.id)\n",
+        # Multi-line shape (canonical in the codebase).
+        "logger.info(\n    PERSISTENCE_ARTIFACT_DELETED,\n    artifact_id=aid,\n)\n",
+        "logger.debug(\n    PERSISTENCE_COST_RECORD_SAVED,\n    agent_id=a,\n)\n",
+    ],
+)
+def test_mutation_log_inside_persistence_flagged(
+    source: str,
+    tmp_path: Path,
+) -> None:
+    """Every mutation-log shape inside persistence/ is a violation."""
+    target = tmp_path / "repo.py"
+    target.write_text(source, encoding="utf-8")
+    issues = _MODULE._scan_persistence_mutation_logs(  # type: ignore[attr-defined]
+        target,
+        "src/synthorg/persistence/sqlite/example_repo.py",
+    )
+    assert len(issues) == 1
+    assert "mutation audit log" in issues[0]
+    assert "service layer" in issues[0]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # Fetch / list / count telemetry is allowed at repo layer.
+        "logger.debug(PERSISTENCE_USER_FETCHED, user_id=uid)\n",
+        "logger.debug(PERSISTENCE_USER_LISTED, count=10)\n",
+        "logger.debug(PERSISTENCE_TASK_COUNTED, count=5)\n",
+        # Failure paths must stay (with WARNING).
+        "logger.warning(PERSISTENCE_USER_SAVE_FAILED, user_id=uid)\n",
+        "logger.warning(PERSISTENCE_TASK_DELETE_FAILED, task_id=tid)\n",
+        "logger.warning(PERSISTENCE_MESSAGE_DUPLICATE, msg_id=mid)\n",
+        # exception paths inside repos.
+        "logger.exception(PERSISTENCE_USER_SAVE_FAILED, user_id=uid)\n",
+        # Non-mutation event names that happen to mention SAVED in
+        # context but not as a constant suffix.
+        "logger.info('user saved successfully')\n",
+    ],
+)
+def test_non_mutation_logs_inside_persistence_not_flagged(
+    source: str,
+    tmp_path: Path,
+) -> None:
+    """Fetch / list / failure / exception logs at repo layer are fine."""
+    target = tmp_path / "repo.py"
+    target.write_text(source, encoding="utf-8")
+    issues = _MODULE._scan_persistence_mutation_logs(  # type: ignore[attr-defined]
+        target,
+        "src/synthorg/persistence/sqlite/example_repo.py",
+    )
+    assert issues == []
+
+
+def test_mutation_log_marker_suppresses_on_logger_line(tmp_path: Path) -> None:
+    """The lint-allow marker on the ``logger.<level>(`` line silences."""
+    target = tmp_path / "repo.py"
+    target.write_text(
+        "logger.info(PERSISTENCE_BACKEND_CREATED)  "
+        "# lint-allow: persistence-boundary -- backend lifecycle event\n",
+        encoding="utf-8",
+    )
+    issues = _MODULE._scan_persistence_mutation_logs(  # type: ignore[attr-defined]
+        target,
+        "src/synthorg/persistence/factory.py",
+    )
+    # Allowed-constant short-circuit also covers this case, so we use a
+    # constant NOT in the allowlist to test the marker path:
+    target.write_text(
+        "logger.info(PERSISTENCE_USER_SAVED, user_id=u.id)  "
+        "# lint-allow: persistence-boundary -- legacy shim, removed in #99\n",
+        encoding="utf-8",
+    )
+    issues = _MODULE._scan_persistence_mutation_logs(  # type: ignore[attr-defined]
+        target,
+        "src/synthorg/persistence/sqlite/example_repo.py",
+    )
+    assert issues == []
+
+
+def test_mutation_log_marker_suppresses_on_constant_line(tmp_path: Path) -> None:
+    """For multi-line calls, marker on the constant line also silences."""
+    target = tmp_path / "repo.py"
+    target.write_text(
+        "logger.info(\n"
+        "    PERSISTENCE_USER_SAVED,  "
+        "# lint-allow: persistence-boundary -- legacy shim removed in #99\n"
+        "    user_id=user.id,\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    issues = _MODULE._scan_persistence_mutation_logs(  # type: ignore[attr-defined]
+        target,
+        "src/synthorg/persistence/sqlite/example_repo.py",
+    )
+    assert issues == []
+
+
+def test_mutation_log_allowlist_constants_silenced(tmp_path: Path) -> None:
+    """Lifecycle/infra constants on the allowlist do not trip the gate."""
+    for constant in [
+        "PERSISTENCE_BACKEND_CREATED",
+        "PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED",
+        "PERSISTENCE_ARTIFACT_STORAGE_DELETED",
+    ]:
+        target = tmp_path / f"{constant}.py"
+        target.write_text(
+            f"logger.info({constant}, name='test')\n",
+            encoding="utf-8",
+        )
+        issues = _MODULE._scan_persistence_mutation_logs(  # type: ignore[attr-defined]
+            target,
+            "src/synthorg/persistence/factory.py",
+        )
+        assert issues == [], f"constant {constant} should be allowed"
+
+
+def test_iter_persistence_targets_returns_only_persistence() -> None:
+    """The persistence-target enumerator selects only persistence files."""
+    # The function relies on git ls-files; testing it requires a real
+    # git tree.  Verify the prefix constant instead -- any path under
+    # ``src/synthorg/persistence/`` is in scope, anything else is not.
+    prefix = _MODULE._PERSISTENCE_SRC_PREFIX  # type: ignore[attr-defined]
+    assert prefix == "src/synthorg/persistence/"
+    assert "src/synthorg/persistence/sqlite/user_repo.py".startswith(prefix)
+    assert not "src/synthorg/api/controllers/projects.py".startswith(prefix)

@@ -22,24 +22,20 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_QUERIED,
     PERSISTENCE_COST_RECORD_QUERY_FAILED,
     PERSISTENCE_COST_RECORD_SAVE_FAILED,
-    PERSISTENCE_COST_RECORD_SAVED,
     PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
     PERSISTENCE_MESSAGE_DUPLICATE,
     PERSISTENCE_MESSAGE_HISTORY_FAILED,
     PERSISTENCE_MESSAGE_HISTORY_FETCHED,
     PERSISTENCE_MESSAGE_SAVE_FAILED,
-    PERSISTENCE_MESSAGE_SAVED,
     PERSISTENCE_TASK_COUNT_FAILED,
     PERSISTENCE_TASK_COUNTED,
     PERSISTENCE_TASK_DELETE_FAILED,
-    PERSISTENCE_TASK_DELETED,
     PERSISTENCE_TASK_DESERIALIZE_FAILED,
     PERSISTENCE_TASK_FETCH_FAILED,
     PERSISTENCE_TASK_FETCHED,
     PERSISTENCE_TASK_LIST_FAILED,
     PERSISTENCE_TASK_LISTED,
     PERSISTENCE_TASK_SAVE_FAILED,
-    PERSISTENCE_TASK_SAVED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 
@@ -132,7 +128,6 @@ ON CONFLICT(id) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(PERSISTENCE_TASK_SAVED, task_id=task.id)
 
     #: Fields stored as JSON strings that need deserialization.
     _JSON_FIELDS: tuple[str, ...] = (
@@ -309,9 +304,7 @@ id, title, description, type, priority, project, created_by,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        deleted = cursor.rowcount > 0
-        logger.debug(PERSISTENCE_TASK_DELETED, task_id=task_id, deleted=deleted)
-        return deleted
+        return cursor.rowcount > 0
 
 
 class SQLiteCostRecordRepository:
@@ -349,11 +342,6 @@ INSERT INTO cost_records (
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_COST_RECORD_SAVED,
-            agent_id=record.agent_id,
-            task_id=record.task_id,
-        )
 
     async def query(
         self,
@@ -541,7 +529,6 @@ INSERT INTO messages (
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(PERSISTENCE_MESSAGE_SAVED, message_id=msg_id)
 
     def _row_to_message(self, row: aiosqlite.Row) -> Message:
         """Reconstruct a Message from a database row."""

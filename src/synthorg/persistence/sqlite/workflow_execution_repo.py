@@ -23,7 +23,6 @@ from synthorg.engine.workflow.execution_models import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,
-    PERSISTENCE_WORKFLOW_EXEC_DELETED,
     PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_FETCH_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_FETCHED,
@@ -32,7 +31,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_LISTED,
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-    PERSISTENCE_WORKFLOW_EXEC_SAVED,
 )
 from synthorg.persistence.errors import (
     DuplicateRecordError,
@@ -158,10 +156,6 @@ class SQLiteWorkflowExecutionRepository:
             await self._insert(execution)
         else:
             await self._update(execution)
-        logger.info(
-            PERSISTENCE_WORKFLOW_EXEC_SAVED,
-            execution_id=execution.id,
-        )
 
     def _serialize_execution(
         self,
@@ -500,10 +494,4 @@ WHERE id = ? AND version = ?""",
             )
             raise QueryError(msg) from exc
 
-        deleted = cursor.rowcount > 0
-        logger.info(
-            PERSISTENCE_WORKFLOW_EXEC_DELETED,
-            execution_id=execution_id,
-            deleted=deleted,
-        )
-        return deleted
+        return cursor.rowcount > 0

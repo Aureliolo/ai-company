@@ -20,9 +20,10 @@ from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.persistence import (
-    PERSISTENCE_ARTIFACT_DELETED,
-    PERSISTENCE_ARTIFACT_SAVED,
+from synthorg.observability.events.api import (
+    API_ARTIFACT_CREATED,
+    API_ARTIFACT_DELETED,
+    API_ARTIFACT_UPDATED,
 )
 
 if TYPE_CHECKING:
@@ -92,20 +93,20 @@ class ArtifactService:
             created_at=datetime.now(UTC),
         )
         await self._repo.save(artifact)
-        logger.info(PERSISTENCE_ARTIFACT_SAVED, artifact_id=artifact.id)
+        logger.info(API_ARTIFACT_CREATED, artifact_id=artifact.id)
         return artifact
 
     async def save(self, artifact: Artifact) -> None:
         """Upsert a caller-constructed artifact (used by content upload)."""
         await self._repo.save(artifact)
-        logger.info(PERSISTENCE_ARTIFACT_SAVED, artifact_id=artifact.id)
+        logger.info(API_ARTIFACT_UPDATED, artifact_id=artifact.id)
 
     async def delete(self, artifact_id: NotBlankStr) -> bool:
         """Delete an artifact; returns ``True`` when a row was removed."""
         deleted = await self._repo.delete(artifact_id)
-        logger.info(
-            PERSISTENCE_ARTIFACT_DELETED,
-            artifact_id=artifact_id,
-            deleted=deleted,
-        )
+        if deleted:
+            logger.info(
+                API_ARTIFACT_DELETED,
+                artifact_id=artifact_id,
+            )
         return deleted

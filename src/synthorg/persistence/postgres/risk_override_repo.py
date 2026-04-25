@@ -20,7 +20,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_REVOKED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-    PERSISTENCE_RISK_OVERRIDE_SAVED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.rules.risk_override import RiskTierOverride
@@ -108,11 +107,6 @@ class PostgresRiskOverrideRepository:
                 error=msg,
             )
             raise QueryError(msg) from exc
-        else:
-            logger.info(
-                PERSISTENCE_RISK_OVERRIDE_SAVED,
-                id=override.id,
-            )
 
     async def get(
         self,

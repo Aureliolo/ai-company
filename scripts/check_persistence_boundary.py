@@ -61,6 +61,41 @@ _RAW_SQL_RE: Final[re.Pattern[str]] = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
+# Mutation audit log calls inside the persistence boundary.  Captures the
+# event constant on the same line as ``logger.info(``/``logger.debug(``/
+# ``logger.warning(`` OR on the immediately following line (the latter
+# is the canonical multi-line shape used across the codebase).  Repos
+# must not log mutations themselves -- the service layer is the audit
+# point.  Per-line opt-out via the existing ``# lint-allow: persistence-
+# boundary -- <reason>`` marker.
+_MUTATION_LOG_RE: Final[re.Pattern[str]] = re.compile(
+    r"""logger\.(?:info|debug|warning)\s*\(\s*
+        (?:\#[^\n]*\n\s*)?                     # optional inline comment
+        (?P<constant>[A-Z][A-Z0-9_]*?_(?:SAVED|CREATED|UPDATED|DELETED|PERSISTED))\b
+    """,
+    re.VERBOSE | re.MULTILINE | re.DOTALL,
+)
+
+# Lifecycle / infrastructure events whose constants happen to end in a
+# mutation suffix but are NOT entity-mutation audits (the rule targets
+# entity audit, not "the backend started" / "TimescaleDB hypertable was
+# initialised" lifecycle).  Each entry must carry a justification.
+_MUTATION_LOG_ALLOWED_CONSTANTS: Final[frozenset[str]] = frozenset(
+    {
+        # Backend factory: lifecycle event when the persistence backend
+        # itself is constructed; not an entity mutation.
+        "PERSISTENCE_BACKEND_CREATED",
+        # TimescaleDB hypertable conversion: schema-evolution lifecycle,
+        # fired once per migration (not per row mutation).
+        "PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED",
+        # Filesystem artifact storage: blob-store deletion event from
+        # the storage abstraction (separate concern from the artifact
+        # repository which already has its own audit at the service
+        # layer via API_ARTIFACT_DELETED).
+        "PERSISTENCE_ARTIFACT_STORAGE_DELETED",
+    }
+)
+
 # ── Allowlist ───────────────────────────────────────────────────
 
 # Files outside ``persistence/`` that are sanctioned exceptions.
@@ -193,6 +228,49 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
     return issues
 
 
+def _scan_persistence_mutation_logs(file_path: Path, rel: str) -> list[str]:
+    """Return mutation-log violations for a persistence-boundary file.
+
+    Repos must not log mutations themselves; service-layer events are
+    the canonical audit point.  This scanner finds every
+    ``logger.info|debug|warning(<EVENT>)`` whose ``EVENT`` constant ends
+    in ``_SAVED``/``_CREATED``/``_UPDATED``/``_DELETED``/``_PERSISTED``,
+    skipping (a) sanctioned lifecycle constants on
+    ``_MUTATION_LOG_ALLOWED_CONSTANTS`` and (b) any line that carries
+    the ``# lint-allow: persistence-boundary -- <reason>`` marker.
+    """
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return [f"{rel}:0: unable to scan file: {exc}"]
+    issues: list[str] = []
+    lines = text.splitlines()
+    for match in _MUTATION_LOG_RE.finditer(text):
+        constant = match.group("constant")
+        if constant in _MUTATION_LOG_ALLOWED_CONSTANTS:
+            continue
+        # Compute the line where ``logger.<level>(`` starts so the
+        # violation message points at the call, not the constant.
+        line_no = text.count("\n", 0, match.start()) + 1
+        # Allow per-line opt-out on the ``logger.<level>(`` line OR on
+        # the constant's line (multi-line calls span both).
+        constant_line_no = text.count("\n", 0, match.start("constant")) + 1
+        if _line_has_trailing_marker(lines[line_no - 1]) or _line_has_trailing_marker(
+            lines[constant_line_no - 1]
+        ):
+            continue
+        issues.append(
+            f"{rel}:{line_no}: repo-level mutation audit log "
+            f"'{constant}' must move to the service layer "
+            "(repositories must not log mutations themselves; see "
+            "docs/reference/persistence-boundary.md). Add "
+            "'# lint-allow: persistence-boundary -- <reason>' on the "
+            "logger call line ONLY when the event is a non-entity "
+            "lifecycle/infrastructure signal."
+        )
+    return issues
+
+
 def _resolve_root(root: Path, project_root: Path) -> Path | None:
     """Resolve *root* to an absolute path anchored under *project_root*."""
     candidate = root if root.is_absolute() else project_root / root
@@ -255,6 +333,76 @@ def _iter_targets(
     return targets
 
 
+_PERSISTENCE_SRC_PREFIX: Final[str] = "src/synthorg/persistence/"
+
+
+def _iter_persistence_targets(
+    roots: list[Path],
+    project_root: Path,
+) -> list[tuple[Path, str]]:
+    """Yield ``(absolute_path, posix_relative_path)`` for persistence files.
+
+    Returns every tracked ``*.py`` file under ``src/synthorg/persistence/``
+    so the mutation-log gate can scan them.  Tests under
+    ``tests/.../persistence/`` are intentionally excluded -- the rule
+    applies to production code; tests that exercise repo internals can
+    log whatever they need.
+    """
+    targets: list[tuple[Path, str]] = []
+    for root in roots:
+        abs_root = _resolve_root(root, project_root)
+        if abs_root is None or not abs_root.exists():
+            continue
+        for path, rel in _git_tracked_python_files(abs_root, project_root):
+            if rel.startswith(_PERSISTENCE_SRC_PREFIX):
+                targets.append((path, rel))
+    return targets
+
+
+def _resolve_project_root(repo_root: Path | None) -> Path | int:
+    """Resolve the project root from CLI arguments, returning an exit code on error."""
+    default_root = Path(__file__).resolve().parent.parent
+    if repo_root is None:
+        return default_root
+    try:
+        resolved = repo_root.resolve(strict=True)
+    except OSError as exc:
+        print(
+            f"--repo-root not accessible: {repo_root} ({exc})",
+            file=sys.stderr,
+        )
+        return 2
+    if not resolved.is_dir():
+        print(
+            f"--repo-root must be a directory: {resolved}",
+            file=sys.stderr,
+        )
+        return 2
+    return resolved
+
+
+def _scan_all(
+    roots: list[Path],
+    project_root: Path,
+) -> int:
+    """Run both scanning passes, print issues, return total count."""
+    total = 0
+    for path, rel in _iter_targets(roots, project_root):
+        issues = _scan_file(path, rel)
+        for msg in issues:
+            print(msg)
+        total += len(issues)
+    # Mutation-log gate: scan persistence-boundary files for repo-level
+    # mutation audit logs.  These violate the service-layer rule
+    # (repositories must not log mutations themselves).
+    for path, rel in _iter_persistence_targets(roots, project_root):
+        issues = _scan_persistence_mutation_logs(path, rel)
+        for msg in issues:
+            print(msg)
+        total += len(issues)
+    return total
+
+
 def main() -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -276,24 +424,10 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    default_root = Path(__file__).resolve().parent.parent
-    if args.repo_root is not None:
-        try:
-            project_root = args.repo_root.resolve(strict=True)
-        except OSError as exc:
-            print(
-                f"--repo-root not accessible: {args.repo_root} ({exc})",
-                file=sys.stderr,
-            )
-            return 2
-        if not project_root.is_dir():
-            print(
-                f"--repo-root must be a directory: {project_root}",
-                file=sys.stderr,
-            )
-            return 2
-    else:
-        project_root = default_root
+    project_root = _resolve_project_root(args.repo_root)
+    if isinstance(project_root, int):
+        return project_root
+
     roots = [Path(p) for p in args.paths]
     for root in roots:
         if _resolve_root(root, project_root) is None:
@@ -302,12 +436,8 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 2
-    total = 0
-    for path, rel in _iter_targets(roots, project_root):
-        issues = _scan_file(path, rel)
-        for msg in issues:
-            print(msg)
-        total += len(issues)
+
+    total = _scan_all(roots, project_root)
     if total:
         print(
             f"\n{total} persistence-boundary violation(s) found.  See "

@@ -16,8 +16,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-    PERSISTENCE_SSRF_VIOLATION_SAVED,
-    PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
@@ -105,11 +103,6 @@ class PostgresSsrfViolationRepository:
                 error=msg,
             )
             raise QueryError(msg) from exc
-        else:
-            logger.info(
-                PERSISTENCE_SSRF_VIOLATION_SAVED,
-                id=violation.id,
-            )
 
     async def get(
         self,
@@ -228,13 +221,6 @@ class PostgresSsrfViolationRepository:
         """
         if status == SsrfViolationStatus.PENDING:
             msg = "Cannot transition a violation back to PENDING"
-            logger.warning(
-                PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
-                violation_id=violation_id,
-                reason="invalid_status_transition",
-                attempted_status=status.value,
-                outcome="rejected",
-            )
             raise ValueError(msg)
 
         resolved_at_utc = resolved_at.astimezone(UTC)
@@ -262,13 +248,6 @@ class PostgresSsrfViolationRepository:
             )
             raise QueryError(msg) from exc
 
-        if updated:
-            logger.info(
-                PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
-                violation_id=violation_id,
-                status=status.value,
-                resolved_by=resolved_by,
-            )
         return updated
 
 

@@ -22,7 +22,6 @@ from synthorg.observability.events.settings import (
     SETTINGS_DELETE_FAILED,
     SETTINGS_FETCH_FAILED,
     SETTINGS_SET_FAILED,
-    SETTINGS_VALUE_DELETED,
     SETTINGS_VALUE_SET,
 )
 from synthorg.persistence.errors import QueryError
@@ -372,12 +371,6 @@ class PostgresSettingsRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        if deleted:
-            logger.debug(
-                SETTINGS_VALUE_DELETED,
-                namespace=namespace,
-                key=key,
-            )
         return deleted
 
     async def delete_namespace(self, namespace: NotBlankStr) -> int:
@@ -398,9 +391,4 @@ class PostgresSettingsRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
-            SETTINGS_VALUE_DELETED,
-            namespace=namespace,
-            count=count,
-        )
         return count

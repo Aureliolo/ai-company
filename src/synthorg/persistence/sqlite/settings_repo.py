@@ -11,7 +11,6 @@ from synthorg.observability.events.settings import (
     SETTINGS_DELETE_FAILED,
     SETTINGS_FETCH_FAILED,
     SETTINGS_SET_FAILED,
-    SETTINGS_VALUE_DELETED,
     SETTINGS_VALUE_SET,
 )
 from synthorg.persistence.errors import QueryError
@@ -273,14 +272,7 @@ class SQLiteSettingsRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        deleted = cursor.rowcount > 0
-        if deleted:
-            logger.debug(
-                SETTINGS_VALUE_DELETED,
-                namespace=namespace,
-                key=key,
-            )
-        return deleted
+        return cursor.rowcount > 0
 
     async def delete_namespace(self, namespace: NotBlankStr) -> int:
         """Delete all settings in a namespace. Return count."""
@@ -298,10 +290,4 @@ class SQLiteSettingsRepository:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        count = cursor.rowcount
-        logger.debug(
-            SETTINGS_VALUE_DELETED,
-            namespace=namespace,
-            count=count,
-        )
-        return count
+        return cursor.rowcount

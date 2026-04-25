@@ -16,13 +16,11 @@ from synthorg.engine.checkpoint.models import Heartbeat
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_HEARTBEAT_DELETE_FAILED,
-    PERSISTENCE_HEARTBEAT_DELETED,
     PERSISTENCE_HEARTBEAT_DESERIALIZE_FAILED,
     PERSISTENCE_HEARTBEAT_NOT_FOUND,
     PERSISTENCE_HEARTBEAT_QUERIED,
     PERSISTENCE_HEARTBEAT_QUERY_FAILED,
     PERSISTENCE_HEARTBEAT_SAVE_FAILED,
-    PERSISTENCE_HEARTBEAT_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -75,11 +73,6 @@ ON CONFLICT(execution_id) DO UPDATE SET
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-
-        logger.info(
-            PERSISTENCE_HEARTBEAT_SAVED,
-            execution_id=heartbeat.execution_id,
-        )
 
     async def get(self, execution_id: NotBlankStr) -> Heartbeat | None:
         """Retrieve a heartbeat by execution ID."""
@@ -168,11 +161,6 @@ ON CONFLICT(execution_id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        if deleted:
-            logger.info(
-                PERSISTENCE_HEARTBEAT_DELETED,
-                execution_id=execution_id,
-            )
         return deleted
 
     def _row_to_model(self, row: dict[str, object]) -> Heartbeat:

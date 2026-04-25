@@ -183,6 +183,17 @@ API_AGENT_UPDATED: Final[str] = "api.agent.updated"
 API_AGENT_DELETED: Final[str] = "api.agent.deleted"
 API_AGENTS_REORDERED: Final[str] = "api.agents.reordered"
 
+# Project mutations
+API_PROJECT_CREATED: Final[str] = "api.project.created"
+API_PROJECT_UPDATED: Final[str] = "api.project.updated"
+API_PROJECT_DELETED: Final[str] = "api.project.deleted"
+API_PROJECT_LISTED: Final[str] = "api.project.listed"
+
+# Artifact mutations
+API_ARTIFACT_CREATED: Final[str] = "api.artifact.created"
+API_ARTIFACT_UPDATED: Final[str] = "api.artifact.updated"
+API_ARTIFACT_DELETED: Final[str] = "api.artifact.deleted"
+
 # Pagination / cursor
 API_CURSOR_SECRET_EPHEMERAL: Final[str] = "api.cursor.secret.ephemeral"  # noqa: S105 -- event name, not a secret
 API_CURSOR_INVALID: Final[str] = "api.cursor.invalid"

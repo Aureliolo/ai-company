@@ -12,14 +12,12 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_DELETE_FAILED,
-    PERSISTENCE_PROJECT_DELETED,
     PERSISTENCE_PROJECT_DESERIALIZE_FAILED,
     PERSISTENCE_PROJECT_FETCH_FAILED,
     PERSISTENCE_PROJECT_FETCHED,
     PERSISTENCE_PROJECT_LIST_FAILED,
     PERSISTENCE_PROJECT_LISTED,
     PERSISTENCE_PROJECT_SAVE_FAILED,
-    PERSISTENCE_PROJECT_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -103,7 +101,6 @@ ON CONFLICT(id) DO UPDATE SET
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(PERSISTENCE_PROJECT_SAVED, project_id=project.id)
 
     async def get(self, project_id: NotBlankStr) -> Project | None:
         """Retrieve a project by primary key.
@@ -222,6 +219,4 @@ ON CONFLICT(id) DO UPDATE SET
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        deleted = cursor.rowcount > 0
-        logger.info(PERSISTENCE_PROJECT_DELETED, project_id=project_id, deleted=deleted)
-        return deleted
+        return cursor.rowcount > 0

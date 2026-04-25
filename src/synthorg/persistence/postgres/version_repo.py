@@ -37,12 +37,10 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.versioning import (
     VERSION_COUNT_FAILED,
     VERSION_DELETE_FAILED,
-    VERSION_DELETED,
     VERSION_FETCH_FAILED,
     VERSION_LIST_FAILED,
     VERSION_LISTED,
     VERSION_SAVE_FAILED,
-    VERSION_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 from synthorg.versioning.models import VersionSnapshot
@@ -223,13 +221,6 @@ class PostgresVersionRepository[T: BaseModel]:
                 )
                 await conn.commit()
                 inserted = cur.rowcount > 0
-                logger.debug(
-                    VERSION_SAVED,
-                    table=self._table,
-                    entity_id=version.entity_id,
-                    version=version.version,
-                    inserted=inserted,
-                )
         except psycopg.Error as exc:
             msg = (
                 f"Failed to save version {version.version} "
@@ -410,10 +401,4 @@ class PostgresVersionRepository[T: BaseModel]:
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            VERSION_DELETED,
-            table=self._table,
-            entity_id=entity_id,
-            count=count,
-        )
         return count

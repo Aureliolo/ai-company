@@ -28,14 +28,12 @@ from synthorg.engine.workflow.definition import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
-    PERSISTENCE_SUBWORKFLOW_DELETED,
     PERSISTENCE_SUBWORKFLOW_DESERIALIZE_FAILED,
     PERSISTENCE_SUBWORKFLOW_FETCH_FAILED,
     PERSISTENCE_SUBWORKFLOW_FETCHED,
     PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
     PERSISTENCE_SUBWORKFLOW_LISTED,
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-    PERSISTENCE_SUBWORKFLOW_SAVED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.persistence.subworkflow_repo import (
@@ -285,12 +283,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             raise QueryError(msg) from exc
 
-        logger.info(
-            PERSISTENCE_SUBWORKFLOW_SAVED,
-            subworkflow_id=definition.id,
-            version=definition.version,
-        )
-
     async def get(
         self,
         subworkflow_id: NotBlankStr,
@@ -448,14 +440,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             raise QueryError(msg) from exc
 
-        deleted = cursor.rowcount > 0
-        logger.info(
-            PERSISTENCE_SUBWORKFLOW_DELETED,
-            subworkflow_id=subworkflow_id,
-            version=version,
-            deleted=deleted,
-        )
-        return deleted
+        return cursor.rowcount > 0
 
     async def delete_if_unreferenced(
         self,
@@ -504,12 +489,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             raise
 
         deleted = cursor.rowcount > 0
-        logger.info(
-            PERSISTENCE_SUBWORKFLOW_DELETED,
-            subworkflow_id=subworkflow_id,
-            version=version,
-            deleted=deleted,
-        )
         return deleted, ()
 
     async def find_parents(

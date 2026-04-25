@@ -9,11 +9,9 @@ from pydantic import ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED,
-    PERSISTENCE_CIRCUIT_BREAKER_DELETED,
     PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
     PERSISTENCE_CIRCUIT_BREAKER_LOADED,
     PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED,
-    PERSISTENCE_CIRCUIT_BREAKER_SAVED,
 )
 from synthorg.persistence.circuit_breaker_repo import (
     CircuitBreakerStateRecord,
@@ -83,11 +81,6 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                     error=str(exc),
                 )
                 raise QueryError(msg) from exc
-        logger.info(
-            PERSISTENCE_CIRCUIT_BREAKER_SAVED,
-            pair_key_a=record.pair_key_a,
-            pair_key_b=record.pair_key_b,
-        )
 
     async def load_all(self) -> tuple[CircuitBreakerStateRecord, ...]:
         """Load all persisted circuit breaker state records."""
@@ -154,10 +147,4 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                     error=str(exc),
                 )
                 raise QueryError(msg) from exc
-        if deleted:
-            logger.info(
-                PERSISTENCE_CIRCUIT_BREAKER_DELETED,
-                pair_key_a=pair_key_a,
-                pair_key_b=pair_key_b,
-            )
         return deleted

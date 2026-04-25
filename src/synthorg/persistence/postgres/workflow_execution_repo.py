@@ -26,7 +26,6 @@ from synthorg.engine.workflow.execution_models import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,
-    PERSISTENCE_WORKFLOW_EXEC_DELETED,
     PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_FETCH_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_FETCHED,
@@ -35,7 +34,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_LISTED,
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-    PERSISTENCE_WORKFLOW_EXEC_SAVED,
 )
 from synthorg.persistence.errors import (
     DuplicateRecordError,
@@ -147,10 +145,6 @@ class PostgresWorkflowExecutionRepository:
             await self._insert(execution)
         else:
             await self._update(execution)
-        logger.info(
-            PERSISTENCE_WORKFLOW_EXEC_SAVED,
-            execution_id=execution.id,
-        )
 
     def _serialize_execution(
         self,
@@ -488,9 +482,4 @@ class PostgresWorkflowExecutionRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            PERSISTENCE_WORKFLOW_EXEC_DELETED,
-            execution_id=execution_id,
-            deleted=deleted,
-        )
         return deleted

@@ -21,14 +21,12 @@ from synthorg.engine.workflow.definition import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
-    PERSISTENCE_WORKFLOW_DEF_DELETED,
     PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
     PERSISTENCE_WORKFLOW_DEF_FETCH_FAILED,
     PERSISTENCE_WORKFLOW_DEF_FETCHED,
     PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
     PERSISTENCE_WORKFLOW_DEF_LISTED,
     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-    PERSISTENCE_WORKFLOW_DEF_SAVED,
 )
 from synthorg.persistence.errors import QueryError, VersionConflictError
 
@@ -231,12 +229,6 @@ WHERE id = ? AND revision = ?""",
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            PERSISTENCE_WORKFLOW_DEF_SAVED,
-            definition_id=definition.id,
-            revision=definition.revision,
-            operation="update_if_exists",
-        )
         return True
 
     async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
@@ -294,15 +286,7 @@ ON CONFLICT(id) DO NOTHING""",
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        inserted = cursor.rowcount > 0
-        if inserted:
-            logger.info(
-                PERSISTENCE_WORKFLOW_DEF_SAVED,
-                definition_id=definition.id,
-                revision=definition.revision,
-                operation="create_if_absent",
-            )
-        return inserted
+        return cursor.rowcount > 0
 
     async def save(self, definition: WorkflowDefinition) -> None:
         """Persist a workflow definition via upsert.
@@ -404,10 +388,6 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            PERSISTENCE_WORKFLOW_DEF_SAVED,
-            definition_id=definition.id,
-        )
 
     async def get(
         self,
@@ -534,10 +514,4 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             )
             raise QueryError(msg) from exc
 
-        deleted = cursor.rowcount > 0
-        logger.info(
-            PERSISTENCE_WORKFLOW_DEF_DELETED,
-            definition_id=definition_id,
-            deleted=deleted,
-        )
-        return deleted
+        return cursor.rowcount > 0

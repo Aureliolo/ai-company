@@ -13,7 +13,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-    PERSISTENCE_RISK_OVERRIDE_SAVED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, PersistenceError
 from synthorg.security.rules.risk_override import RiskTierOverride
@@ -131,11 +130,6 @@ class SQLiteRiskOverrideRepository:
                 error=msg,
             )
             raise PersistenceError(msg) from exc
-        else:
-            logger.debug(
-                PERSISTENCE_RISK_OVERRIDE_SAVED,
-                id=override.id,
-            )
 
     async def get(
         self,

@@ -16,13 +16,11 @@ from pydantic import ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
-    PERSISTENCE_PARKED_CONTEXT_DELETED,
     PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
     PERSISTENCE_PARKED_CONTEXT_NOT_FOUND,
     PERSISTENCE_PARKED_CONTEXT_QUERIED,
     PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
     PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
-    PERSISTENCE_PARKED_CONTEXT_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 from synthorg.security.timeout.parked_context import ParkedContext
@@ -99,12 +97,6 @@ ON CONFLICT(id) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-
-        logger.info(
-            PERSISTENCE_PARKED_CONTEXT_SAVED,
-            parked_id=context.id,
-            agent_id=context.agent_id,
-        )
 
     async def get(self, parked_id: NotBlankStr) -> ParkedContext | None:
         """Retrieve a parked context by ID."""
@@ -222,11 +214,6 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        if deleted:
-            logger.info(
-                PERSISTENCE_PARKED_CONTEXT_DELETED,
-                parked_id=parked_id,
-            )
         return deleted
 
     def _row_to_model(self, row: dict[str, object]) -> ParkedContext:

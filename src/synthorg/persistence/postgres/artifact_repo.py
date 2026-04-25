@@ -18,14 +18,12 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_DELETE_FAILED,
-    PERSISTENCE_ARTIFACT_DELETED,
     PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
     PERSISTENCE_ARTIFACT_FETCH_FAILED,
     PERSISTENCE_ARTIFACT_FETCHED,
     PERSISTENCE_ARTIFACT_LIST_FAILED,
     PERSISTENCE_ARTIFACT_LISTED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
-    PERSISTENCE_ARTIFACT_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -102,7 +100,6 @@ ON CONFLICT(id) DO UPDATE SET
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(PERSISTENCE_ARTIFACT_SAVED, artifact_id=artifact.id)
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         """Retrieve an artifact by primary key.
@@ -250,7 +247,4 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        logger.info(
-            PERSISTENCE_ARTIFACT_DELETED, artifact_id=artifact_id, deleted=deleted
-        )
         return deleted

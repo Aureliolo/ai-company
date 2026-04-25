@@ -17,13 +17,11 @@ from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_CHECKPOINT_DELETE_FAILED,
-    PERSISTENCE_CHECKPOINT_DELETED,
     PERSISTENCE_CHECKPOINT_DESERIALIZE_FAILED,
     PERSISTENCE_CHECKPOINT_NOT_FOUND,
     PERSISTENCE_CHECKPOINT_QUERIED,
     PERSISTENCE_CHECKPOINT_QUERY_FAILED,
     PERSISTENCE_CHECKPOINT_SAVE_FAILED,
-    PERSISTENCE_CHECKPOINT_SAVED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -92,13 +90,6 @@ ON CONFLICT(id) DO UPDATE SET
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-
-        logger.info(
-            PERSISTENCE_CHECKPOINT_SAVED,
-            checkpoint_id=checkpoint.id,
-            execution_id=checkpoint.execution_id,
-            turn_number=checkpoint.turn_number,
-        )
 
     async def get_latest(
         self,
@@ -196,12 +187,6 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        if count > 0:
-            logger.info(
-                PERSISTENCE_CHECKPOINT_DELETED,
-                execution_id=execution_id,
-                count=count,
-            )
         return count
 
     def _row_to_model(self, row: dict[str, object]) -> Checkpoint:
