@@ -19,20 +19,23 @@ After this, the `Missing labels` section of the preflight tracking issue should 
 
 ## 2. Create the GitHub environments
 
-CI uses six GitHub environments for branch-policy gating and to scope secrets. Most are required only for specific workflows; create them all even if you do not yet need every workflow, so the preflight passes.
+CI uses seven GitHub environments for branch-policy gating and to scope secrets. The preflight job audits all of them unconditionally, so create every one even if your fork does not yet exercise the corresponding workflow -- a missing environment will keep the preflight tracking issue open.
 
 Create at **Settings -> Environments -> New environment**:
 
-| Environment | Used by | Required for fork? |
+| Environment | Used by | Required to pass CI Preflight? |
 |-------------|---------|---------------------|
-| `atlas` | `ci.yml` schema-validate | Yes -- gates schema migrations |
-| `release` | `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, `test-signing.yml`, `finalize-release.yml` | Only if you cut releases |
-| `release-tags` | `cli.yml`, `docker.yml` (tag pushes) | Only if you cut releases |
-| `apko-lock` | `apko-lock.yml` (scheduled lockfile updates) | Optional |
-| `cloudflare-preview` | `pages-preview.yml` | Optional, for PR docs previews |
-| `image-push` | `docker.yml` image push paths | Only if you publish images |
+| `atlas` | `ci.yml` schema-validate | Yes |
+| `release` | `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, `test-signing.yml`, `finalize-release.yml` | Yes |
+| `release-tags` | `cli.yml`, `docker.yml` (tag pushes) | Yes |
+| `apko-lock` | `apko-lock.yml` (scheduled lockfile updates) | Yes |
+| `cloudflare-preview` | `pages-preview.yml` | Yes |
+| `image-push` | `docker.yml` image push paths | Yes |
+| `github-pages` | `pages.yml` push to main | Yes |
 
-For `release` and `release-tags`, configure a deployment branch policy of `main` (and `v*` for `release-tags`) so secrets only unlock for the intended refs.
+For `release` and `release-tags`, configure a deployment branch policy of `main` (and `v*` for `release-tags`) so secrets only unlock for the intended refs. See [`docs/reference/github-environments.md`](../reference/github-environments.md) for the full branch-policy matrix.
+
+Workflow consumers of each environment fall into two camps: required for any release activity (`release`, `release-tags`, `image-push`, `apko-lock`, `github-pages`), and optional capabilities you can leave un-credentialed if your fork does not need them (`cloudflare-preview` for PR docs previews, `apko-lock` if you skip scheduled Wolfi lock updates). The environment must still exist for the preflight to pass; the secrets inside can be empty until you actually use the workflow.
 
 ## 3. Create the release-bot GitHub App
 

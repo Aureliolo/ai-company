@@ -53,7 +53,10 @@ The minted token is what mints signed bot commits on protected `main` and bypass
 No secrets required; the workflow uses `${{ github.token }}`. The environment exists for branch-policy gating.
 
 ### `image-push` (optional -- only if you want to publish container images to GHCR)
-No secrets required; uses the auto-provided `${{ github.token }}` against your fork's GHCR namespace. The environment exists for branch-policy gating.
+No secrets required; uses the auto-provided `github.token` against your fork's GHCR namespace. The environment exists for branch-policy gating.
+
+### `github-pages` (required for the docs site)
+No secrets required; the GitHub-managed Pages deployment uses the workflow token. The environment exists for branch-policy gating on the `main`-only Pages publish path. See `pages.yml`.
 
 ---
 

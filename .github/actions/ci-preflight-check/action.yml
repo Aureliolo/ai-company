@@ -28,7 +28,7 @@ outputs:
     description: '`true` if any check failed, `false` otherwise.'
     value: ${{ steps.check.outputs.gaps-found }}
   body:
-    description: 'Rendered Markdown body for the tracking issue. Empty when gaps-found is false.'
+    description: 'Rendered Markdown body for the tracking issue. Always populated -- on pass it shows the all-green summary, on gaps it lists each missing item.'
     value: ${{ steps.check.outputs.body }}
 
 runs:
@@ -46,7 +46,7 @@ runs:
 
         # ── Expectations (kept in sync with .github/labels.yml + the
         # workflow surface). Update both when new ones land. ──
-        EXPECTED_ENVS=(atlas release release-tags apko-lock cloudflare-preview image-push)
+        EXPECTED_ENVS=(atlas release release-tags apko-lock cloudflare-preview image-push github-pages)
         EXPECTED_LABELS=(
           "automation:ci-health"
           "automation:ci-preflight"
@@ -111,9 +111,17 @@ runs:
         fi
 
         # ── Branch protection on main ─────────────────────────────
+        # Distinguish 404 (no protection rule) from 403 / other errors
+        # (token lacks `administration: read` and similar). Mirroring
+        # the env / labels handling above, a permission error degrades
+        # to "Skipped" rather than falsely flagging missing rules.
         bp_block=""
         bp_gaps=()
-        if bp_json=$(gh api "repos/$GH_REPO/branches/main/protection" 2>/dev/null); then
+        bp_skipped=false
+        bp_status=$(gh api "repos/$GH_REPO/branches/main/protection" --include 2>&1 \
+          | head -n 1 || true)
+        if printf '%s' "$bp_status" | grep -qE 'HTTP/[0-9.]+ 200'; then
+          bp_json=$(gh api "repos/$GH_REPO/branches/main/protection")
           if ! jq -e '.required_signatures.enabled == true' <<<"$bp_json" >/dev/null; then
             bp_gaps+=("Required **signed commits** is not enabled. Enable at Settings -> Branches -> Branch protection rules -> main -> 'Require signed commits'.")
           fi
@@ -123,14 +131,18 @@ runs:
           if ! jq -e '[.required_status_checks.contexts[]?] | index("CI Pass") != null' <<<"$bp_json" >/dev/null; then
             bp_gaps+=("Required status check context \`CI Pass\` is not configured. Add it under 'Status checks that are required'.")
           fi
-        else
+        elif printf '%s' "$bp_status" | grep -qE 'HTTP/[0-9.]+ 404'; then
           bp_gaps+=("No branch protection rule on \`main\`. Create one at Settings -> Branches -> Add rule.")
+        else
+          bp_skipped=true
         fi
         default_branch=$(gh api "repos/$GH_REPO" --jq '.default_branch' 2>/dev/null || echo "")
         if [ "$default_branch" != "main" ] && [ -n "$default_branch" ]; then
           bp_gaps+=("Default branch is \`$default_branch\`, not \`main\`. Workflows assume \`main\`. Rename or update workflows.")
         fi
-        if [ "${#bp_gaps[@]}" -eq 0 ]; then
+        if [ "$bp_skipped" = true ] && [ "${#bp_gaps[@]}" -eq 0 ]; then
+          bp_block="_Could not enumerate branch protection (token lacks permission). Skipped._"
+        elif [ "${#bp_gaps[@]}" -eq 0 ]; then
           bp_block="Branch protection on \`main\` matches expectations."
         else
           gaps_found=true
@@ -155,8 +167,11 @@ runs:
         # marker on its own line cannot truncate the output. Per
         # GitHub Actions docs the delimiter must not appear in the
         # value; salting with a per-run random suffix makes that
-        # condition vacuous.
-        delim="PREFLIGHT_BODY_EOF_$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
+        # condition vacuous. The triple fallback (uuidgen ->
+        # /proc/sys/kernel/random/uuid -> $RANDOM) keeps the
+        # subshell from ever exiting non-zero under `set -e` even
+        # on minimal or non-Linux runners.
+        delim="PREFLIGHT_BODY_EOF_$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo $RANDOM)"
         echo "gaps-found=$gaps_found" >> "$GITHUB_OUTPUT"
         {
           printf 'body<<%s\n' "$delim"
