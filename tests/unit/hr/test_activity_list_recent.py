@@ -133,6 +133,78 @@ class TestListRecentActivity:
             assert event.related_ids.get("task_id") == "task-1"
 
     @pytest.mark.unit
+    async def test_project_filter_excludes_unattributed_sources(
+        self,
+        lifecycle_repo: Any,
+        performance_tracker: Any,
+    ) -> None:
+        """``project=...`` keeps only events that carry the matching project_id.
+
+        Pins the new contract: ``TaskMetricRecord`` carries no project
+        attribution, so when a project filter is set those metrics
+        must be dropped entirely (otherwise the feed would leak
+        cross-project activity through the merge). Cost records are
+        filtered in place by ``project_id``.
+        """
+        from synthorg.budget.cost_record import CostRecord
+
+        completed_at = _now() - timedelta(minutes=5)
+        # One task metric per project would survive a project filter
+        # before the regression fix; assert it is now dropped.
+        performance_tracker.get_task_metrics.return_value = (
+            _make_task_metric(
+                agent_id="agent-x",
+                task_id="task-x",
+                completed_at=completed_at,
+            ),
+        )
+
+        def _cost(*, task_id: str, project_id: str, cost: float) -> CostRecord:
+            return CostRecord(
+                agent_id=NotBlankStr("agent-x"),
+                task_id=NotBlankStr(task_id),
+                project_id=NotBlankStr(project_id),
+                provider=NotBlankStr("test-provider"),
+                model=NotBlankStr("test-small-001"),
+                input_tokens=10,
+                output_tokens=5,
+                cost=cost,
+                currency=DEFAULT_CURRENCY,
+                timestamp=completed_at,
+            )
+
+        cost_in_scope = _cost(task_id="task-1", project_id="proj-1", cost=1.0)
+        cost_out_of_scope = _cost(
+            task_id="task-2",
+            project_id="proj-other",
+            cost=2.0,
+        )
+        cost_tracker = AsyncMock()
+        cost_tracker.get_records.return_value = (
+            cost_in_scope,
+            cost_out_of_scope,
+        )
+        service = ActivityFeedService(
+            performance_tracker=performance_tracker,
+            lifecycle_repo=lifecycle_repo,
+            cost_tracker=cost_tracker,
+        )
+
+        page, total = await service.list_recent_activity(
+            project="proj-1",
+            offset=0,
+            limit=10,
+        )
+        # Only the in-scope cost record survives. Task metrics are
+        # dropped because they have no project attribution; the
+        # out-of-scope cost record is filtered out. We verify by
+        # related task_id since the activity-event projection does not
+        # surface project_id directly.
+        assert total == 1
+        assert len(page) == 1
+        assert page[0].related_ids.get("task_id") == "task-1"
+
+    @pytest.mark.unit
     async def test_pagination(
         self,
         service: ActivityFeedService,

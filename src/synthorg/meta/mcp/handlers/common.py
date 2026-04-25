@@ -254,9 +254,12 @@ def actor_id(actor: Any) -> str | None:
     """Return a stable audit identifier for ``actor`` (prefers ``.id``).
 
     Returns ``None`` when ``actor`` is ``None`` or carries neither a
-    non-``None`` ``.id`` nor a non-blank ``.name``. Centralised so every
-    handler emits the same identifier shape into audit events and
-    service calls.
+    non-``None`` ``.id`` nor a non-blank ``.name``. The ``.name``
+    fallback is stripped before returning so a whitespace-only name
+    (which would otherwise satisfy raw truthiness) is rejected -- the
+    audit attribution surface is not allowed to record blank
+    identifiers. Centralised so every handler emits the same
+    identifier shape into audit events and service calls.
     """
     if actor is None:
         return None
@@ -264,7 +267,10 @@ def actor_id(actor: Any) -> str | None:
     if agent_id is not None:
         return str(agent_id)
     name = getattr(actor, "name", None)
-    return name if isinstance(name, str) and name else None
+    if isinstance(name, str):
+        stripped = name.strip()
+        return stripped or None
+    return None
 
 
 def require_arg[T](arguments: dict[str, Any], key: str, ty: type[T]) -> T:

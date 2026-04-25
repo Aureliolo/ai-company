@@ -327,6 +327,17 @@ class ActivityFeedService:
                 r for r in tool_invocations if getattr(r, "task_id", None) == task_id
             )
         if project is not None:
+            # Sources without project attribution have to be excluded
+            # entirely when a project filter is set; otherwise
+            # ``list_recent_activity(project=...)`` would leak unrelated
+            # task / tool events into the merged feed.
+            # ``TaskMetricRecord`` carries no project field, so we drop
+            # task metrics. ``tool_invocations`` may carry project
+            # context; keep only the rows whose ``project_id`` matches.
+            task_metrics = ()
+            tool_invocations = tuple(
+                r for r in tool_invocations if getattr(r, "project_id", None) == project
+            )
             cost_records = tuple(r for r in cost_records if r.project_id == project)
 
         currency = await self._resolve_currency()

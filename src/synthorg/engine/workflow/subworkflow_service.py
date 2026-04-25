@@ -19,11 +19,13 @@ from synthorg.engine.errors import (
     SubworkflowIOError,
     SubworkflowNotFoundError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_DELETE_BLOCKED,
     SUBWORKFLOW_DELETED,
     SUBWORKFLOW_INVALID_REQUEST,
+    SUBWORKFLOW_NOT_FOUND,
+    SUBWORKFLOW_PUBLISH_FAILED,
     SUBWORKFLOW_REGISTERED,
 )
 
@@ -154,7 +156,7 @@ class SubworkflowService:
             if latest is None:
                 msg = f"Subworkflow {subworkflow_id!r} has no versions in the registry"
                 logger.warning(
-                    SUBWORKFLOW_INVALID_REQUEST,
+                    SUBWORKFLOW_NOT_FOUND,
                     subworkflow_id=str(subworkflow_id),
                     version="<latest>",
                     reason="no_versions",
@@ -192,7 +194,24 @@ class SubworkflowService:
                 saved_by=saved_by,
             )
             raise SubworkflowIOError(msg)
-        await self._registry.register(definition)
+        try:
+            await self._registry.register(definition)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Log a service-level failure event before the exception
+            # escapes so the control-plane audit trail records the
+            # publish attempt with the same identifying fields the
+            # success path uses.
+            logger.warning(
+                SUBWORKFLOW_PUBLISH_FAILED,
+                subworkflow_id=str(definition.id),
+                version=str(definition.version),
+                saved_by=saved_by,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.info(
             SUBWORKFLOW_REGISTERED,
             subworkflow_id=definition.id,
@@ -264,10 +283,33 @@ class SubworkflowService:
             # the more accurate ``conflict``. Re-fetch parents and
             # re-wrap so callers see the same envelope shape (and
             # parent list) as the pre-check path.
-            late_parents = await self._registry.find_parents(
-                subworkflow_id,
-                version,
-            )
+            #
+            # The re-fetch itself can raise; if it does, fall back to
+            # re-raising the *original* ``SubworkflowIOError`` so we
+            # never mask a real storage failure behind a secondary
+            # observability lookup error.
+            try:
+                late_parents = await self._registry.find_parents(
+                    subworkflow_id,
+                    version,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as recheck_exc:
+                logger.warning(
+                    SUBWORKFLOW_DELETE_BLOCKED,
+                    subworkflow_id=subworkflow_id,
+                    version=version,
+                    actor_id=actor_id,
+                    reason=reason,
+                    stage="service.delete.toctou_recheck_failed",
+                    error_type=type(recheck_exc).__name__,
+                    error=safe_error_description(recheck_exc),
+                )
+                # Original delete failure is the load-bearing exception;
+                # re-raise it (not the recheck error) so the handler
+                # sees the real cause.
+                raise exc from None
             if late_parents:
                 logger.warning(
                     SUBWORKFLOW_DELETE_BLOCKED,

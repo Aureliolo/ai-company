@@ -226,20 +226,20 @@ async def _meta_trigger_cycle(
     actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_meta_trigger_cycle"
-    # ``synthorg_meta_trigger_cycle`` is declared via ``admin_tool`` in
-    # ``meta/mcp/domains/meta.py``, so it must enforce the destructive-op
-    # triple (identified actor + ``confirm=True`` + non-blank ``reason``)
-    # before invoking the service. Triggering a self-improvement cycle
-    # touches the proposal pipeline broadly, so the audit-trail
-    # guarantees the same admin tools (``approvals_reject``,
-    # ``workflow_executions_cancel``) already provide.
+    # Capability-gap check runs first so deployments that haven't wired
+    # the self-improvement service surface the dedicated
+    # ``capability_gap`` envelope, not a guardrail violation. The
+    # destructive-op triple (identified actor + ``confirm=True`` +
+    # non-blank ``reason``) is mandatory because this tool is declared
+    # via ``admin_tool`` in ``meta/mcp/domains/meta.py``; we apply it
+    # immediately after confirming the tool can actually execute.
+    if not getattr(app_state, "has_self_improvement_service", False):
+        return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_self_improvement_service", False):
-        return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
     actor_str = _actor_id(resolved_actor) or "mcp"
     try:
         result = await app_state.self_improvement_service.trigger_cycle()

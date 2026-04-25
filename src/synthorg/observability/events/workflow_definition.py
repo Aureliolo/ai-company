@@ -76,6 +76,22 @@ SUBWORKFLOW_RESOLVED: Final[str] = "workflow.subworkflow.resolved"
 SUBWORKFLOW_DELETED: Final[str] = "workflow.subworkflow.deleted"
 """A subworkflow version was deleted from the registry."""
 
+SUBWORKFLOW_NOT_FOUND: Final[str] = "workflow.subworkflow.not_found"
+"""Lookup of a subworkflow coordinate (id / version / latest) returned no row.
+
+Distinct from :data:`SUBWORKFLOW_INVALID_REQUEST` so callers can split
+"missing resource" reads from "malformed caller input" without inspecting
+a structured field.
+"""
+
+SUBWORKFLOW_PUBLISH_FAILED: Final[str] = "workflow.subworkflow.publish_failed"
+"""``SubworkflowService.create`` failed before the service-level success log.
+
+Carries ``subworkflow_id`` / ``version`` / ``saved_by`` plus the typed
+exception so the audit trail records publish failures alongside the
+``SUBWORKFLOW_REGISTERED`` success path.
+"""
+
 SUBWORKFLOW_DELETE_BLOCKED: Final[str] = "workflow.subworkflow.delete_blocked"
 """A subworkflow delete was rejected because parents still reference it.
 
