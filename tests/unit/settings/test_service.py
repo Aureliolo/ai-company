@@ -471,10 +471,17 @@ class TestDeleteNamespace:
         assert result.source == SettingSource.YAML
         assert mock_repo.get.call_count == 2
 
-    async def test_publishes_change_per_registered_key(
+    async def test_publishes_only_for_keys_with_overrides_removed(
         self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
     ) -> None:
-        """Each registered key under the namespace gets a change publish."""
+        """Publish only fires for keys whose DB override was actually cleared.
+
+        Pins the round-12 fix: keys that have no DB override (defaults
+        / env-only) must NOT republish on a namespace delete -- that
+        would trigger phantom reload work for every registered key in
+        the namespace even when only a single override row was
+        cleared.
+        """
         registry.register(
             _make_definition(
                 key="another_key",
@@ -490,14 +497,20 @@ class TestDeleteNamespace:
             config=config,
             message_bus=bus,
         )
-        mock_repo.delete_namespace.return_value = 2
+        # Only one of the two registered keys has a DB override.
+        # The second registered key (``another_key``) has no override
+        # row; the publish loop must skip it.
+        mock_repo.get_namespace.return_value = (
+            ("total_monthly", "200.0", "2026-04-25T10:00:00Z"),
+        )
+        mock_repo.delete_namespace.return_value = 1
 
         deleted = await svc.delete_namespace("budget")
 
-        assert deleted == 2
-        # registry has two definitions under the budget namespace; both
-        # should produce a publish call.
-        assert bus.publish.call_count == 2
+        assert deleted == 1
+        # Only ``total_monthly`` had a DB override removed; the other
+        # registered definition stays silent.
+        assert bus.publish.call_count == 1
 
     async def test_emits_audit_event(
         self, service: SettingsService, mock_repo: AsyncMock

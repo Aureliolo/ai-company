@@ -802,8 +802,13 @@ class SettingsService:
         (env, default).  Emits a single
         :data:`SETTINGS_VALUE_DELETED` audit log carrying the namespace
         and the affected count, then publishes per-key change
-        notifications for every registered definition under the
-        namespace so downstream caches/listeners stay in sync.
+        notifications for the **subset of registered keys whose DB
+        override was actually removed** so downstream caches /
+        listeners stay in sync.  Keys with no DB override (e.g.
+        defaults, env-only) do NOT republish -- otherwise every
+        registered key in the namespace would trigger phantom
+        reload / restart work even when only a single override row
+        was cleared.
 
         Args:
             namespace: Setting namespace to clear.
@@ -814,7 +819,15 @@ class SettingsService:
         Raises:
             PersistenceError: If the persistence layer fails.
         """
-        deleted = await self._repository.delete_namespace(NotBlankStr(namespace))
+        # Capture the set of keys with active DB overrides BEFORE the
+        # delete so we can scope the publish loop to only those keys.
+        # A 1-call probe via ``get_namespace`` is the simplest path that
+        # does not require a new repository method.
+        ns = NotBlankStr(namespace)
+        overridden_rows = await self._repository.get_namespace(ns)
+        overridden_keys = {row[0] for row in overridden_rows}
+
+        deleted = await self._repository.delete_namespace(ns)
 
         self._invalidate_namespace_cache(namespace)
 
@@ -832,7 +845,8 @@ class SettingsService:
         )
 
         for definition in self._registry.list_namespace(namespace):
-            await self._publish_change(namespace, definition.key, definition)
+            if definition.key in overridden_keys:
+                await self._publish_change(namespace, definition.key, definition)
 
         return deleted
 

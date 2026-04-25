@@ -66,15 +66,34 @@ def positive_finite_float(raw: object) -> float | None:
 
 
 def positive_int(raw: object) -> int | None:
-    """Coerce *raw* to a strictly positive int, or ``None``."""
+    """Coerce *raw* to a strictly positive int, or ``None``.
+
+    Strict on input shape: bools (``True == 1``), non-integer floats
+    (``12.9 -> 12``), and unrelated types are all rejected.  Loose
+    coercion would let a baseline like ``"test_count": 12.9`` or
+    ``"test_count": true`` parse successfully and silently distort
+    the regression-guard math; the strictness here is the difference
+    between "the rail trips on real regressions" and "the rail
+    trips on a typo nobody noticed".
+    """
     if raw is None:
         return None
-    try:
-        # ``int(raw)`` accepts str/bytes/SupportsInt/SupportsIndex;
-        # tolerate any of those (baseline JSON could store a string or
-        # float) and reject anything else as an unusable baseline value.
-        candidate = int(raw)  # type: ignore[call-overload]
-    except TypeError, ValueError:
+    if isinstance(raw, bool):
+        # ``bool`` is a subclass of ``int`` in Python; reject explicitly
+        # so ``True``/``False`` cannot masquerade as a count.
+        return None
+    if isinstance(raw, int):
+        candidate = raw
+    elif isinstance(raw, float):
+        if not raw.is_integer():
+            return None
+        candidate = int(raw)
+    elif isinstance(raw, str):
+        try:
+            candidate = int(raw)
+        except ValueError:
+            return None
+    else:
         return None
     return candidate if candidate > 0 else None
 

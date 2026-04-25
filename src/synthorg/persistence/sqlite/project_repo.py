@@ -127,12 +127,19 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
 
         The rollback itself is wrapped: a secondary failure (e.g. the
         connection is already closed) must not mask the original error
-        the caller is propagating.
+        the caller is propagating.  We DO log the rollback failure
+        though, so a tainted shared connection leaves a trail in
+        observability instead of silently degrading later writes.
         """
         try:
             await self._db.rollback()
-        except sqlite3.Error, aiosqlite.Error:
-            return
+        except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
+            logger.warning(
+                PERSISTENCE_PROJECT_SAVE_FAILED,
+                error_type=type(rollback_exc).__name__,
+                error=safe_error_description(rollback_exc),
+                rollback_failed=True,
+            )
 
     async def update(self, project: Project) -> None:
         """Update an existing project, failing if no row matched.
