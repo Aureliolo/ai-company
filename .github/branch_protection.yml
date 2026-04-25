@@ -7,6 +7,12 @@
 #   - Strips id, node_id, created_at, updated_at
 #   - Strips bypass_actors (owner-private; different accounts have
 #     different admin setups)
+#   - Strips copilot_code_review rule entries on BOTH sides -- Copilot
+#     review is a UI-managed convenience that GitHub toggles when it
+#     adjusts review-rate-limit policies, so treating its drift as
+#     alertable produces noise on every policy change. Do NOT add
+#     copilot_code_review entries to this spec; the audit will silently
+#     drop them on the spec side as well.
 #   - Sorts `rules` alphabetically by `type`
 #
 # A mismatch fails the audit, signalling drift between the committed

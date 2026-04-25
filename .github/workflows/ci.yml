@@ -28,11 +28,19 @@ jobs:
       # release-please PRs only touch CHANGELOG.md, version.txt, and
       # the manifest. There is no source code to test, so every heavy
       # job below short-circuits on this flag and ci-pass posts success
-      # immediately. Detect via both `github.ref` (covers push +
-      # workflow_dispatch from release.yml's nudge) and
-      # `github.head_ref` (covers pull_request from main, if anti-
-      # recursion ever lifts).
-      is_release_please: ${{ startsWith(github.ref, 'refs/heads/release-please--') || startsWith(github.head_ref, 'release-please--') }}
+      # immediately.
+      #
+      # SECURITY: branch names alone are NOT sufficient -- on a
+      # `pull_request` event from a fork, `github.head_ref` is the
+      # source ref name, which is fully attacker-controlled. A fork PR
+      # named `release-please--evil` would otherwise short-circuit CI
+      # and post a green CI Pass with no real testing. We therefore
+      # gate the pull_request arm on the PR author identity (set by
+      # GitHub at PR creation, not bypassable via branch naming) and
+      # only fall back to ref-name detection for push / dispatch
+      # events, where pushing `refs/heads/release-please--*` already
+      # requires push access to the upstream.
+      is_release_please: ${{ (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'synthorg-release-bot[bot]') || (github.event_name != 'pull_request' && startsWith(github.ref, 'refs/heads/release-please--')) }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
