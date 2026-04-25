@@ -486,7 +486,7 @@ Severity: high for data-mutating endpoints, medium for read-only.
 
 ```
 
-**Agent 25 -- unsafe-deserialization** (haiku)
+**Agent 25 -- unsafe-deserialization** (sonnet)
 File: `_audit/findings/25-unsafe-deserialization.md`
 
 ```text
@@ -517,7 +517,7 @@ documentation. Severity: medium.
 
 ```
 
-**Agent 28 -- hardcoded-timeouts-limits** (haiku)
+**Agent 28 -- hardcoded-timeouts-limits** (sonnet)
 File: `_audit/findings/28-hardcoded-timeouts-limits.md`
 
 ```text
@@ -526,7 +526,7 @@ batch sizes, max limits that should be configurable. Look for bare numeric
 literals in asyncio.wait_for, sleep, timeout parameters. Severity: low.
 ```
 
-**Agent 29 -- hardcoded-magic-numbers** (haiku)
+**Agent 29 -- hardcoded-magic-numbers** (sonnet)
 File: `_audit/findings/29-hardcoded-magic-numbers.md`
 
 ```text
@@ -624,7 +624,7 @@ and missing error boundaries around async content. Severity: medium.
 
 ```
 
-**Agent 37 -- hardcoded-frontend-strings** (haiku)
+**Agent 37 -- hardcoded-frontend-strings** (sonnet)
 File: `_audit/findings/37-hardcoded-frontend-strings.md`
 
 ```text
@@ -676,7 +676,7 @@ Also check for TYPE_CHECKING guards that hide real circular deps. Severity: medi
 
 ```
 
-**Agent 42 -- design-spec-drift** (sonnet)
+**Agent 42 -- design-spec-drift** (opus)
 File: `_audit/findings/42-design-spec-drift.md`
 
 ```text
@@ -1098,7 +1098,7 @@ In src/synthorg/api/controllers/, find:
 Severity: medium.
 ```
 
-**Agent 69 -- hardcoded-backend-selection** (haiku)
+**Agent 69 -- hardcoded-backend-selection** (sonnet)
 File: `_audit/findings/69-hardcoded-backend-selection.md`
 
 ```text
@@ -1113,7 +1113,7 @@ business code.
 Severity: medium.
 ```
 
-**Agent 70 -- pluggable-impl-coverage** (sonnet)
+**Agent 70 -- pluggable-impl-coverage** (opus)
 File: `_audit/findings/70-pluggable-impl-coverage.md`
 
 ```text
@@ -1849,6 +1849,770 @@ go stale or is already stale:
 - `#NNN` issue references that no longer match the cited topic
 
 Severity: low for stylistic drift, medium for misleading claims.
+
+```
+
+### Wave 26: SynthOrg-Specific Invariants (7 agents)
+
+**Agent 124 -- mcp-handler-contract** (sonnet)
+File: `_audit/findings/124-mcp-handler-contract.md`
+
+```text
+Audit src/synthorg/meta/mcp/handlers/ against the contract documented in
+docs/reference/mcp-handler-contract.md. Every handler must:
+- Implement the ToolHandler protocol
+- Return responses via envelope helpers (ok / err / capability_gap /
+  not_supported) from common.py, not raw dicts
+- Validate args via require_arg
+- Call require_destructive_guardrails(arguments, actor) on every handler
+  registered with admin_tool=True
+- Route through service-layer facades (ArtifactService, WorkflowService,
+  MemoryService, CustomRulesService, UserService) -- never reach into
+  app_state.persistence.* directly
+
+Flag handlers that build raw dict responses, miss guardrails on admin_tool,
+or bypass services to hit repos.
+
+Severity: high.
+
+```
+
+**Agent 125 -- sec1-prompt-safety-call-sites** (sonnet)
+File: `_audit/findings/125-sec1-prompt-safety-call-sites.md`
+
+```text
+Audit the SEC-1 untrusted-content fence inventory documented in
+docs/reference/sec-prompt-safety.md. Every LLM call site that interpolates
+attacker-controllable strings (tool results, agent messages, web content,
+user-supplied prompts) must:
+- Wrap untrusted content via wrap_untrusted(tag, content) from
+  synthorg.engine.prompt_safety
+- Append untrusted_content_directive(tags) to the system prompt
+
+Enumerate every LLM call site (calls into BaseCompletionProvider or its
+subclasses) and verify each. Cross-reference against the documented
+inventory to catch sites that were added later without the same treatment.
+
+Severity: critical for missing wrap_untrusted, high for missing directive.
+
+```
+
+**Agent 126 -- currency-aggregation-invariant** (sonnet)
+File: `_audit/findings/126-currency-aggregation-invariant.md`
+
+```text
+Every aggregation site over cost-bearing models (CostRecord,
+TaskMetricRecord, LlmCalibrationRecord, AgentRuntimeState) must enforce
+a same-currency invariant and raise MixedCurrencyAggregationError on
+mismatch.
+
+Find every aggregation method (sum, total, average, group-by, reduce) over
+these models in src/synthorg/. Verify each rejects mixed currencies with
+the documented exception. Flag silent currency mixing -- arithmetic across
+records with different currency: CurrencyCode values without the guard.
+
+Known aggregation sites to audit at minimum: CostTracker, ReportGenerator,
+CostOptimizer, HR WindowMetrics. Discover any newer aggregators.
+
+Severity: high.
+
+```
+
+**Agent 127 -- lifecycle-lock-pattern** (sonnet)
+File: `_audit/findings/127-lifecycle-lock-pattern.md`
+
+```text
+Per docs/reference/lifecycle-sync.md, every service with async start() and
+stop() methods must:
+- Use a dedicated self._lifecycle_lock: asyncio.Lock (separate from any
+  hot-path lock the service may hold for normal operation)
+- Hold the lifecycle lock across the full body of both start() and stop()
+- On stop() timeout, mark the service unrestartable
+
+Find all classes with async start() or async stop() methods in
+src/synthorg/. Verify the pattern. Flag:
+- Single shared lock used for both lifecycle and hot path
+- Lock not held across the full method body
+- Missing unrestartable flag on timeout
+- Services without any lifecycle locking at all
+
+Severity: high.
+
+```
+
+**Agent 128 -- cost-tracking-coverage** (sonnet)
+File: `_audit/findings/128-cost-tracking-coverage.md`
+
+```text
+Every LLM completion must produce a CostRecord. Trace every code path that
+calls BaseCompletionProvider.complete() (or its async variant) and verify
+a CostRecord is emitted on success.
+
+Flag paths that bypass cost recording:
+- Tool-internal LLM calls (some tools call providers directly inside their
+  execute method)
+- Agent self-reflection loops
+- Eval pipelines (shadow eval, calibration runs)
+- Verification stages
+- Quality grader calls
+
+For each bypass, suggest where the CostRecord should be emitted.
+
+Severity: high.
+
+```
+
+**Agent 129 -- audit-chain-coverage** (sonnet)
+File: `_audit/findings/129-audit-chain-coverage.md`
+
+```text
+Security-sensitive operations must emit to synthorg.observability.audit_chain.
+Build an inventory of operations that should:
+- Auth login / logout
+- Permission grants / revokes
+- Settings changes (especially security-relevant settings)
+- Secret reads / writes
+- Approval grants
+- Autonomy-level changes
+- User CRUD (create, update, delete)
+- Custom rule edits
+- API key issuance / revocation
+
+For each, find the implementing code path and verify an audit_chain
+emission exists. Flag silent mutations of security state.
+
+Severity: high.
+
+```
+
+**Agent 130 -- pre-alpha-rename-completeness** (sonnet)
+File: `_audit/findings/130-pre-alpha-rename-completeness.md`
+
+```text
+Per the project's pre-alpha rule, when a symbol is renamed every caller
+must use the new name in the same change. No aliases, no dual-codepath
+wrappers, no parallel field names retained.
+
+PEP 758 reminder: `except A, B:` without parentheses is valid Python 3.14
+syntax when not binding to a name. Do not flag it as a syntax error or
+suggest adding parentheses -- it is correct as written.
+
+Find telltale patterns of legacy support:
+- Deprecated passthrough functions: def old_name(*a, **kw): return new_name(*a, **kw)
+- Dual-codepath if/else on version flags
+- Comments hinting at retained legacy support
+- Re-exports of moved modules (from old.path import X as X)
+- DTOs populating both an old field and a new field for the same value
+- Conditional imports of the form try: from new import X; except: from old import X
+- Type aliases pointing at moved types kept in the old location
+
+Severity: medium.
+
+```
+
+### Wave 27: Generic Correctness Gaps (5 agents)
+
+**Agent 131 -- websocket-sse-auth** (sonnet)
+File: `_audit/findings/131-websocket-sse-auth.md`
+
+```text
+Agent 121 covers WebSocket / SSE robustness (reconnection, heartbeat,
+backpressure). This agent covers auth specifically.
+
+For every WebSocket upgrade handler and Server-Sent Events endpoint in
+src/synthorg/api/, verify:
+- Auth is enforced at handshake time (not after the connection is open)
+- Bearer token / session cookie is validated against the same auth chain
+  REST endpoints use
+- Connection is closed with a 4xx status on auth failure (not silently
+  accepted)
+- Long-lived connections re-validate auth periodically (token expiry
+  handling) -- a 24-hour-old WebSocket should not survive a token revocation
+
+Flag endpoints with no auth check, with auth checked only on the first
+message instead of at handshake, or with no token-expiry handling on
+long-lived connections.
+
+Severity: high.
+
+```
+
+**Agent 132 -- prometheus-label-cardinality** (sonnet)
+File: `_audit/findings/132-prometheus-label-cardinality.md`
+
+```text
+Audit Prometheus metric definitions in
+src/synthorg/observability/prometheus_collector.py and any Counter /
+Histogram / Gauge instantiations elsewhere.
+
+Flag labels with unbounded cardinality (causes memory explosion in
+production):
+- User IDs as labels
+- Request IDs as labels
+- Free-form strings as labels (error messages, file paths, URL paths
+  with embedded IDs)
+- Timestamps as labels
+- Anything that grows linearly with traffic
+
+For each, suggest a bounded alternative: bucket the value (latency_bucket
+instead of latency_ms), use exemplars instead of labels for high-cardinality
+context, or move the data to logs.
+
+## Evidence Requirement
+For each flagged metric, paste the metric definition (with file:line) and
+note the unbounded label.
+
+Severity: high for unbounded user/request IDs, medium for less risky
+high-cardinality.
+
+```
+
+**Agent 133 -- idempotency-retry-safety** (sonnet)
+File: `_audit/findings/133-idempotency-retry-safety.md`
+
+```text
+Workers and message handlers must be idempotent because retries can deliver
+the same message twice. Audit:
+- NATS task handlers in workers/ and engine/
+- Webhook receivers in api/controllers/
+- Async task protocol consumers
+- Any code subscribing to retry-eligible queues
+- Background job runners (backup, eval, calibration)
+
+For each handler, verify one of:
+- Idempotency keys (message ID stored, duplicate detected and skipped)
+- Deduplication checks before mutation
+- Pure idempotency (writes use upsert; mutations are commutative; sends
+  are de-duped downstream)
+
+Flag handlers that on redelivery would: double-charge a budget,
+double-create a row, double-emit an event, double-call a side-effecting
+external API.
+
+Severity: high.
+
+```
+
+**Agent 134 -- time-clock-injection** (haiku)
+File: `_audit/findings/134-time-clock-injection.md`
+
+```text
+Project test convention requires deterministic timing tests via clock
+injection (mock time.monotonic, asyncio.sleep, etc.). Find production
+code that reads the wall clock directly without an injection seam.
+
+Grep src/synthorg/ for bare:
+- time.monotonic()
+- time.time()
+- datetime.utcnow()
+- datetime.now() (without tz argument)
+- asyncio.get_event_loop().time()
+
+Skip:
+- Files that already accept a clock parameter or use a Clock protocol
+- Tests (tests/)
+- Observability / telemetry (legitimate wall-clock use for metric
+  timestamps)
+
+Flag business-logic uses (rate limiters, timeouts, expirations, scheduling)
+that read the wall clock directly -- these block deterministic testing.
+
+Severity: medium.
+
+```
+
+**Agent 135 -- pydantic-deep-checks** (sonnet)
+File: `_audit/findings/135-pydantic-deep-checks.md`
+
+```text
+Agent 31 covers basic Pydantic conventions (frozen, allow_inf_nan,
+NotBlankStr). This agent goes deeper.
+
+For every Pydantic model in src/synthorg/, flag:
+- extra="allow" outside DTOs that intentionally accept passthrough fields
+  (security smell -- accepts arbitrary keys from external input)
+- model_validator(mode="before") that mutates the input dict in place
+  (returning a new dict is correct; in-place mutation breaks reuse)
+- Validators that catch Exception broadly and silently coerce instead of
+  raising ValidationError
+- Field(..., default_factory=lambda: <mutable>) where the lambda body
+  closes over shared mutable state (the "mutable default" trap in disguise)
+- Fields typed as plain dict / list without item type parameters in
+  business-domain models (escape hatch that defeats validation)
+- Computed fields that perform I/O (database calls, HTTP requests) -- they
+  run on every serialization
+
+Severity: medium. Flag extra="allow" on input DTOs as high.
+
+```
+
+### Wave 28: Centralization & Architectural Rework (15 agents)
+
+These agents look for systemic patterns indicating a centralized system, missing abstraction, or fundamental rework is needed -- not single-file bugs. Findings from this wave feed into the Architectural Recommendations section of INDEX.md and the REWORK.md synthesis (Phase 3.5) rather than per-finding GitHub issues.
+
+**Agent 136 -- repeated-workarounds** (sonnet)
+File: `_audit/findings/136-repeated-workarounds.md`
+
+```text
+Cluster all HACK / FIXME / WORKAROUND / XXX / TEMPORARY comments in
+src/synthorg/, web/src/, and cli/ by what they reference: library name,
+function name, root cause symbol. Three or more workarounds pointing at
+the same upstream cause is a signal to fix the root, not patch N callers.
+
+Output GROUPS, not individual TODOs (Agent 17 already covers individuals).
+Each group entry should list:
+- The shared root cause as a one-line description
+- Every file:line where a workaround for it appears
+- A proposal: what fix at the root would let all the workarounds be removed
+
+Severity: medium when 3 or more cluster on one cause; low for pairs.
+
+```
+
+**Agent 137 -- centralization-opportunities** (opus)
+File: `_audit/findings/137-centralization-opportunities.md`
+
+```text
+Find duplicated helper functions across modules: same logic implemented in
+two or more places under different names. Look for clusters of:
+- safe_get / get_or_default / dict_get_or
+- to_iso / format_timestamp / iso_format
+- normalize_id / canonicalize_id / clean_id
+- chunked / batched / partition
+- merge_dicts / dict_merge / deep_merge
+- env_var coercion (str_to_bool, int_or_default)
+- Retry decorators / backoff helpers
+- ID prefix / suffix strippers
+
+For each cluster, propose a single home (e.g. synthorg.core.utils, or a
+domain-specific module) and list every caller that should migrate.
+
+Output groups, not individual functions. A group of 1 is not a finding.
+
+Severity: medium.
+
+```
+
+**Agent 138 -- inline-cross-cutting-concerns** (sonnet)
+File: `_audit/findings/138-inline-cross-cutting-concerns.md`
+
+```text
+Find cross-cutting concerns implemented at call sites instead of centrally.
+Each cluster suggests a missing decorator / middleware / aspect.
+
+Look for:
+- Inline auth checks (if not user.is_admin: raise) instead of route guards
+  or decorators
+- Inline retry loops (for attempt in range(3): ...) instead of going
+  through BaseCompletionProvider or a tenacity-style decorator
+- Inline rate-limit checks instead of the rate-limiter middleware
+- Inline error-to-HTTP mapping (try/except converting to JSON response)
+  instead of an exception handler chain
+- Inline logging-context construction (every caller building the same
+  structured kwargs) instead of contextvars or a logger adapter
+
+For each pattern, count occurrences. 5 or more occurrences across distinct
+modules is a finding worth surfacing as a missing abstraction.
+
+Severity: medium.
+
+```
+
+**Agent 139 -- fragmented-dispatch** (sonnet)
+File: `_audit/findings/139-fragmented-dispatch.md`
+
+```text
+Find if/elif (Python) or switch (TS) chains on the same enum, type, or
+discriminator repeated across 3 or more call sites. Examples:
+- if backend == "sqlite": ... elif backend == "postgres": ... repeated in
+  many modules
+- if event.type == "X": ... elif event.type == "Y": ... in multiple
+  handlers
+- match user.role: case "admin": ... case "user": ... duplicated
+
+Each repetition is a missed polymorphism / strategy-registry opportunity.
+Group findings by discriminator. Propose a registry or polymorphism that
+would replace the repeated dispatch.
+
+This is adjacent to Agents 69 and 71 but distinct: 69 flags specific
+"sqlite" / "postgres" leaks, 71 flags isinstance and concrete-class hints,
+this one flags the pattern of repeated dispatch.
+
+Severity: medium.
+
+```
+
+**Agent 140 -- ambient-parameter-threading** (sonnet)
+File: `_audit/findings/140-ambient-parameter-threading.md`
+
+```text
+Find parameters threaded through long call chains (5 or more functions)
+that should live in a contextvar instead. Common offenders:
+- actor (current user / acting principal)
+- request_id, correlation_id, trace_id
+- tenant_id
+- current_user, session
+- locale (when not the explicit subject of the function)
+
+For each candidate, count how many functions accept and forward it WITHOUT
+otherwise using it. High counts indicate a missing context layer.
+
+Output: parameter name, longest threading chain found (count of functions),
+representative call path.
+
+Severity: medium.
+
+```
+
+**Agent 141 -- repeated-normalization-parsing** (sonnet)
+File: `_audit/findings/141-repeated-normalization-parsing.md`
+
+```text
+Find the same data transform implemented in multiple places. Each cluster
+of 3 or more duplicates suggests a missing parser / normalizer module.
+
+Patterns to look for:
+- Timestamp parsing / formatting (ISO 8601, RFC 3339, custom formats)
+- ID normalization (case, trim, strip prefix/suffix)
+- Path canonicalization
+- URL parsing (especially extracting query params, normalizing trailing
+  slashes)
+- Currency formatting (despite the regional-defaults rule, formatters may
+  still drift)
+- Locale resolution
+
+For each cluster, list the duplicate implementations and propose a single
+home.
+
+Severity: medium.
+
+```
+
+**Agent 142 -- scattered-config-access** (sonnet)
+File: `_audit/findings/142-scattered-config-access.md`
+
+```text
+Find os.environ[...] / os.getenv(...) / direct settings.X reads scattered
+through business logic instead of injected at the boundary. Per the
+project's settings-service pattern, business code should accept config via
+constructor injection or a settings facade, not reach out to globals.
+
+Group by which module reads which env var or setting. Flag:
+- Same env var read in 3 or more places (should be read once and injected)
+- Settings reads deep in business logic (should be read at startup and
+  injected)
+- Conditional config reads (if env var is set then ... else ...) in business
+  code (should be resolved at config-load time)
+
+Severity: medium.
+
+```
+
+**Agent 143 -- utility-file-bloat** (sonnet)
+File: `_audit/findings/143-utility-file-bloat.md`
+
+```text
+Find utils.py / helpers.py / misc.py / common.ts / utils.ts files that
+have grown beyond their stated purpose.
+
+Signals:
+- File over 500 lines
+- 5 or more unrelated concerns under one roof
+- No docstring describing the file's scope, or scope description that
+  doesn't match contents
+- Name mismatch (file called string_utils.py but contains date parsing)
+
+For each bloated file, propose splits by concern.
+
+Severity: low for moderate bloat, medium for files exceeding 800 lines
+mixing 5 or more topics.
+
+```
+
+**Agent 144 -- layer-violations** (sonnet)
+File: `_audit/findings/144-layer-violations.md`
+
+```text
+Find architectural layer violations indicating a structural problem.
+
+Specific violations to look for:
+- API controllers importing from persistence/ directly. Agent 68 catches
+  state writes via repository methods; this catches reads, type imports,
+  and any other direct reach.
+- Service layer importing controller types or HTTP-response types
+- Domain models importing persistence-specific types (e.g. SQLAlchemy
+  rows, raw connection objects)
+- Engine code importing from web frontend types or CLI flags
+- Tools importing from API controllers
+- web/src/ importing from cli/ or vice versa
+
+Each violation suggests the layer boundary is incorrectly drawn or being
+eroded. For each, propose: which layer the symbol belongs in, or what
+abstraction would let the import go away.
+
+Severity: medium.
+
+```
+
+**Agent 145 -- abstraction-on-wrong-axis** (opus)
+File: `_audit/findings/145-abstraction-on-wrong-axis.md`
+
+```text
+The deepest architectural smell: an abstraction is parameterized over the
+wrong dimension.
+
+Signals to look for:
+- A Protocol with N implementations where every implementation differs
+  only in 1 or 2 trivial ways while another axis (caller behavior, return
+  shape, error semantics) varies wildly across the codebase but is NOT
+  parameterized.
+- A factory that always picks the same concrete implementation in every
+  observed call site (the abstraction is dead -- no real choice being
+  made).
+- Generic <T> parameters never instantiated with more than one type in
+  practice.
+- "Strategy pattern" implementations that only differ in a single config
+  value (would be cleaner as a parameter than a class hierarchy).
+- Two parallel hierarchies where one should be composed inside the other.
+- A protocol with overlapping responsibilities that would be cleaner as
+  two narrower protocols.
+
+Read source carefully -- this is hard to spot mechanically. For each
+suspected wrong-axis abstraction, explain what the right axis would be
+and what migration would look like.
+
+Severity: medium for suspected wrong-axis, high for fully dead
+abstractions (factory always picks the same impl).
+
+```
+
+**Agent 146 -- configuration-soup** (sonnet)
+File: `_audit/findings/146-configuration-soup.md`
+
+```text
+Find values configurable through 3 or more different surfaces
+simultaneously: env var + setting + ConfigDict field + CLI flag +
+constructor parameter for the same logical setting. Each redundant
+surface multiplies precedence rules and confuses operators about what
+overrides what.
+
+For each cluster, list:
+- The logical setting
+- All surfaces it's configurable through (and where each is read)
+- The precedence currently in effect
+- A proposal: which single surface should remain canonical
+
+Severity: medium.
+
+```
+
+**Agent 147 -- error-mapping-inconsistency** (sonnet)
+File: `_audit/findings/147-error-mapping-inconsistency.md`
+
+```text
+Agent 34 covers error-handling consistency broadly. This agent specifically
+maps each domain exception to its HTTP-response transformation across all
+controllers.
+
+For each custom exception class in src/synthorg/, find every controller
+that catches it and how it converts to an HTTP response. Flag exceptions
+converted to:
+- Different status codes in different controllers (e.g. 400 in one place,
+  422 in another, 409 elsewhere)
+- Different response body shapes (RFC 9457 vs ad-hoc dict vs string)
+- Different error type fields
+
+This indicates missing error-handler middleware. Propose a single mapping
+from each exception class to its canonical HTTP response.
+
+Severity: medium.
+
+```
+
+**Agent 148 -- protocol-cardinality-overabstraction** (sonnet)
+File: `_audit/findings/148-protocol-cardinality-overabstraction.md`
+
+```text
+Agent 11 flags protocols with 0 implementations (dead). This agent flags
+protocols with exactly 1 implementation that have been around for 3 or
+more months and show no sign of gaining a sibling. These are premature
+abstractions per YAGNI -- the protocol adds indirection without enabling
+polymorphism.
+
+For each Protocol class in src/synthorg/:
+- Count concrete implementations
+- If exactly 1, check git blame on the protocol file to determine age
+- If older than 3 months and still single-impl, flag with a recommendation
+  to either inline the protocol into the impl or remove the indirection
+
+Cross-reference CLAUDE.md's pluggable-subsystems rule (which mandates
+"ship safe defaults" but doesn't mandate every concept be a protocol).
+
+Severity: low.
+
+```
+
+**Agent 149 -- mixed-async-sync-migration** (sonnet)
+File: `_audit/findings/149-mixed-async-sync-migration.md`
+
+```text
+Find modules where the same domain concept exposes both sync and async
+APIs, signaling an incomplete async migration.
+
+Examples to look for:
+- repo.find() AND repo.afind() / repo.find_async()
+- Service AND AsyncService variants
+- Both blocking and async-aware versions of the same helper (load_config /
+  aload_config)
+
+Per the project's async-first rule, finish the migration. Group findings
+by domain. List both surfaces and their callers. Propose which should be
+the canonical version.
+
+Severity: medium.
+
+```
+
+**Agent 150 -- stringly-typed-boundaries** (sonnet)
+File: `_audit/findings/150-stringly-typed-boundaries.md`
+
+```text
+Find module boundaries where typed domain objects exist but raw
+dict[str, Any] / dict[str, str] / JSON strings cross the boundary anyway.
+
+Common offenders:
+- Tool argument passing (BaseTool.execute(arguments: dict))
+- A2A messages
+- MCP responses (envelope payloads as dict)
+- NATS message bodies
+- Telemetry events
+- Audit chain entries
+
+For each offender, identify what typed model SHOULD sit at the boundary
+and which callers would need migration. Note when a typed model already
+exists but isn't enforced (the worse case -- the abstraction exists,
+just not used).
+
+Severity: medium.
+
+```
+
+### Wave 29: Public-Facing Truth Enforcement (2 agents)
+
+**Agent 151 -- docs-numeric-claims-enumeration** (sonnet)
+File: `_audit/findings/151-docs-numeric-claims-enumeration.md`
+
+```text
+Enumerate EVERY numeric or quantitative claim in EVERY page under docs/
+(not just README + landing). Walk the mkdocs nav from mkdocs.yml; for
+each page in nav, scan for:
+- Test counts ("13k unit tests", "X tests")
+- File / line / module counts
+- Agent / tool / provider / model counts
+- Page / feature counts ("20+ design pages")
+- Version numbers and release dates
+- Performance numbers ("3x faster", "Ns latency")
+- "Since vX.Y", "as of <date>", "introduced in <version>" claims
+- Any number adjacent to "+" ("100+", "10k+")
+
+For each claim, verify against live source.
+
+## Evidence Requirement
+You MUST emit Bash output for every numeric/temporal claim you verify.
+Do not assert "verified" without a corresponding Bash result. Examples:
+- Test count: paste output of `uv run python -m pytest tests/ --collect-only -q | tail -1`
+- Release list: paste output of `gh release list --limit 10`
+- Agent count: paste `ls .claude/agents | wc -l`
+- File count: paste `find <path> -name "*.py" | wc -l`
+- Tool count: paste a grep against tools/registry.py
+
+Findings WITHOUT evidence are inadmissible. Validation phase rejects
+evidence-free numeric findings with severity downgrade to info.
+
+## Severity Calibration
+- Every stale public-facing number is severity MEDIUM minimum.
+- HIGH if the page is reachable from synthorg.io top nav (homepage,
+  roadmap, comparison, vision, architecture, decisions, getting-started).
+- This is mandatory because Phase 5 triage prioritizes high+critical
+  first; stale numbers hidden at "low" or "medium" are exactly how the
+  "13k unit tests" claim survived two prior audits.
+
+```
+
+**Agent 152 -- website-published-pages-audit** (sonnet)
+File: `_audit/findings/152-website-published-pages-audit.md`
+
+```text
+The audit checks docs/ source. This agent ALSO checks the rendered live
+site to catch claims that survive in production despite source updates
+or that appear on orphaned pages no longer in source.
+
+Use WebFetch on these synthorg.io URLs (and any others you discover via
+the homepage navigation):
+- https://synthorg.io/
+- https://synthorg.io/docs/
+- https://synthorg.io/docs/roadmap/
+- https://synthorg.io/docs/comparison/
+- https://synthorg.io/docs/architecture/
+- https://synthorg.io/docs/decisions/
+- https://synthorg.io/docs/getting-started/
+- https://synthorg.io/docs/future-vision/ (if exists)
+- https://synthorg.io/blog/ (if exists)
+
+For each fetched page:
+- Extract every numeric / temporal / version claim (same list as agent 151)
+- Verify each against current source via Bash commands (with evidence)
+- Verify the page exists in the current mkdocs.yml nav (orphaned
+  published pages should be flagged or removed)
+- Flag claims that contradict the source (live page says X, source page
+  in docs/ says Y -- means a deploy is missing or rendering is broken)
+
+## Evidence Requirement
+Same as agent 151: you MUST paste Bash output for every numerical claim
+you verify against live source.
+
+## Severity Calibration
+HIGH for any stale claim on a public synthorg.io page. Public-facing
+inaccuracies are an investor / user trust issue.
+
+```
+
+### Wave 30: Implicit Convention Discovery (1 agent)
+
+**Agent 153 -- implicit-convention-finder** (sonnet)
+File: `_audit/findings/153-implicit-convention-finder.md`
+
+```text
+Find patterns repeated 5 or more times across the codebase that are NOT
+documented in CLAUDE.md, web/CLAUDE.md, cli/CLAUDE.md, or any
+docs/design/*.md page. These are conventions that exist in practice but
+live only in tribal knowledge.
+
+Examples to look for:
+- Specific naming patterns for service-layer methods (e.g. all repos use
+  find_by_* not get_by_*; all services use load_/save_/delete_)
+- Consistent error-wrapping patterns not in the conventions doc
+- Implicit ordering rules (always validate before persist, always
+  authenticate before authorize, etc.)
+- Function signature patterns (e.g. all controllers return Response not
+  dict; all background workers take (ctx, payload))
+- Test fixture conventions (every integration test uses fixture X)
+- Import-order conventions
+- File-naming conventions (handlers/, services/, repositories/ all
+  pluralized vs singular)
+
+For each discovered convention:
+- A short rule statement
+- Sample of 5+ files that follow it (file:line)
+- Where it should be documented (CLAUDE.md section, design page, or new
+  reference file under docs/reference/)
+
+Do not flag patterns that are merely common -- look for ones that are
+universally followed AND would surprise a new contributor who hadn't
+read the codebase.
+
+Severity: low (informational, but actionable for documentation
+completeness).
 
 ```
 
