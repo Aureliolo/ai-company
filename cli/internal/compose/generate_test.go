@@ -370,6 +370,7 @@ func TestGenerateWithSandboxAndSecrets(t *testing.T) {
 	assertContains(t, yaml, `SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"`)
 	assertContains(t, yaml, "SYNTHORG_JWT_SECRET")
 	assertContains(t, yaml, "SYNTHORG_SETTINGS_KEY")
+	assertContains(t, yaml, "SYNTHORG_PAGINATION_CURSOR_SECRET")
 	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock")
 }
 
@@ -563,6 +564,9 @@ func TestParamsFromState(t *testing.T) {
 	}
 	if p.SettingsKey != "settings-key" {
 		t.Errorf("SettingsKey = %q, want settings-key", p.SettingsKey)
+	}
+	if p.CursorSecret != "test-cursor-secret-stable-value" {
+		t.Errorf("CursorSecret = %q, want test-cursor-secret-stable-value", p.CursorSecret)
 	}
 	if p.BusBackend != "internal" {
 		t.Errorf("BusBackend = %q, want internal", p.BusBackend)

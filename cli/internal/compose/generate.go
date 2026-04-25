@@ -383,13 +383,19 @@ func validateParams(p Params) error {
 			return fmt.Errorf("postgres password must be >= 32 characters, got %d", len(p.PostgresPassword))
 		}
 	}
-	// Cross-validate secrets: if any is set, all three must be set.
-	// Both-empty is valid for development/testing (template omits env vars
-	// and the backend stays unwired). Once any production secret is in
-	// play, the backend boot guard (synthorg.api.app create_app) refuses
-	// to start without a stable pagination cursor secret on every channel,
-	// so emitting a partially-configured compose.yml would produce a
-	// boot loop on `synthorg start`.
+	// Cross-validate secrets across three permitted shapes:
+	//   - all-empty: valid for development / testing (template omits every
+	//     secret env var and the backend stays unwired);
+	//   - all three set: the standard production layout that init.go
+	//     generates and the backend boot guard expects;
+	//   - cursor-only: valid when the operator wants the unconditional
+	//     pagination cursor secret (synthorg.api.app create_app refuses
+	//     to start without one) but has not yet wired JWT auth or
+	//     encrypted settings storage.
+	// What is NOT valid is a partially-configured production layout: JWT
+	// without SettingsKey, SettingsKey without JWT, or JWT/SettingsKey
+	// without a CursorSecret -- emitting that compose.yml would produce a
+	// boot loop on ``synthorg start``.
 	hasJWT := strings.TrimSpace(p.JWTSecret) != ""
 	hasKey := strings.TrimSpace(p.SettingsKey) != ""
 	cursor := strings.TrimSpace(p.CursorSecret)
