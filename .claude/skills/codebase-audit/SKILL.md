@@ -1,12 +1,12 @@
 ---
-description: "Full codebase audit: launches 123 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/findings/, then triages with user"
+description: "Full codebase audit: launches 153 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/findings/, then triages with user"
 argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only] [--quick]"
 allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
 # /codebase-audit -- Full Codebase Audit
 
-Launch 123 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/findings/`, build an index, and triage with the user.
+Launch 153 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
 
 ## Key Principles
 
@@ -25,10 +25,10 @@ Launch 123 specialized agents to audit the entire codebase (or a targeted scope)
 
 | Argument | Directories | Agents |
 |----------|-------------|-------------|
-| `full` (default) | All | 01-123 |
-| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123 |
-| `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123 |
-| `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123 |
+| `full` (default) | All | 01-153 |
+| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153 |
+| `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123, 126, 131, 137-138, 141-145, 147, 149-150 |
+| `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123, 130, 134, 142 |
 | `docs/` | `docs/`, `site/`, `src/synthorg/` | 17, 20, 42, 48-51, 73-86, 103-104, 107-108, 123 |
 
 Flags:
@@ -69,6 +69,12 @@ Produce an **Architecture Brief** (~400 words) covering:
 - Database: SQLite + Postgres dual-backend, Atlas migrations in `persistence/*/revisions/`
 - Async: `asyncio.TaskGroup` preferred, never bare `create_task`
 - Testing: markers, xdist, async auto mode, Hypothesis profiles
+
+**Python syntax note (PEP 758, Python 3.14)**: `except A, B:` without parentheses is *valid and preferred* when NOT binding the exception to a name. Do NOT flag this as a syntax error, style issue, or convention violation. Parentheses are only required when binding (`except (A, B) as exc:`). The codebase deliberately uses the unparenthesized form per `CLAUDE.md` and ruff configuration. This rule prevents a common false positive.
+
+**Em-dash ban**: never emit em-dash characters in finding output, descriptions, or proposals. Use `--` instead. Pre-commit blocks em-dashes via `no-em-dashes` hook -- findings that contain them are inadmissible.
+
+**Vendor-agnostic naming**: never reference real vendor names (Anthropic, OpenAI, Claude, GPT) in finding text or proposed code changes outside `.claude/` skill bodies. Use `example-provider`, `example-large-001`, etc.
 
 This brief is a string variable reused in all agent prompts below.
 
@@ -159,6 +165,10 @@ Launch agents in 13 batches of ~10 each. All agents within a batch run in parall
 | K | 101-110 |
 | L | 111-120 |
 | M | 121-123 |
+| N | 124-130 (Wave 26) |
+| O | 131-140 (Wave 27 + first half of Wave 28) |
+| P | 141-150 (second half of Wave 28) |
+| Q | 151-153 (Waves 29 + 30) |
 
 Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is the total number of agents launched for the current scope (123 for `full`, fewer for scoped runs).
 
@@ -186,7 +196,7 @@ handlers) but no logger, that's a finding.
 
 ```
 
-**Agent 02 -- missing-event-constants** (sonnet)
+**Agent 02 -- missing-event-constants** (haiku)
 File: `_audit/findings/02-missing-event-constants.md`
 
 ```text
@@ -392,7 +402,7 @@ Runs for `full`, `src/`, or `web/` scope (requires both backend and frontend).
 
 ```
 
-**Agent 16 -- orphan-test-helpers** (sonnet)
+**Agent 16 -- orphan-test-helpers** (haiku)
 File: `_audit/findings/16-orphan-test-helpers.md`
 
 ```text
@@ -1135,7 +1145,7 @@ Flag:
 Severity: medium.
 ```
 
-**Agent 71 -- abstraction-swap-readiness** (sonnet)
+**Agent 71 -- abstraction-swap-readiness** (opus)
 File: `_audit/findings/71-abstraction-swap-readiness.md`
 
 ```text
@@ -1151,7 +1161,7 @@ Find code that would break that invariant:
 Severity: medium.
 ```
 
-**Agent 72 -- dependency-inversion-violations** (sonnet)
+**Agent 72 -- dependency-inversion-violations** (opus)
 File: `_audit/findings/72-dependency-inversion-violations.md`
 
 ```text
@@ -1298,7 +1308,7 @@ Flag:
 Severity: medium.
 ```
 
-**Agent 81 -- design-spec-contradictions** (sonnet)
+**Agent 81 -- design-spec-contradictions** (opus)
 File: `_audit/findings/81-design-spec-contradictions.md`
 
 ```text
@@ -1458,7 +1468,7 @@ Find injection-class vulnerabilities:
 Severity: high.
 ```
 
-**Agent 92 -- prompt-injection-defenses** (sonnet)
+**Agent 92 -- prompt-injection-defenses** (opus)
 File: `_audit/findings/92-prompt-injection-defenses.md`
 
 ```text
@@ -2777,7 +2787,11 @@ If `--report-only`, skip this phase entirely.
 2. **Architecture brief in every prompt** -- no blind agents
 3. **Validation is required** for critical+high findings on standard runs (may be skipped with `--quick` or fewer than 5 findings)
 4. **Batch execution** -- ~10 agents per batch, wait between batches
-5. **Sonnet for analysis, Haiku for pattern matching** -- never Opus for audit agents
+5. **Model selection**:
+   - **Haiku**: pure pattern matching with low ambiguity (grep + filter, regex over fixed token sets, listing TODOs).
+   - **Sonnet** (default): cross-file reasoning, judgment calls, semantic analysis, anything where false-positive cost matters.
+   - **Opus**: reserved for the small set of agents requiring cross-document architectural synthesis. Permitted only on the agents listed below; do not use Opus for any other audit agent without explicit user approval.
+   - **Opus-permitted agents**: 42 (design-spec-drift), 70 (pluggable-impl-coverage), 71 (abstraction-swap-readiness), 72 (dependency-inversion-violations), 81 (design-spec-contradictions), 92 (prompt-injection-defenses), 137 (centralization-opportunities), 145 (abstraction-on-wrong-axis), plus the Wave 28 meta-synthesis agent in Phase 3.5. Total: 9.
 6. **Do NOT fix anything** -- audit only, findings only
 7. **Rerunnable** -- clean `_audit/` at start of every run
 8. **Never use em-dashes** in any output files (project convention)
