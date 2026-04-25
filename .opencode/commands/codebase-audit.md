@@ -1,5 +1,5 @@
 ---
-description: "Full codebase audit: launches 153 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/findings/, then triages with user"
+description: "Full codebase audit: launches 153 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
 ---
 
 # OpenCode Adapter (read this FIRST, before the skill below)

@@ -1,21 +1,21 @@
 ---
-description: "Full codebase audit: launches 153 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/findings/, then triages with user"
+description: "Full codebase audit: launches 153 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
 argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only] [--quick]"
-allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
+allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
 # /codebase-audit -- Full Codebase Audit
 
-Launch 153 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
+Launch 153 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
 
 ## Key Principles
 
-1. **File-based output** -- agents write to `_audit/findings/`, not in-session. Scales to 50+ agents.
+1. **File-based output** -- agents write to `_audit/latest/findings/`, not in-session. Scales to 50+ agents.
 2. **One concern per agent** -- each agent searches for exactly ONE type of issue.
 3. **Architecture context in every prompt** -- no blind agents. All get the Architecture Brief.
 4. **Severity-tagged findings** -- critical/high/medium/low/info with file:line references.
 5. **Triage together** -- user reviews INDEX.md before any issues are created.
-6. **Rerunnable** -- cleans `_audit/` on start.
+6. **Rerunnable** -- creates a new run directory under `_audit/runs/<timestamp>/` and repoints the `_audit/latest` symlink. Older runs are preserved; never delete `_audit/runs/*`.
 
 ---
 
@@ -25,7 +25,7 @@ Launch 153 specialized agents to audit the entire codebase (or a targeted scope)
 
 | Argument | Directories | Agents |
 |----------|-------------|-------------|
-| `full` (default) | All | 01-153 |
+| `full` (default) | All | 01-153 (active agents only -- agent 98 is retired but slot reserved; 152 launched) |
 | `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153 |
 | `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123, 126, 131, 137-138, 141-145, 147, 149-150 |
 | `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123, 130, 134, 142 |
@@ -37,9 +37,15 @@ Flags:
 
 ### Setup output directory
 
+Use the run-history layout (see "Phase 0 setup: run-history layout" below for the full description):
+
 ```bash
-rm -rf _audit && mkdir -p _audit/findings
+RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)"
+mkdir -p "$RUN_DIR/findings"
+ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest
 ```
+
+Never delete `_audit/runs/*`. The `_audit/latest` symlink always points at the most recent run; older runs accumulate. On Windows, the OpenCode adapter substitutes `New-Item -ItemType SymbolicLink` for `ln -sfn`.
 
 Verify `_audit/` is in `.gitignore`. If not, add it.
 
@@ -130,7 +136,7 @@ You are auditing the SynthOrg codebase for ONE specific concern: {FOCUS}.
 {DETAILED_INSTRUCTIONS}
 
 ## Output
-Write ALL findings to: _audit/findings/{FILENAME}
+Write ALL findings to: _audit/latest/findings/{FILENAME}
 
 Use this exact format for each finding:
 ### [severity] path/to/file:LINE
@@ -170,7 +176,7 @@ Launch agents in 17 batches (A-Q). Most batches are ~10 agents each; batches M (
 | P | 141-150 (second half of Wave 28) |
 | Q | 151-153 (Waves 29 + 30) |
 
-Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is the total number of agents launched for the current scope (153 for `full`, fewer for scoped runs).
+Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is computed from the resolved launch plan for the current scope after excluding retired slots (152 for `full` since agent 98 is retired; fewer for scoped runs).
 
 ---
 
@@ -179,7 +185,7 @@ Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents d
 ### Wave 1: Observability & Logging (5 agents)
 
 **Agent 01 -- missing-logger** (haiku)
-File: `_audit/findings/01-missing-logger.md`
+File: `_audit/latest/findings/01-missing-logger.md`
 
 ```text
 Search every .py file in src/synthorg/ for modules that contain business logic
@@ -197,7 +203,7 @@ handlers) but no logger, that's a finding.
 ```
 
 **Agent 02 -- missing-event-constants** (haiku)
-File: `_audit/findings/02-missing-event-constants.md`
+File: `_audit/latest/findings/02-missing-event-constants.md`
 
 ```text
 The project requires all logger calls to use event constants from
@@ -220,7 +226,7 @@ Severity: low.
 ```
 
 **Agent 03 -- missing-error-logging** (sonnet)
-File: `_audit/findings/03-missing-error-logging.md`
+File: `_audit/latest/findings/03-missing-error-logging.md`
 
 ```text
 Project convention: "All error paths must log at WARNING or ERROR with context
@@ -243,7 +249,7 @@ Severity: medium for service/engine code, low for model validation.
 ```
 
 **Agent 04 -- missing-state-transition-log** (sonnet)
-File: `_audit/findings/04-missing-state-transition-log.md`
+File: `_audit/latest/findings/04-missing-state-transition-log.md`
 
 ```text
 Project convention: "All state transitions must log at INFO."
@@ -267,7 +273,7 @@ there's an INFO-level log call nearby. Missing transitions are severity=medium.
 ```
 
 **Agent 05 -- observability-completeness** (sonnet)
-File: `_audit/findings/05-observability-completeness.md`
+File: `_audit/latest/findings/05-observability-completeness.md`
 
 ```text
 Check whether key operations have full observability coverage:
@@ -293,7 +299,7 @@ low for nice-to-have.
 ### Wave 2: Wiring & Integration (8 agents)
 
 **Agent 06 -- unwired-api-controllers** (sonnet)
-File: `_audit/findings/06-unwired-api-controllers.md`
+File: `_audit/latest/findings/06-unwired-api-controllers.md`
 
 ```text
 Check api/controllers/ for controller classes not registered in auto_wire.py
@@ -304,7 +310,7 @@ owns that). Severity: high (unreachable code).
 ```
 
 **Agent 07 -- unwired-web-stores** (sonnet)
-File: `_audit/findings/07-unwired-web-stores.md`
+File: `_audit/latest/findings/07-unwired-web-stores.md`
 
 ```text
 Check every Zustand store file in web/src/stores/. For each store, grep the
@@ -314,7 +320,7 @@ zero pages or components, it's dead. Severity: medium.
 ```
 
 **Agent 08 -- unwired-web-pages** (sonnet)
-File: `_audit/findings/08-unwired-web-pages.md`
+File: `_audit/latest/findings/08-unwired-web-pages.md`
 
 ```text
 Find all .tsx files in web/src/pages/ that are NOT imported by any other file
@@ -324,7 +330,7 @@ route AND no parent import are unreachable. Severity: medium.
 ```
 
 **Agent 09 -- unwired-settings** (sonnet)
-File: `_audit/findings/09-unwired-settings.md`
+File: `_audit/latest/findings/09-unwired-settings.md`
 
 ```text
 Check settings/definitions/ for setting definitions. For each, check if it is:
@@ -335,7 +341,7 @@ Settings defined but never consumed are dead config. Severity: medium.
 ```
 
 **Agent 10 -- unwired-tools** (sonnet)
-File: `_audit/findings/10-unwired-tools.md`
+File: `_audit/latest/findings/10-unwired-tools.md`
 
 ```text
 Check tool classes in tools/ subdirectories. For each tool class that extends
@@ -345,7 +351,7 @@ Unregistered tools are dead code. Severity: medium.
 ```
 
 **Agent 11 -- unwired-protocols** (sonnet)
-File: `_audit/findings/11-unwired-protocols.md`
+File: `_audit/latest/findings/11-unwired-protocols.md`
 
 ```text
 Find all Protocol classes in src/synthorg/. For each, find concrete
@@ -357,7 +363,7 @@ implementations are registered in their factory. Report:
 ```
 
 **Agent 12 -- unwired-notifications** (sonnet)
-File: `_audit/findings/12-unwired-notifications.md`
+File: `_audit/latest/findings/12-unwired-notifications.md`
 
 ```text
 Check notifications/adapters/ for adapter classes. Verify each is registered
@@ -368,7 +374,7 @@ notification types never dispatched. Severity: medium.
 ```
 
 **Agent 13 -- frontend-backend-mismatch** (sonnet)
-File: `_audit/findings/13-frontend-backend-mismatch.md`
+File: `_audit/latest/findings/13-frontend-backend-mismatch.md`
 
 ```text
 Cross-reference web/src/api/ and web/src/services/ API calls with backend
@@ -381,7 +387,7 @@ api/controllers/ endpoints. Report:
 ### Wave 3: Dead Code & Unused (3 agents)
 
 **Agent 14 -- unused-python-exports** (sonnet)
-File: `_audit/findings/14-unused-python-exports.md`
+File: `_audit/latest/findings/14-unused-python-exports.md`
 
 ```text
 Find public functions and classes in src/synthorg/ that are not imported by
@@ -392,7 +398,7 @@ methods, enum members, Pydantic field definitions. Severity: medium.
 ```
 
 **Agent 15 -- unused-dto-fields** (sonnet)
-File: `_audit/findings/15-unused-dto-fields.md`
+File: `_audit/latest/findings/15-unused-dto-fields.md`
 
 ```text
 Compare DTO classes in api/dto*.py with frontend TypeScript types in
@@ -403,7 +409,7 @@ Runs for `full`, `src/`, or `web/` scope (requires both backend and frontend).
 ```
 
 **Agent 16 -- orphan-test-helpers** (haiku)
-File: `_audit/findings/16-orphan-test-helpers.md`
+File: `_audit/latest/findings/16-orphan-test-helpers.md`
 
 ```text
 Check all conftest.py files in tests/ for fixtures and helper functions.
@@ -415,7 +421,7 @@ Severity: low.
 ### Wave 4: TODOs & Deferred (4 agents)
 
 **Agent 17 -- todo-comments** (haiku)
-File: `_audit/findings/17-todo-comments.md`
+File: `_audit/latest/findings/17-todo-comments.md`
 
 ```text
 Grep source files in the provided scope for TODO, FIXME, HACK,
@@ -425,7 +431,7 @@ comment text. Severity: info.
 ```
 
 **Agent 18 -- not-implemented** (haiku)
-File: `_audit/findings/18-not-implemented.md`
+File: `_audit/latest/findings/18-not-implemented.md`
 
 ```text
 Grep src/synthorg/ and cli/ for: NotImplementedError, pass-only function
@@ -435,7 +441,7 @@ body. Severity: info for abstract methods, medium for concrete stubs.
 ```
 
 **Agent 19 -- placeholder-stubs** (sonnet)
-File: `_audit/findings/19-placeholder-stubs.md`
+File: `_audit/latest/findings/19-placeholder-stubs.md`
 
 ```text
 Find functions that return hardcoded dummy values, empty lists/dicts, or have
@@ -445,7 +451,7 @@ These suggest incomplete implementations. Severity: medium.
 ```
 
 **Agent 20 -- deferred-features** (sonnet)
-File: `_audit/findings/20-deferred-features.md`
+File: `_audit/latest/findings/20-deferred-features.md`
 
 ```text
 Read docs/design/ pages and cross-reference with src/synthorg/. Find features
@@ -457,7 +463,7 @@ Focus on major features (not minor details). Severity: info.
 ### Wave 5: Safety & Security (6 agents)
 
 **Agent 21 -- silent-exception-swallow** (sonnet)
-File: `_audit/findings/21-silent-exception-swallow.md`
+File: `_audit/latest/findings/21-silent-exception-swallow.md`
 
 ```text
 Find except blocks that swallow exceptions silently: bare `except:`,
@@ -468,7 +474,7 @@ graceful shutdown cleanup. Severity: high for business logic, medium for cleanup
 ```
 
 **Agent 22 -- input-validation-gaps** (sonnet)
-File: `_audit/findings/22-input-validation-gaps.md`
+File: `_audit/latest/findings/22-input-validation-gaps.md`
 
 ```text
 Check API controller methods for user input that bypasses validation. Look for
@@ -478,7 +484,7 @@ body access, and missing type coercion. Severity: high.
 ```
 
 **Agent 23 -- sql-injection-risk** (sonnet)
-File: `_audit/findings/23-sql-injection-risk.md`
+File: `_audit/latest/findings/23-sql-injection-risk.md`
 
 ```text
 Search persistence/ and any file using SQL for string concatenation or f-strings
@@ -487,7 +493,7 @@ in SQL queries instead of parameterized queries. Severity: critical.
 ```
 
 **Agent 24 -- missing-auth-checks** (sonnet)
-File: `_audit/findings/24-missing-auth-checks.md`
+File: `_audit/latest/findings/24-missing-auth-checks.md`
 
 ```text
 Check API controllers for endpoints missing auth guards. Compare with auth
@@ -497,7 +503,7 @@ Severity: high for data-mutating endpoints, medium for read-only.
 ```
 
 **Agent 25 -- unsafe-deserialization** (sonnet)
-File: `_audit/findings/25-unsafe-deserialization.md`
+File: `_audit/latest/findings/25-unsafe-deserialization.md`
 
 ```text
 Flag ANY use of yaml.load (even with Loader parameter -- verify SafeLoader),
@@ -507,7 +513,7 @@ variable or function parameter (not a string literal). Severity: critical.
 ```
 
 **Agent 26 -- missing-rate-limiting** (sonnet)
-File: `_audit/findings/26-missing-rate-limiting.md`
+File: `_audit/latest/findings/26-missing-rate-limiting.md`
 
 ```text
 Check public-facing API endpoints for rate limiting. Check expensive operations
@@ -518,7 +524,7 @@ Check public-facing API endpoints for rate limiting. Check expensive operations
 ### Wave 6: Configuration & Hardcoding (4 agents)
 
 **Agent 27 -- hardcoded-urls-ports** (haiku)
-File: `_audit/findings/27-hardcoded-urls-ports.md`
+File: `_audit/latest/findings/27-hardcoded-urls-ports.md`
 
 ```text
 Grep files in the provided scope for hardcoded URLs, ports, hostnames, IP
@@ -528,7 +534,7 @@ documentation. Severity: medium.
 ```
 
 **Agent 28 -- hardcoded-timeouts-limits** (sonnet)
-File: `_audit/findings/28-hardcoded-timeouts-limits.md`
+File: `_audit/latest/findings/28-hardcoded-timeouts-limits.md`
 
 ```text
 Grep src/synthorg/ for hardcoded timeout values (seconds/ms), retry counts,
@@ -537,7 +543,7 @@ literals in asyncio.wait_for, sleep, timeout parameters. Severity: low.
 ```
 
 **Agent 29 -- hardcoded-magic-numbers** (sonnet)
-File: `_audit/findings/29-hardcoded-magic-numbers.md`
+File: `_audit/latest/findings/29-hardcoded-magic-numbers.md`
 
 ```text
 Find magic numbers in business logic: bare numeric literals (not 0, 1, -1)
@@ -547,7 +553,7 @@ and config defaults. Severity: low.
 ```
 
 **Agent 30 -- missing-settings-bridge** (sonnet)
-File: `_audit/findings/30-missing-settings-bridge.md`
+File: `_audit/latest/findings/30-missing-settings-bridge.md`
 
 ```text
 Cross-reference hardcoded values in src/synthorg/ with settings definitions in
@@ -559,7 +565,7 @@ and settings defined but never consumed by any code. Severity: medium.
 ### Wave 7: Code Quality & Conventions (4 agents)
 
 **Agent 31 -- model-convention-violations** (sonnet)
-File: `_audit/findings/31-model-convention-violations.md`
+File: `_audit/latest/findings/31-model-convention-violations.md`
 
 ```text
 Check Pydantic models in src/synthorg/ for convention violations:
@@ -572,7 +578,7 @@ Severity: medium.
 ```
 
 **Agent 32 -- missing-immutability** (sonnet)
-File: `_audit/findings/32-missing-immutability.md`
+File: `_audit/latest/findings/32-missing-immutability.md`
 
 ```text
 Find violations of immutability conventions:
@@ -585,7 +591,7 @@ Severity: medium.
 ```
 
 **Agent 33 -- async-antipatterns** (sonnet)
-File: `_audit/findings/33-async-antipatterns.md`
+File: `_audit/latest/findings/33-async-antipatterns.md`
 
 ```text
 Find async antipatterns in src/synthorg/:
@@ -599,7 +605,7 @@ Severity: high for missing await, medium for others.
 ```
 
 **Agent 34 -- error-handling-consistency** (sonnet)
-File: `_audit/findings/34-error-handling-consistency.md`
+File: `_audit/latest/findings/34-error-handling-consistency.md`
 
 ```text
 Check error handling conventions:
@@ -614,7 +620,7 @@ Severity: medium.
 ### Wave 8: Frontend Quality (4 agents)
 
 **Agent 35 -- missing-accessibility** (sonnet)
-File: `_audit/findings/35-missing-accessibility.md`
+File: `_audit/latest/findings/35-missing-accessibility.md`
 
 ```text
 Check web/src/components/ and web/src/pages/ for accessibility issues:
@@ -625,7 +631,7 @@ navigation, images without alt text. Severity: medium.
 ```
 
 **Agent 36 -- missing-loading-states** (sonnet)
-File: `_audit/findings/36-missing-loading-states.md`
+File: `_audit/latest/findings/36-missing-loading-states.md`
 
 ```text
 Check pages/components that fetch data (useQuery, useEffect with fetch) for
@@ -635,7 +641,7 @@ and missing error boundaries around async content. Severity: medium.
 ```
 
 **Agent 37 -- hardcoded-frontend-strings** (sonnet)
-File: `_audit/findings/37-hardcoded-frontend-strings.md`
+File: `_audit/latest/findings/37-hardcoded-frontend-strings.md`
 
 ```text
 Find user-facing strings hardcoded directly in TSX files. Look for text
@@ -645,7 +651,7 @@ Skip component prop names and technical strings. Severity: info.
 ```
 
 **Agent 38 -- missing-error-handling-fe** (sonnet)
-File: `_audit/findings/38-missing-error-handling-fe.md`
+File: `_audit/latest/findings/38-missing-error-handling-fe.md`
 
 ```text
 Check web/src/ for API calls without error handling: missing .catch() or
@@ -657,7 +663,7 @@ rollback on error, console.error without user feedback. Severity: medium.
 ### Wave 9: Logic & Architecture (4 agents)
 
 **Agent 39 -- race-conditions** (sonnet)
-File: `_audit/findings/39-race-conditions.md`
+File: `_audit/latest/findings/39-race-conditions.md`
 
 ```text
 Find potential race conditions: shared mutable state without locks/mutexes,
@@ -667,7 +673,7 @@ modification, DB read-modify-write without transactions. Severity: high.
 ```
 
 **Agent 40 -- resource-leaks** (sonnet)
-File: `_audit/findings/40-resource-leaks.md`
+File: `_audit/latest/findings/40-resource-leaks.md`
 
 ```text
 Find unclosed resources: HTTP clients/sessions not using async with,
@@ -677,7 +683,7 @@ aiohttp sessions created but not closed. Severity: high.
 ```
 
 **Agent 41 -- circular-dependencies** (sonnet)
-File: `_audit/findings/41-circular-dependencies.md`
+File: `_audit/latest/findings/41-circular-dependencies.md`
 
 ```text
 Find import cycles between src/synthorg/ packages. Check for circular
@@ -687,7 +693,7 @@ Also check for TYPE_CHECKING guards that hide real circular deps. Severity: medi
 ```
 
 **Agent 42 -- design-spec-drift** (opus)
-File: `_audit/findings/42-design-spec-drift.md`
+File: `_audit/latest/findings/42-design-spec-drift.md`
 
 ```text
 Compare implementation in src/synthorg/ with docs/design/ specs. Find
@@ -699,7 +705,7 @@ documented rationale. Focus on major architectural decisions. Severity: medium.
 ### Wave 10: Go CLI (2 agents)
 
 **Agent 43 -- go-hardcoded-values** (haiku)
-File: `_audit/findings/43-go-hardcoded-values.md`
+File: `_audit/latest/findings/43-go-hardcoded-values.md`
 
 ```text
 Grep cli/ for hardcoded Docker image tags, ports, paths, timeouts that should
@@ -708,7 +714,7 @@ be configurable via flags or config. Severity: low.
 ```
 
 **Agent 44 -- go-cli-wiring** (sonnet)
-File: `_audit/findings/44-go-cli-wiring.md`
+File: `_audit/latest/findings/44-go-cli-wiring.md`
 
 ```text
 Check cobra command registration in cli/cmd/. Find commands registered but
@@ -720,7 +726,7 @@ Severity: medium.
 ### Wave 11: Dashboard Completeness (3 agents)
 
 **Agent 45 -- dashboard-api-coverage** (sonnet)
-File: `_audit/findings/45-dashboard-api-coverage.md`
+File: `_audit/latest/findings/45-dashboard-api-coverage.md`
 
 ```text
 Cross-reference every backend API endpoint (from all controllers in
@@ -732,7 +738,7 @@ the backend but have no corresponding UI surface. Severity: medium.
 ```
 
 **Agent 46 -- dashboard-settings-completeness** (sonnet)
-File: `_audit/findings/46-dashboard-settings-completeness.md`
+File: `_audit/latest/findings/46-dashboard-settings-completeness.md`
 
 ```text
 Cross-reference every setting definition in src/synthorg/settings/definitions/ with the
@@ -744,7 +750,7 @@ Report settings that exist but are not exposed. Severity: medium.
 ```
 
 **Agent 47 -- dashboard-ux-improvements** (sonnet)
-File: `_audit/findings/47-dashboard-ux-improvements.md`
+File: `_audit/latest/findings/47-dashboard-ux-improvements.md`
 
 ```text
 Review the web dashboard pages for UX improvement opportunities. Look for:
@@ -765,7 +771,7 @@ core UX patterns, low for polish.
 ### Wave 12: Documentation Quality (4 agents)
 
 **Agent 48 -- docs-accuracy** (sonnet)
-File: `_audit/findings/48-docs-accuracy.md`
+File: `_audit/latest/findings/48-docs-accuracy.md`
 
 ```text
 Check docs/ pages for factual accuracy. Read key documentation pages
@@ -781,7 +787,7 @@ Severity: medium for misleading docs, low for minor inaccuracies.
 ```
 
 **Agent 49 -- docs-completeness** (sonnet)
-File: `_audit/findings/49-docs-completeness.md`
+File: `_audit/latest/findings/49-docs-completeness.md`
 
 ```text
 Check for documentation gaps. Look for:
@@ -797,7 +803,7 @@ Severity: medium for missing feature docs, low for missing examples.
 ```
 
 **Agent 50 -- readme-website-accuracy** (sonnet)
-File: `_audit/findings/50-readme-website-accuracy.md`
+File: `_audit/latest/findings/50-readme-website-accuracy.md`
 
 ```text
 Check README.md and any public-facing content (landing page content in
@@ -813,7 +819,7 @@ Severity: medium for public-facing inaccuracies.
 ```
 
 **Agent 51 -- docs-diagram-quality** (sonnet)
-File: `_audit/findings/51-docs-diagram-quality.md`
+File: `_audit/latest/findings/51-docs-diagram-quality.md`
 
 ```text
 Check all D2 and Mermaid diagrams in docs/ for:
@@ -830,7 +836,7 @@ Severity: low.
 ### Wave 13: UX & Content Quality (8 agents)
 
 **Agent 52 -- ux-consistency** (sonnet)
-File: `_audit/findings/52-ux-consistency.md`
+File: `_audit/latest/findings/52-ux-consistency.md`
 
 ```text
 Check dashboard pages for visual and interaction consistency:
@@ -846,7 +852,7 @@ Severity: medium for jarring inconsistencies, low for minor.
 ```
 
 **Agent 53 -- ux-responsiveness** (sonnet)
-File: `_audit/findings/53-ux-responsiveness.md`
+File: `_audit/latest/findings/53-ux-responsiveness.md`
 
 ```text
 Check dashboard for responsive design issues. The dashboard shows a
@@ -861,7 +867,7 @@ Severity: medium.
 ```
 
 **Agent 54 -- ux-performance-patterns** (sonnet)
-File: `_audit/findings/54-ux-performance-patterns.md`
+File: `_audit/latest/findings/54-ux-performance-patterns.md`
 
 ```text
 Check dashboard for performance antipatterns:
@@ -877,7 +883,7 @@ Severity: medium.
 ```
 
 **Agent 55 -- api-docs-openapi** (sonnet)
-File: `_audit/findings/55-api-docs-openapi.md`
+File: `_audit/latest/findings/55-api-docs-openapi.md`
 
 ```text
 Check the OpenAPI/Scalar API documentation for completeness:
@@ -892,7 +898,7 @@ Severity: low.
 ```
 
 **Agent 56 -- cli-docs-help** (haiku)
-File: `_audit/findings/56-cli-docs-help.md`
+File: `_audit/latest/findings/56-cli-docs-help.md`
 
 ```text
 Check Go CLI commands for documentation completeness:
@@ -906,7 +912,7 @@ Check cli/cmd/*.go for cobra.Command fields. Severity: low.
 ```
 
 **Agent 57 -- storybook-coverage** (sonnet)
-File: `_audit/findings/57-storybook-coverage.md`
+File: `_audit/latest/findings/57-storybook-coverage.md`
 
 ```text
 Check web/src/components/ui/ for Storybook story coverage. Every shared
@@ -920,7 +926,7 @@ zero coverage.
 ```
 
 **Agent 58 -- error-messages-ux** (sonnet)
-File: `_audit/findings/58-error-messages-ux.md`
+File: `_audit/latest/findings/58-error-messages-ux.md`
 
 ```text
 Check error messages shown to users (toast notifications, error states,
@@ -937,7 +943,7 @@ Severity: medium for unhelpful errors, low for tone inconsistencies.
 ```
 
 **Agent 59 -- onboarding-flow** (sonnet)
-File: `_audit/findings/59-onboarding-flow.md`
+File: `_audit/latest/findings/59-onboarding-flow.md`
 
 ```text
 Check the setup wizard and first-run experience:
@@ -955,7 +961,7 @@ Severity: medium.
 ### Wave 14: Abstraction Boundaries & Backend Parity (13 agents)
 
 **Agent 60 -- dual-backend-protocol-parity** (sonnet)
-File: `_audit/findings/60-dual-backend-protocol-parity.md`
+File: `_audit/latest/findings/60-dual-backend-protocol-parity.md`
 
 ```text
 Every repository Protocol in src/synthorg/persistence/*_protocol.py must have
@@ -973,7 +979,7 @@ Severity: high for missing impl, medium for signature drift.
 ```
 
 **Agent 61 -- migration-parity** (sonnet)
-File: `_audit/findings/61-migration-parity.md`
+File: `_audit/latest/findings/61-migration-parity.md`
 
 ```text
 Migrations in src/synthorg/persistence/sqlite/revisions/ and
@@ -992,7 +998,7 @@ Severity: high.
 ```
 
 **Agent 62 -- dual-backend-test-parity** (sonnet)
-File: `_audit/findings/62-dual-backend-test-parity.md`
+File: `_audit/latest/findings/62-dual-backend-test-parity.md`
 
 ```text
 Every repository implementation in src/synthorg/persistence/sqlite/ and
@@ -1009,7 +1015,7 @@ Severity: medium.
 ```
 
 **Agent 63 -- persistence-boundary-deep** (sonnet)
-File: `_audit/findings/63-persistence-boundary-deep.md`
+File: `_audit/latest/findings/63-persistence-boundary-deep.md`
 
 ```text
 scripts/check_persistence_boundary.py (PreToolUse hook) catches import-level
@@ -1028,7 +1034,7 @@ Severity: high.
 ```
 
 **Agent 64 -- provider-boundary-leaks** (sonnet)
-File: `_audit/findings/64-provider-boundary-leaks.md`
+File: `_audit/latest/findings/64-provider-boundary-leaks.md`
 
 ```text
 All LLM calls must go through BaseCompletionProvider in src/synthorg/providers/.
@@ -1043,7 +1049,7 @@ Severity: high.
 ```
 
 **Agent 65 -- memory-boundary-leaks** (sonnet)
-File: `_audit/findings/65-memory-boundary-leaks.md`
+File: `_audit/latest/findings/65-memory-boundary-leaks.md`
 
 ```text
 All memory/recall operations must go through src/synthorg/memory/.
@@ -1059,7 +1065,7 @@ Severity: medium.
 ```
 
 **Agent 66 -- queue-boundary-leaks** (sonnet)
-File: `_audit/findings/66-queue-boundary-leaks.md`
+File: `_audit/latest/findings/66-queue-boundary-leaks.md`
 
 ```text
 Inter-component messaging must go through the project's event bus / message
@@ -1076,7 +1082,7 @@ Severity: medium.
 ```
 
 **Agent 67 -- process-spawn-leaks** (sonnet)
-File: `_audit/findings/67-process-spawn-leaks.md`
+File: `_audit/latest/findings/67-process-spawn-leaks.md`
 
 ```text
 Process spawning and container orchestration must go through the sandbox /
@@ -1093,7 +1099,7 @@ Severity: high for arbitrary code paths, medium for admin tools.
 ```
 
 **Agent 68 -- state-mutation-leaks** (sonnet)
-File: `_audit/findings/68-state-mutation-leaks.md`
+File: `_audit/latest/findings/68-state-mutation-leaks.md`
 
 ```text
 API controllers should delegate to service-layer methods, not reach into
@@ -1109,7 +1115,7 @@ Severity: medium.
 ```
 
 **Agent 69 -- hardcoded-backend-selection** (sonnet)
-File: `_audit/findings/69-hardcoded-backend-selection.md`
+File: `_audit/latest/findings/69-hardcoded-backend-selection.md`
 
 ```text
 Backend choices must be driven by config factories, not hardcoded in business
@@ -1124,7 +1130,7 @@ Severity: medium.
 ```
 
 **Agent 70 -- pluggable-impl-coverage** (opus)
-File: `_audit/findings/70-pluggable-impl-coverage.md`
+File: `_audit/latest/findings/70-pluggable-impl-coverage.md`
 
 ```text
 Per CLAUDE.md, every pluggable subsystem uses Protocol + concrete strategies +
@@ -1146,7 +1152,7 @@ Severity: medium.
 ```
 
 **Agent 71 -- abstraction-swap-readiness** (opus)
-File: `_audit/findings/71-abstraction-swap-readiness.md`
+File: `_audit/latest/findings/71-abstraction-swap-readiness.md`
 
 ```text
 Adding a new backend should require zero changes outside the owning module.
@@ -1162,7 +1168,7 @@ Severity: medium.
 ```
 
 **Agent 72 -- dependency-inversion-violations** (opus)
-File: `_audit/findings/72-dependency-inversion-violations.md`
+File: `_audit/latest/findings/72-dependency-inversion-violations.md`
 
 ```text
 High-level modules (engine, api, communication) should depend on Protocol
@@ -1179,7 +1185,7 @@ Severity: low.
 ### Wave 15: Documentation Truth & Freshness (9 agents)
 
 **Agent 73 -- roadmap-currency** (sonnet)
-File: `_audit/findings/73-roadmap-currency.md`
+File: `_audit/latest/findings/73-roadmap-currency.md`
 
 ```text
 Read `roadmap.md`, all files matching `docs/*roadmap*`, `docs/future-vision*`,
@@ -1214,7 +1220,7 @@ Findings without evidence are inadmissible.
 ```
 
 **Agent 74 -- comparison-page-accuracy** (sonnet)
-File: `_audit/findings/74-comparison-page-accuracy.md`
+File: `_audit/latest/findings/74-comparison-page-accuracy.md`
 
 ```text
 Read docs/comparison*.md and scripts/generate_comparison.py. For every feature
@@ -1231,7 +1237,7 @@ Severity: medium for inaccurate self-claims, low for competitor drift.
 ```
 
 **Agent 75 -- landing-page-metrics** (sonnet)
-File: `_audit/findings/75-landing-page-metrics.md`
+File: `_audit/latest/findings/75-landing-page-metrics.md`
 
 ```text
 Walk every page in `mkdocs.yml` nav (not just landing-style pages). For
@@ -1266,7 +1272,7 @@ low-priority finding.
 ```
 
 **Agent 76 -- superseded-decisions** (sonnet)
-File: `_audit/findings/76-superseded-decisions.md`
+File: `_audit/latest/findings/76-superseded-decisions.md`
 
 ```text
 Read docs/decisions*.md, ADR files, and docs/design/ pages. For each accepted
@@ -1282,7 +1288,7 @@ Severity: medium.
 ```
 
 **Agent 77 -- config-reference-drift** (sonnet)
-File: `_audit/findings/77-config-reference-drift.md`
+File: `_audit/latest/findings/77-config-reference-drift.md`
 
 ```text
 Compare docs/reference/*.md env var / settings reference against
@@ -1298,7 +1304,7 @@ Severity: medium.
 ```
 
 **Agent 78 -- cli-reference-drift** (sonnet)
-File: `_audit/findings/78-cli-reference-drift.md`
+File: `_audit/latest/findings/78-cli-reference-drift.md`
 
 ```text
 Compare CLI reference pages in docs/reference/ (and cli/CLAUDE.md command
@@ -1313,7 +1319,7 @@ Severity: medium.
 ```
 
 **Agent 79 -- api-reference-drift** (sonnet)
-File: `_audit/findings/79-api-reference-drift.md`
+File: `_audit/latest/findings/79-api-reference-drift.md`
 
 ```text
 Compare API reference pages (docs/reference/api*.md, if present) against
@@ -1328,7 +1334,7 @@ Severity: medium.
 ```
 
 **Agent 80 -- example-config-validity** (sonnet)
-File: `_audit/findings/80-example-config-validity.md`
+File: `_audit/latest/findings/80-example-config-validity.md`
 
 ```text
 For every fenced code block in docs/ tagged yaml / toml / json / env / dotenv
@@ -1345,7 +1351,7 @@ Severity: medium.
 ```
 
 **Agent 81 -- design-spec-contradictions** (opus)
-File: `_audit/findings/81-design-spec-contradictions.md`
+File: `_audit/latest/findings/81-design-spec-contradictions.md`
 
 ```text
 Cross-reference pages in docs/design/. Find internal contradictions.
@@ -1362,7 +1368,7 @@ Severity: medium.
 ### Wave 16: Docs Scope & Rot (5 agents)
 
 **Agent 82 -- docs-scope-creep** (sonnet)
-File: `_audit/findings/82-docs-scope-creep.md`
+File: `_audit/latest/findings/82-docs-scope-creep.md`
 
 ```text
 Read each docs/ page and assess whether it has grown beyond its stated purpose.
@@ -1377,7 +1383,7 @@ Severity: low.
 ```
 
 **Agent 83 -- stale-code-examples** (sonnet)
-File: `_audit/findings/83-stale-code-examples.md`
+File: `_audit/latest/findings/83-stale-code-examples.md`
 
 ```text
 For every fenced code block in docs/ tagged python / typescript / javascript /
@@ -1394,7 +1400,7 @@ Severity: medium.
 ```
 
 **Agent 84 -- removed-features-still-mentioned** (sonnet)
-File: `_audit/findings/84-removed-features-still-mentioned.md`
+File: `_audit/latest/findings/84-removed-features-still-mentioned.md`
 
 ```text
 Read docs/ narrative prose for feature / module / concept names. For each
@@ -1409,7 +1415,7 @@ Severity: medium.
 ```
 
 **Agent 85 -- docs-seo-freshness** (haiku)
-File: `_audit/findings/85-docs-seo-freshness.md`
+File: `_audit/latest/findings/85-docs-seo-freshness.md`
 
 ```text
 Check page titles, meta descriptions (front matter), and opening paragraphs
@@ -1422,7 +1428,7 @@ Severity: low.
 ```
 
 **Agent 86 -- issue-pr-link-rot** (haiku)
-File: `_audit/findings/86-issue-pr-link-rot.md`
+File: `_audit/latest/findings/86-issue-pr-link-rot.md`
 
 ```text
 Grep docs/ for `#NNN` references to GitHub issues / PRs. For each, verify via
@@ -1439,7 +1445,7 @@ Severity: low.
 ### Wave 17: Security Deep-Dive (6 agents)
 
 **Agent 87 -- http-security-headers** (sonnet)
-File: `_audit/findings/87-http-security-headers.md`
+File: `_audit/latest/findings/87-http-security-headers.md`
 
 ```text
 Check HTTP responses for missing security headers: Content-Security-Policy,
@@ -1452,7 +1458,7 @@ Severity: medium.
 ```
 
 **Agent 88 -- cookie-auth-security** (sonnet)
-File: `_audit/findings/88-cookie-auth-security.md`
+File: `_audit/latest/findings/88-cookie-auth-security.md`
 
 ```text
 Audit authentication and cookie hygiene:
@@ -1465,7 +1471,7 @@ Severity: high.
 ```
 
 **Agent 89 -- crypto-hygiene** (sonnet)
-File: `_audit/findings/89-crypto-hygiene.md`
+File: `_audit/latest/findings/89-crypto-hygiene.md`
 
 ```text
 Find cryptographic anti-patterns:
@@ -1478,7 +1484,7 @@ Severity: high.
 ```
 
 **Agent 90 -- secrets-in-logs** (sonnet)
-File: `_audit/findings/90-secrets-in-logs.md`
+File: `_audit/latest/findings/90-secrets-in-logs.md`
 
 ```text
 Check the telemetry privacy allowlist in `src/synthorg/telemetry/privacy.py`
@@ -1492,7 +1498,7 @@ Severity: high.
 ```
 
 **Agent 91 -- path-traversal-ssrf-xxe-redos** (sonnet)
-File: `_audit/findings/91-path-traversal-ssrf-xxe-redos.md`
+File: `_audit/latest/findings/91-path-traversal-ssrf-xxe-redos.md`
 
 ```text
 Find injection-class vulnerabilities:
@@ -1505,7 +1511,7 @@ Severity: high.
 ```
 
 **Agent 92 -- prompt-injection-defenses** (opus)
-File: `_audit/findings/92-prompt-injection-defenses.md`
+File: `_audit/latest/findings/92-prompt-injection-defenses.md`
 
 ```text
 Audit LLM prompt handling:
@@ -1521,7 +1527,7 @@ Severity: high.
 ### Wave 18: Performance & Resource Efficiency (5 agents)
 
 **Agent 93 -- n-plus-one-queries** (sonnet)
-File: `_audit/findings/93-n-plus-one-queries.md`
+File: `_audit/latest/findings/93-n-plus-one-queries.md`
 
 ```text
 Find N+1 query patterns in persistence and service layers: loops that call
@@ -1532,7 +1538,7 @@ Severity: high.
 ```
 
 **Agent 94 -- missing-indices** (sonnet)
-File: `_audit/findings/94-missing-indices.md`
+File: `_audit/latest/findings/94-missing-indices.md`
 
 ```text
 Cross-reference WHERE / JOIN / ORDER BY columns in persistence queries with
@@ -1543,7 +1549,7 @@ Severity: medium.
 ```
 
 **Agent 95 -- missing-pagination** (sonnet)
-File: `_audit/findings/95-missing-pagination.md`
+File: `_audit/latest/findings/95-missing-pagination.md`
 
 ```text
 Find API endpoints and repository methods that return unbounded lists.
@@ -1553,7 +1559,7 @@ Severity: medium.
 ```
 
 **Agent 96 -- blocking-io-hot-paths** (sonnet)
-File: `_audit/findings/96-blocking-io-hot-paths.md`
+File: `_audit/latest/findings/96-blocking-io-hot-paths.md`
 
 ```text
 Find blocking I/O inside async hot paths:
@@ -1566,7 +1572,7 @@ Severity: high.
 ```
 
 **Agent 97 -- memory-leak-patterns** (sonnet)
-File: `_audit/findings/97-memory-leak-patterns.md`
+File: `_audit/latest/findings/97-memory-leak-patterns.md`
 
 ```text
 Find leak patterns:
@@ -1585,7 +1591,7 @@ Severity: high.
 **Agent 98 -- tests-without-assertions** [RETIRED 2026-04-20 -- moved to retirement table below; regex-based detection produced ~93% false positives against Python test patterns (helper-function assertions, pytest guards that raise, Pydantic model construction). Keep the slot reserved to preserve numbering.]
 
 **Agent 99 -- tests-with-sleeps** (haiku)
-File: `_audit/findings/99-tests-with-sleeps.md`
+File: `_audit/latest/findings/99-tests-with-sleeps.md`
 
 ```text
 Grep tests/ and web/src/__tests__/ for hardcoded sleeps / setTimeout /
@@ -1596,7 +1602,7 @@ Severity: medium.
 ```
 
 **Agent 100 -- mock-drift** (sonnet)
-File: `_audit/findings/100-mock-drift.md`
+File: `_audit/latest/findings/100-mock-drift.md`
 
 ```text
 Compare mock shapes (MagicMock, unittest.mock patches, vi.mock) against the
@@ -1607,7 +1613,7 @@ Severity: medium.
 ```
 
 **Agent 101 -- e2e-critical-flow-gaps** (sonnet)
-File: `_audit/findings/101-e2e-critical-flow-gaps.md`
+File: `_audit/latest/findings/101-e2e-critical-flow-gaps.md`
 
 ```text
 Identify critical user flows (setup wizard, agent creation, workflow run,
@@ -1620,7 +1626,7 @@ Severity: medium.
 ### Wave 20: Operational & Data Readiness (5 agents)
 
 **Agent 102 -- graceful-shutdown** (sonnet)
-File: `_audit/findings/102-graceful-shutdown.md`
+File: `_audit/latest/findings/102-graceful-shutdown.md`
 
 ```text
 Check shutdown path:
@@ -1634,7 +1640,7 @@ Severity: high.
 ```
 
 **Agent 103 -- data-retention-gdpr** (sonnet)
-File: `_audit/findings/103-data-retention-gdpr.md`
+File: `_audit/latest/findings/103-data-retention-gdpr.md`
 
 ```text
 Find PII/user-data fields in Pydantic models and persistence schemas and
@@ -1647,7 +1653,7 @@ Severity: medium.
 ```
 
 **Agent 104 -- monitoring-dashboards** (sonnet)
-File: `_audit/findings/104-monitoring-dashboards.md`
+File: `_audit/latest/findings/104-monitoring-dashboards.md`
 
 ```text
 Check Prometheus metrics emitted by the code against documented Grafana /
@@ -1658,7 +1664,7 @@ Severity: medium.
 ```
 
 **Agent 105 -- prompt-eval-coverage** (sonnet)
-File: `_audit/findings/105-prompt-eval-coverage.md`
+File: `_audit/latest/findings/105-prompt-eval-coverage.md`
 
 ```text
 List LLM prompts in src/synthorg/ (agents, tools, quality graders, etc.) and
@@ -1671,7 +1677,7 @@ Severity: medium.
 ```
 
 **Agent 106 -- health-readiness-probes** (sonnet)
-File: `_audit/findings/106-health-readiness-probes.md`
+File: `_audit/latest/findings/106-health-readiness-probes.md`
 
 ```text
 Verify the API exposes `/healthz` (liveness) and `/readyz` (readiness) with
@@ -1684,7 +1690,7 @@ Severity: medium.
 ### Wave 21: Developer Experience & Reproducibility (2 agents)
 
 **Agent 107 -- slow-precommit-hooks** (haiku)
-File: `_audit/findings/107-slow-precommit-hooks.md`
+File: `_audit/latest/findings/107-slow-precommit-hooks.md`
 
 ```text
 Profile `.pre-commit-config.yaml` hooks by measuring runtime. Flag hooks
@@ -1695,7 +1701,7 @@ Severity: low.
 ```
 
 **Agent 108 -- claude-md-reproducibility** (sonnet)
-File: `_audit/findings/108-claude-md-reproducibility.md`
+File: `_audit/latest/findings/108-claude-md-reproducibility.md`
 
 ```text
 For every fenced command in CLAUDE.md, web/CLAUDE.md, cli/CLAUDE.md, and
@@ -1708,7 +1714,7 @@ Severity: medium.
 ### Wave 22: Code Quality & Duplication (6 agents)
 
 **Agent 109 -- typescript-strictness** (sonnet)
-File: `_audit/findings/109-typescript-strictness.md`
+File: `_audit/latest/findings/109-typescript-strictness.md`
 
 ```text
 In web/src/, count and flag: `any` type usage, `@ts-ignore` / `@ts-expect-error`
@@ -1719,7 +1725,7 @@ Severity: medium.
 ```
 
 **Agent 110 -- duplicate-business-logic** (sonnet)
-File: `_audit/findings/110-duplicate-business-logic.md`
+File: `_audit/latest/findings/110-duplicate-business-logic.md`
 
 ```text
 Find blocks of business logic duplicated across 2+ modules. Focus on
@@ -1729,7 +1735,7 @@ Severity: medium.
 ```
 
 **Agent 111 -- duplicate-types** (sonnet)
-File: `_audit/findings/111-duplicate-types.md`
+File: `_audit/latest/findings/111-duplicate-types.md`
 
 ```text
 Find types defined on both backend (Pydantic models / dataclasses) and
@@ -1741,7 +1747,7 @@ Severity: medium.
 ```
 
 **Agent 112 -- duplicate-error-codes** (sonnet)
-File: `_audit/findings/112-duplicate-error-codes.md`
+File: `_audit/latest/findings/112-duplicate-error-codes.md`
 
 ```text
 Cross-reference custom exception names, RFC 9457 error `type` fields, and
@@ -1752,7 +1758,7 @@ Severity: medium.
 ```
 
 **Agent 113 -- feature-flag-coverage** (sonnet)
-File: `_audit/findings/113-feature-flag-coverage.md`
+File: `_audit/latest/findings/113-feature-flag-coverage.md`
 
 ```text
 Find feature flags / settings that gate risky behavior. Flag:
@@ -1764,7 +1770,7 @@ Severity: medium.
 ```
 
 **Agent 114 -- default-config-sanity** (sonnet)
-File: `_audit/findings/114-default-config-sanity.md`
+File: `_audit/latest/findings/114-default-config-sanity.md`
 
 ```text
 Review default values across `src/synthorg/config/` and
@@ -1777,7 +1783,7 @@ Severity: medium.
 ### Wave 23: CI & Supply Chain (5 agents)
 
 **Agent 115 -- workflow-permissions** (sonnet)
-File: `_audit/findings/115-workflow-permissions.md`
+File: `_audit/latest/findings/115-workflow-permissions.md`
 
 ```text
 Audit `.github/workflows/*.yml` for:
@@ -1789,7 +1795,7 @@ Severity: high.
 ```
 
 **Agent 116 -- ci-flakiness** (sonnet)
-File: `_audit/findings/116-ci-flakiness.md`
+File: `_audit/latest/findings/116-ci-flakiness.md`
 
 ```text
 Analyze recent CI run history (via `gh run list`) for patterns:
@@ -1801,7 +1807,7 @@ Severity: medium.
 ```
 
 **Agent 117 -- unused-deps** (sonnet)
-File: `_audit/findings/117-unused-deps.md`
+File: `_audit/latest/findings/117-unused-deps.md`
 
 ```text
 Cross-reference dependencies declared in `pyproject.toml`, `web/package.json`,
@@ -1812,7 +1818,7 @@ Severity: medium.
 ```
 
 **Agent 118 -- duplicate-deps** (sonnet)
-File: `_audit/findings/118-duplicate-deps.md`
+File: `_audit/latest/findings/118-duplicate-deps.md`
 
 ```text
 Find redundant libraries doing the same job (e.g. lodash + ramda, axios +
@@ -1822,7 +1828,7 @@ Severity: low.
 ```
 
 **Agent 119 -- license-compat** (sonnet)
-File: `_audit/findings/119-license-compat.md`
+File: `_audit/latest/findings/119-license-compat.md`
 
 ```text
 Check dependency licenses against project BUSL-1.1 license. Flag deps with
@@ -1835,7 +1841,7 @@ Severity: high.
 ### Wave 24: Client Robustness (2 agents)
 
 **Agent 120 -- rate-limit-client** (sonnet)
-File: `_audit/findings/120-rate-limit-client.md`
+File: `_audit/latest/findings/120-rate-limit-client.md`
 
 ```text
 Audit client-side handling of HTTP 429 responses:
@@ -1847,7 +1853,7 @@ Severity: medium.
 ```
 
 **Agent 121 -- ws-sse-robustness** (sonnet)
-File: `_audit/findings/121-ws-sse-robustness.md`
+File: `_audit/latest/findings/121-ws-sse-robustness.md`
 
 ```text
 Check WebSocket and Server-Sent Events implementations:
@@ -1863,7 +1869,7 @@ Severity: medium.
 ### Wave 25: Git History & Drift (2 agents)
 
 **Agent 122 -- git-history-secrets-and-bloat** (sonnet)
-File: `_audit/findings/122-git-history-secrets-and-bloat.md`
+File: `_audit/latest/findings/122-git-history-secrets-and-bloat.md`
 
 ```text
 Two narrow checks on full git history (not just current tree):
@@ -1878,7 +1884,7 @@ Severity: critical for secrets, medium for bloat.
 ```
 
 **Agent 123 -- temporal-drift-wording** (sonnet)
-File: `_audit/findings/123-temporal-drift-wording.md`
+File: `_audit/latest/findings/123-temporal-drift-wording.md`
 
 ```text
 Scan docs/, CLAUDE.md, web/CLAUDE.md, cli/CLAUDE.md, README.md, and
@@ -1901,7 +1907,7 @@ Severity: low for stylistic drift, medium for misleading claims.
 ### Wave 26: SynthOrg-Specific Invariants (7 agents)
 
 **Agent 124 -- mcp-handler-contract** (sonnet)
-File: `_audit/findings/124-mcp-handler-contract.md`
+File: `_audit/latest/findings/124-mcp-handler-contract.md`
 
 ```text
 Audit src/synthorg/meta/mcp/handlers/ against the contract documented in
@@ -1924,7 +1930,7 @@ Severity: high.
 ```
 
 **Agent 125 -- sec1-prompt-safety-call-sites** (sonnet)
-File: `_audit/findings/125-sec1-prompt-safety-call-sites.md`
+File: `_audit/latest/findings/125-sec1-prompt-safety-call-sites.md`
 
 ```text
 Audit the SEC-1 untrusted-content fence inventory documented in
@@ -1944,7 +1950,7 @@ Severity: critical for missing wrap_untrusted, high for missing directive.
 ```
 
 **Agent 126 -- currency-aggregation-invariant** (sonnet)
-File: `_audit/findings/126-currency-aggregation-invariant.md`
+File: `_audit/latest/findings/126-currency-aggregation-invariant.md`
 
 ```text
 Every aggregation site over cost-bearing models (CostRecord,
@@ -1965,7 +1971,7 @@ Severity: high.
 ```
 
 **Agent 127 -- lifecycle-lock-pattern** (sonnet)
-File: `_audit/findings/127-lifecycle-lock-pattern.md`
+File: `_audit/latest/findings/127-lifecycle-lock-pattern.md`
 
 ```text
 Per docs/reference/lifecycle-sync.md, every service with async start() and
@@ -1987,7 +1993,7 @@ Severity: high.
 ```
 
 **Agent 128 -- cost-tracking-coverage** (sonnet)
-File: `_audit/findings/128-cost-tracking-coverage.md`
+File: `_audit/latest/findings/128-cost-tracking-coverage.md`
 
 ```text
 Every LLM completion must produce a CostRecord. Trace every code path that
@@ -2009,7 +2015,7 @@ Severity: high.
 ```
 
 **Agent 129 -- audit-chain-coverage** (sonnet)
-File: `_audit/findings/129-audit-chain-coverage.md`
+File: `_audit/latest/findings/129-audit-chain-coverage.md`
 
 ```text
 Security-sensitive operations must emit to synthorg.observability.audit_chain.
@@ -2032,7 +2038,7 @@ Severity: high.
 ```
 
 **Agent 130 -- pre-alpha-rename-completeness** (sonnet)
-File: `_audit/findings/130-pre-alpha-rename-completeness.md`
+File: `_audit/latest/findings/130-pre-alpha-rename-completeness.md`
 
 ```text
 Per the project's pre-alpha rule, when a symbol is renamed every caller
@@ -2059,7 +2065,7 @@ Severity: medium.
 ### Wave 27: Generic Correctness Gaps (5 agents)
 
 **Agent 131 -- websocket-sse-auth** (sonnet)
-File: `_audit/findings/131-websocket-sse-auth.md`
+File: `_audit/latest/findings/131-websocket-sse-auth.md`
 
 ```text
 Agent 121 covers WebSocket / SSE robustness (reconnection, heartbeat,
@@ -2084,7 +2090,7 @@ Severity: high.
 ```
 
 **Agent 132 -- prometheus-label-cardinality** (sonnet)
-File: `_audit/findings/132-prometheus-label-cardinality.md`
+File: `_audit/latest/findings/132-prometheus-label-cardinality.md`
 
 ```text
 Audit Prometheus metric definitions in
@@ -2114,7 +2120,7 @@ high-cardinality.
 ```
 
 **Agent 133 -- idempotency-retry-safety** (sonnet)
-File: `_audit/findings/133-idempotency-retry-safety.md`
+File: `_audit/latest/findings/133-idempotency-retry-safety.md`
 
 ```text
 Workers and message handlers must be idempotent because retries can deliver
@@ -2140,7 +2146,7 @@ Severity: high.
 ```
 
 **Agent 134 -- time-clock-injection** (haiku)
-File: `_audit/findings/134-time-clock-injection.md`
+File: `_audit/latest/findings/134-time-clock-injection.md`
 
 ```text
 Project test convention requires deterministic timing tests via clock
@@ -2168,7 +2174,7 @@ Severity: medium.
 ```
 
 **Agent 135 -- pydantic-deep-checks** (sonnet)
-File: `_audit/findings/135-pydantic-deep-checks.md`
+File: `_audit/latest/findings/135-pydantic-deep-checks.md`
 
 ```text
 Agent 31 covers basic Pydantic conventions (frozen, allow_inf_nan,
@@ -2197,7 +2203,7 @@ Severity: medium. Flag extra="allow" on input DTOs as high.
 These agents look for systemic patterns indicating a centralized system, missing abstraction, or fundamental rework is needed -- not single-file bugs. Findings from this wave feed into the Architectural Recommendations section of INDEX.md and the REWORK.md synthesis (Phase 3.5) rather than per-finding GitHub issues.
 
 **Agent 136 -- repeated-workarounds** (sonnet)
-File: `_audit/findings/136-repeated-workarounds.md`
+File: `_audit/latest/findings/136-repeated-workarounds.md`
 
 ```text
 Cluster all HACK / FIXME / WORKAROUND / XXX / TEMPORARY comments in
@@ -2216,7 +2222,7 @@ Severity: medium when 3 or more cluster on one cause; low for pairs.
 ```
 
 **Agent 137 -- centralization-opportunities** (opus)
-File: `_audit/findings/137-centralization-opportunities.md`
+File: `_audit/latest/findings/137-centralization-opportunities.md`
 
 ```text
 Find duplicated helper functions across modules: same logic implemented in
@@ -2240,7 +2246,7 @@ Severity: medium.
 ```
 
 **Agent 138 -- inline-cross-cutting-concerns** (sonnet)
-File: `_audit/findings/138-inline-cross-cutting-concerns.md`
+File: `_audit/latest/findings/138-inline-cross-cutting-concerns.md`
 
 ```text
 Find cross-cutting concerns implemented at call sites instead of centrally.
@@ -2265,7 +2271,7 @@ Severity: medium.
 ```
 
 **Agent 139 -- fragmented-dispatch** (sonnet)
-File: `_audit/findings/139-fragmented-dispatch.md`
+File: `_audit/latest/findings/139-fragmented-dispatch.md`
 
 ```text
 Find if/elif (Python) or switch (TS) chains on the same enum, type, or
@@ -2289,7 +2295,7 @@ Severity: medium.
 ```
 
 **Agent 140 -- ambient-parameter-threading** (sonnet)
-File: `_audit/findings/140-ambient-parameter-threading.md`
+File: `_audit/latest/findings/140-ambient-parameter-threading.md`
 
 ```text
 Find parameters threaded through long call chains (5 or more functions)
@@ -2311,7 +2317,7 @@ Severity: medium.
 ```
 
 **Agent 141 -- repeated-normalization-parsing** (sonnet)
-File: `_audit/findings/141-repeated-normalization-parsing.md`
+File: `_audit/latest/findings/141-repeated-normalization-parsing.md`
 
 ```text
 Find the same data transform implemented in multiple places. Each cluster
@@ -2335,7 +2341,7 @@ Severity: medium.
 ```
 
 **Agent 142 -- scattered-config-access** (sonnet)
-File: `_audit/findings/142-scattered-config-access.md`
+File: `_audit/latest/findings/142-scattered-config-access.md`
 
 ```text
 Find os.environ[...] / os.getenv(...) / direct settings.X reads scattered
@@ -2355,7 +2361,7 @@ Severity: medium.
 ```
 
 **Agent 143 -- utility-file-bloat** (sonnet)
-File: `_audit/findings/143-utility-file-bloat.md`
+File: `_audit/latest/findings/143-utility-file-bloat.md`
 
 ```text
 Find utils.py / helpers.py / misc.py / common.ts / utils.ts files that
@@ -2376,7 +2382,7 @@ mixing 5 or more topics.
 ```
 
 **Agent 144 -- layer-violations** (sonnet)
-File: `_audit/findings/144-layer-violations.md`
+File: `_audit/latest/findings/144-layer-violations.md`
 
 ```text
 Find architectural layer violations indicating a structural problem.
@@ -2401,7 +2407,7 @@ Severity: medium.
 ```
 
 **Agent 145 -- abstraction-on-wrong-axis** (opus)
-File: `_audit/findings/145-abstraction-on-wrong-axis.md`
+File: `_audit/latest/findings/145-abstraction-on-wrong-axis.md`
 
 ```text
 The deepest architectural smell: an abstraction is parameterized over the
@@ -2433,7 +2439,7 @@ abstractions (factory always picks the same impl).
 ```
 
 **Agent 146 -- configuration-soup** (sonnet)
-File: `_audit/findings/146-configuration-soup.md`
+File: `_audit/latest/findings/146-configuration-soup.md`
 
 ```text
 Find values configurable through 3 or more different surfaces
@@ -2453,7 +2459,7 @@ Severity: medium.
 ```
 
 **Agent 147 -- error-mapping-inconsistency** (sonnet)
-File: `_audit/findings/147-error-mapping-inconsistency.md`
+File: `_audit/latest/findings/147-error-mapping-inconsistency.md`
 
 ```text
 Agent 34 covers error-handling consistency broadly. This agent specifically
@@ -2476,7 +2482,7 @@ Severity: medium.
 ```
 
 **Agent 148 -- protocol-cardinality-overabstraction** (sonnet)
-File: `_audit/findings/148-protocol-cardinality-overabstraction.md`
+File: `_audit/latest/findings/148-protocol-cardinality-overabstraction.md`
 
 ```text
 Agent 11 flags protocols with 0 implementations (dead). This agent flags
@@ -2499,7 +2505,7 @@ Severity: low.
 ```
 
 **Agent 149 -- mixed-async-sync-migration** (sonnet)
-File: `_audit/findings/149-mixed-async-sync-migration.md`
+File: `_audit/latest/findings/149-mixed-async-sync-migration.md`
 
 ```text
 Find modules where the same domain concept exposes both sync and async
@@ -2520,7 +2526,7 @@ Severity: medium.
 ```
 
 **Agent 150 -- stringly-typed-boundaries** (sonnet)
-File: `_audit/findings/150-stringly-typed-boundaries.md`
+File: `_audit/latest/findings/150-stringly-typed-boundaries.md`
 
 ```text
 Find module boundaries where typed domain objects exist but raw
@@ -2546,7 +2552,7 @@ Severity: medium.
 ### Wave 29: Public-Facing Truth Enforcement (2 agents)
 
 **Agent 151 -- docs-numeric-claims-enumeration** (sonnet)
-File: `_audit/findings/151-docs-numeric-claims-enumeration.md`
+File: `_audit/latest/findings/151-docs-numeric-claims-enumeration.md`
 
 ```text
 Enumerate EVERY numeric or quantitative claim in EVERY page under docs/
@@ -2586,7 +2592,7 @@ evidence-free numeric findings with severity downgrade to info.
 ```
 
 **Agent 152 -- website-published-pages-audit** (sonnet)
-File: `_audit/findings/152-website-published-pages-audit.md`
+File: `_audit/latest/findings/152-website-published-pages-audit.md`
 
 ```text
 The audit checks docs/ source. This agent ALSO checks the rendered live
@@ -2626,7 +2632,7 @@ inaccuracies are an investor / user trust issue.
 ### Wave 30: Implicit Convention Discovery (1 agent)
 
 **Agent 153 -- implicit-convention-finder** (sonnet)
-File: `_audit/findings/153-implicit-convention-finder.md`
+File: `_audit/latest/findings/153-implicit-convention-finder.md`
 
 ```text
 Find patterns repeated 5 or more times across the codebase that are NOT
@@ -2698,13 +2704,13 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 ## Phase 3: Validate Findings (sonnet agents)
 
-**Required for standard runs.** For `--quick` runs or when fewer than 5 critical+high findings exist, validation may be skipped.
+**Required for standard runs.** For `--quick` runs or when fewer than 5 critical+high+medium findings exist, validation may be skipped.
 
 After all launched audit agents complete, launch validation agents to verify findings. The number of agents depends on scope (153 for `full`, fewer for scoped runs).
 
 ### Process
 
-1. Read all finding files present in `_audit/findings/`
+1. Read all finding files present in `_audit/latest/findings/`
 2. Collect all critical + high severity findings into a validation queue
 3. If queue exceeds 50 findings, prioritize by clustering related findings (same file/module)
 4. Split the queue into batches of ~12 findings each
@@ -2722,7 +2728,7 @@ For each finding below, do:
 4. Check if it's intentional (read surrounding comments, docstrings)
 5. Give a verdict: CONFIRMED, FALSE_POSITIVE, or INTENTIONAL
 
-Write results to: _audit/findings/validate-batch-{N}.md
+Write results to: _audit/latest/findings/validate-batch-{N}.md
 
 Format per finding:
 ### [original-file]:[line] -- [CONFIRMED|FALSE_POSITIVE|INTENTIONAL]
@@ -2742,7 +2748,7 @@ Findings to validate:
 3. Mark INTENTIONAL findings as excluded (keep in file but prefix with `[INTENTIONAL]`)
 4. Report: "Validated N findings. Removed M false positives (X%)."
 
-Validation may be skipped when `--quick` is set or when fewer than 5 critical+high findings exist.
+Validation may be skipped when `--quick` is set or when fewer than 5 critical+high+medium findings exist.
 
 ---
 
@@ -2823,15 +2829,15 @@ These are structural improvements to the audit lifecycle, not new agents. They a
 
 ### Phase 0 setup: run-history layout
 
-Replace the previous `rm -rf _audit && mkdir -p _audit/findings` with run-history:
+Phase 0 setup uses this run-history layout:
 
 ```bash
-RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M)"
+RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)"
 mkdir -p "$RUN_DIR/findings"
 ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest
 ```
 
-On Windows, the OpenCode adapter substitutes `New-Item -ItemType SymbolicLink` for `ln -sfn`. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory. `_audit/latest` always points at the most recent run. Older runs accumulate.
+The timestamp uses second-level precision (`%H%M%S`) so back-to-back runs in the same minute do not collide and overwrite each other's findings. On Windows, the OpenCode adapter substitutes `New-Item -ItemType SymbolicLink` for `ln -sfn`. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory. `_audit/latest` always points at the most recent run. Older runs accumulate -- never delete `_audit/runs/*`.
 
 Verify `_audit/` is in `.gitignore` (existing behavior). The `_audit/.ignore.yaml` ignore list (see below) is also gitignored by virtue of the parent.
 
@@ -3037,9 +3043,9 @@ If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 
 ## Rules
 
-1. **Every agent writes to `_audit/findings/`** using the Write tool, not Bash
+1. **Every agent writes to `_audit/latest/findings/`** using the Write tool, not Bash
 2. **Architecture brief in every prompt** -- no blind agents
-3. **Validation is required** for critical+high findings on standard runs (may be skipped with `--quick` or fewer than 5 findings)
+3. **Validation is required** for critical+high+medium findings on standard runs (may be skipped with `--quick` or fewer than 5 findings)
 4. **Batch execution** -- ~10 agents per batch, wait between batches
 5. **Model selection**:
    - **Haiku**: pure pattern matching with low ambiguity (grep + filter, regex over fixed token sets, listing TODOs).
@@ -3047,6 +3053,6 @@ If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
    - **Opus**: reserved for the small set of agents requiring cross-document architectural synthesis. Permitted only on the agents listed below; do not use Opus for any other audit agent without explicit user approval.
    - **Opus-permitted agents**: 42 (design-spec-drift), 70 (pluggable-impl-coverage), 71 (abstraction-swap-readiness), 72 (dependency-inversion-violations), 81 (design-spec-contradictions), 92 (prompt-injection-defenses), 137 (centralization-opportunities), 145 (abstraction-on-wrong-axis), plus the Wave 28 meta-synthesis agent in Phase 3.5. Total: 9.
 6. **Do NOT fix anything** -- audit only, findings only
-7. **Rerunnable** -- clean `_audit/` at start of every run
+7. **Rerunnable** -- never delete `_audit/runs/*`; always create a fresh `_audit/runs/<timestamp>/` and repoint `_audit/latest` at it
 8. **Never use em-dashes** in any output files (project convention)
 9. **Report progress** after each batch completes
