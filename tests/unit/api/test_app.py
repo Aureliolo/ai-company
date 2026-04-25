@@ -106,6 +106,30 @@ class TestCreateAppEnvAutoWire:
 
 
 @pytest.mark.unit
+class TestCreateAppCursorSecretGuard:
+    """Verify create_app refuses to start without a stable cursor secret.
+
+    The boot guard is unconditional -- dev, pre-release, and prod all
+    share the same posture so the failure cannot hide behind a "looks
+    fine in dev" code path. ``tests/conftest.py`` sets the env var via
+    ``setdefault`` so other tests build the app normally; here we
+    explicitly delete it to exercise the refusal branch.
+    """
+
+    def test_ephemeral_cursor_secret_refused(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        root_config: Any,
+    ) -> None:
+        monkeypatch.delenv("SYNTHORG_PAGINATION_CURSOR_SECRET", raising=False)
+        with pytest.raises(
+            RuntimeError,
+            match="refusing to start with an ephemeral pagination cursor secret",
+        ):
+            create_app(config=root_config)
+
+
+@pytest.mark.unit
 class TestResolveArtifactDirEnv:
     """Lock down the SYNTHORG_ARTIFACT_DIR resolution helper.
 
