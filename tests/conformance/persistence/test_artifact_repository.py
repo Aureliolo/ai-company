@@ -12,13 +12,14 @@ from synthorg.persistence.protocol import PersistenceBackend
 pytestmark = pytest.mark.integration
 
 
-def _artifact(
+def _artifact(  # noqa: PLR0913
     *,
     artifact_id: str = "artifact-001",
     artifact_type: ArtifactType = ArtifactType.CODE,
     task_id: str = "task-123",
     created_by: str = "agent-1",
     path: str = "src/auth/login.py",
+    project_id: str | None = None,
 ) -> Artifact:
     return Artifact(
         id=NotBlankStr(artifact_id),
@@ -28,6 +29,7 @@ def _artifact(
         created_by=NotBlankStr(created_by),
         description="Login endpoint",
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        project_id=NotBlankStr(project_id) if project_id else None,
     )
 
 
@@ -72,6 +74,41 @@ class TestArtifactRepository:
 
         created = await backend.artifacts.save(updated)
         assert created is False
+
+    async def test_project_id_round_trips_when_set(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """``project_id`` is persisted and returned by ``get()``."""
+        await backend.artifacts.save(
+            _artifact(artifact_id="proj-bound", project_id="proj-42"),
+        )
+
+        fetched = await backend.artifacts.get(NotBlankStr("proj-bound"))
+        assert fetched is not None
+        assert fetched.project_id == "proj-42"
+
+    async def test_project_id_round_trips_when_none(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """``project_id`` of ``None`` round-trips as ``None``."""
+        await backend.artifacts.save(_artifact(artifact_id="unbound"))
+
+        fetched = await backend.artifacts.get(NotBlankStr("unbound"))
+        assert fetched is not None
+        assert fetched.project_id is None
+
+    async def test_project_id_update_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Updating the artifact persists a changed ``project_id``."""
+        a = _artifact(artifact_id="moved", project_id="proj-old")
+        await backend.artifacts.save(a)
+        moved = a.model_copy(update={"project_id": NotBlankStr("proj-new")})
+        await backend.artifacts.save(moved)
+
+        fetched = await backend.artifacts.get(NotBlankStr("moved"))
+        assert fetched is not None
+        assert fetched.project_id == "proj-new"
 
     async def test_list_all(self, backend: PersistenceBackend) -> None:
         await backend.artifacts.save(_artifact(artifact_id="a1"))

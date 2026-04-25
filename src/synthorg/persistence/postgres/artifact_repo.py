@@ -79,8 +79,9 @@ class PostgresArtifactRepository:
                 await cur.execute(
                     """\
 INSERT INTO artifacts (id, type, path, task_id, created_by,
-                       description, content_type, size_bytes, created_at)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                       description, content_type, size_bytes,
+                       created_at, project_id)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT(id) DO UPDATE SET
     type=EXCLUDED.type,
     path=EXCLUDED.path,
@@ -89,7 +90,8 @@ ON CONFLICT(id) DO UPDATE SET
     description=EXCLUDED.description,
     content_type=EXCLUDED.content_type,
     size_bytes=EXCLUDED.size_bytes,
-    created_at=EXCLUDED.created_at
+    created_at=EXCLUDED.created_at,
+    project_id=EXCLUDED.project_id
 RETURNING (xmax = 0) AS created""",
                     (
                         artifact.id,
@@ -101,6 +103,7 @@ RETURNING (xmax = 0) AS created""",
                         artifact.content_type,
                         artifact.size_bytes,
                         created_at_dt,
+                        artifact.project_id,
                     ),
                 )
                 row = await cur.fetchone()
@@ -137,7 +140,8 @@ RETURNING (xmax = 0) AS created""",
             ):
                 await cur.execute(
                     "SELECT id, type, path, task_id, created_by, "
-                    "description, content_type, size_bytes, created_at "
+                    "description, content_type, size_bytes, created_at, "
+                    "project_id "
                     "FROM artifacts WHERE id = %s",
                     (artifact_id,),
                 )
@@ -208,7 +212,8 @@ RETURNING (xmax = 0) AS created""",
 
         query = (
             "SELECT id, type, path, task_id, created_by, "
-            "description, content_type, size_bytes, created_at "
+            "description, content_type, size_bytes, created_at, "
+            "project_id "
             "FROM artifacts"
         )
         if conditions:

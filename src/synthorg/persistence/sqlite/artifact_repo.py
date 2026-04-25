@@ -81,6 +81,11 @@ class SQLiteArtifactRepository:
         Raises:
             QueryError: If the database operation fails.
         """
+        created_at_iso = (
+            artifact.created_at.astimezone(UTC).isoformat()
+            if artifact.created_at is not None
+            else None
+        )
         params = (
             artifact.id,
             artifact.type.value,
@@ -90,18 +95,16 @@ class SQLiteArtifactRepository:
             artifact.description,
             artifact.content_type,
             artifact.size_bytes,
-            (
-                artifact.created_at.astimezone(UTC).isoformat()
-                if artifact.created_at is not None
-                else None
-            ),
+            created_at_iso,
+            artifact.project_id,
         )
         try:
             insert_cursor = await self._db.execute(
                 """\
 INSERT OR IGNORE INTO artifacts (id, type, path, task_id, created_by,
-                                 description, content_type, size_bytes, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                 description, content_type, size_bytes,
+                                 created_at, project_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 params,
             )
             inserted = insert_cursor.rowcount > 0
@@ -116,7 +119,8 @@ UPDATE artifacts SET
     description=?,
     content_type=?,
     size_bytes=?,
-    created_at=?
+    created_at=?,
+    project_id=?
 WHERE id=?""",
                     (
                         artifact.type.value,
@@ -126,11 +130,8 @@ WHERE id=?""",
                         artifact.description,
                         artifact.content_type,
                         artifact.size_bytes,
-                        (
-                            artifact.created_at.astimezone(UTC).isoformat()
-                            if artifact.created_at is not None
-                            else None
-                        ),
+                        created_at_iso,
+                        artifact.project_id,
                         artifact.id,
                     ),
                 )
