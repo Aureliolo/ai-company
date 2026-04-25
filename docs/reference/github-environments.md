@@ -145,7 +145,23 @@ installation token (valid ≤1 hour) via the
 - `release.yml` -- `release-please-action` token input, so the RP
   tag push on release-PR merge triggers Docker + CLI builds. The
   BSL Change Date Contents API commit keeps `GITHUB_TOKEN` (lands
-  on the RP PR branch, not `main`; no recursion concern).
+  on the RP PR branch, not `main`; no recursion concern). One
+  side-effect of the App-token PR creation: GitHub's anti-recursion
+  rule blocks `pull_request` workflows for events created by the
+  workflow's own installation token, so `ci.yml` does not auto-fire
+  on the release PR. To unblock the required `CI Pass` check, the
+  job's final step issues `gh workflow run ci.yml --ref
+  release-please--branches--main--components--synthorg` with
+  `GITHUB_TOKEN` (which IS allowed to invoke `workflow_dispatch` --
+  the documented exception to the anti-recursion rule). The
+  resulting `ci.yml` run dispatches against the release branch's
+  HEAD, so its `CI Pass` check_run posts on the release PR's head
+  SHA and satisfies the `protect-main` ruleset. The
+  `branch-protection-audit` job inside `ci.yml` keeps a
+  `github.ref == 'refs/heads/main'` gate so non-main dispatches
+  skip cleanly instead of hitting the `release` environment's
+  branch allowlist and emitting a "deployment was rejected"
+  annotation on every release PR.
 - `dev-release.yml` -- tag creation for dev pre-releases via
   `gh api`.
 - `auto-rollover.yml` -- empty `Release-As:` commit via the Git
