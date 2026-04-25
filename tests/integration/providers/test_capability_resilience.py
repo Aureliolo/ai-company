@@ -163,22 +163,45 @@ class TestGetModelCapabilitiesResilience:
         )
         in_flight = {"current": 0, "peak": 0}
         counter_lock = asyncio.Lock()
+        # Deterministic synchronization: the first task signals it has
+        # entered the rate-limited section (``first_entered``) before
+        # we spawn the second task, then we release the first task
+        # (``release_first``) so it exits and the second task can
+        # proceed.  Wall-clock sleeps are flaky under CI load and mask
+        # what the test is actually trying to assert.
+        first_entered = asyncio.Event()
+        release_first = asyncio.Event()
 
         async def _stub_do(model: str) -> ModelCapabilities:
             async with counter_lock:
                 in_flight["current"] += 1
                 in_flight["peak"] = max(in_flight["peak"], in_flight["current"])
-            await asyncio.sleep(0.01)
+                if model == "test-model-001":
+                    first_entered.set()
+            if model == "test-model-001":
+                await release_first.wait()
             async with counter_lock:
                 in_flight["current"] -= 1
             return _stub_capabilities(model)
 
         monkeypatch.setattr(driver, "_do_get_model_capabilities", _stub_do)
-        await asyncio.gather(
+
+        first_task = asyncio.create_task(
             driver.get_model_capabilities("test-model-001"),
+        )
+        # Wait until the first task has entered the rate-limited
+        # section -- this is the moment ``in_flight["current"]`` is 1.
+        await first_entered.wait()
+        # Now spawn the second task.  With ``max_concurrent=1`` it
+        # must block on the rate limiter until the first task exits.
+        second_task = asyncio.create_task(
             driver.get_model_capabilities("test-model-002"),
         )
-        # max_concurrent=1 means only one in-flight at a time.
+        # Release the first task; the second one can now make progress.
+        release_first.set()
+        await asyncio.gather(first_task, second_task)
+        # ``max_concurrent=1`` means only one in-flight at a time.  If
+        # the rate limiter was bypassed, ``peak`` would reach 2.
         assert in_flight["peak"] == 1
 
 

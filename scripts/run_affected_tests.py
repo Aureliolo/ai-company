@@ -259,6 +259,12 @@ def _load_baseline_snapshot() -> _BaselineSnapshot | None:
         return None
 
     test_count = _positive_int(baseline.get("test_count"))
+    if test_count is None:
+        # ``test_count`` is part of the snapshot contract and powers the
+        # mechanical-growth gate.  Reject the baseline outright instead
+        # of returning a half-populated snapshot that silently disables
+        # the count-based check.
+        return None
     per_test_ms = _positive_finite_float(baseline.get("per_test_ms"))
 
     # When the baseline omits ``per_test_ms`` derive it from
@@ -266,7 +272,7 @@ def _load_baseline_snapshot() -> _BaselineSnapshot | None:
     # the JSON so operators can read absolute numbers at a glance.
     if per_test_ms is None:
         baseline_secs = _positive_finite_float(baseline.get("unit_suite_seconds"))
-        if baseline_secs is None or test_count is None:
+        if baseline_secs is None:
             return None
         per_test_ms = baseline_secs * 1000.0 / test_count
 

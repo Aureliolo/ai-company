@@ -203,7 +203,18 @@ class SsrfViolationService:
             )
         except MemoryError, RecursionError:
             raise
-        except ValueError:
+        except ValueError as exc:
+            # Invalid status transition (e.g. PENDING) is a caller bug
+            # but still a security-relevant audit signal -- log it at
+            # WARNING with full context before propagating per
+            # CLAUDE.md `## Logging`.
+            logger.warning(
+                API_SSRF_VIOLATION_STATUS_UPDATED,
+                violation_id=violation_id,
+                status=status.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise
         except Exception as exc:
             logger.warning(

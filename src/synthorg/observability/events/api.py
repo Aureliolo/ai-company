@@ -188,6 +188,7 @@ API_PROJECT_CREATED: Final[str] = "api.project.created"
 API_PROJECT_UPDATED: Final[str] = "api.project.updated"
 API_PROJECT_DELETED: Final[str] = "api.project.deleted"
 API_PROJECT_LISTED: Final[str] = "api.project.listed"
+API_PROJECT_FETCH_FAILED: Final[str] = "api.project.fetch_failed"
 
 # Artifact mutations
 API_ARTIFACT_CREATED: Final[str] = "api.artifact.created"

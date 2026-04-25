@@ -94,9 +94,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             await self._db.commit()
         except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
+            await self._safe_rollback()
             msg = f"Project with id {project.id!r} already exists"
             raise DuplicateRecordError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
+            await self._safe_rollback()
             msg = f"Failed to create project {project.id!r}"
             logger.warning(
                 PERSISTENCE_PROJECT_SAVE_FAILED,
@@ -105,6 +107,26 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+
+    async def _safe_rollback(self) -> None:
+        """Best-effort rollback on the shared connection.
+
+        ``SQLiteProjectRepository`` shares a single
+        :class:`aiosqlite.Connection` across requests.  When
+        ``execute()`` / ``commit()`` raises, leaving the transaction
+        open lets later calls inherit the failed state or keep the DB
+        locked.  Rolling back here clears the per-write transaction
+        without disturbing successful sibling repositories that share
+        the same connection.
+
+        The rollback itself is wrapped: a secondary failure (e.g. the
+        connection is already closed) must not mask the original error
+        the caller is propagating.
+        """
+        try:
+            await self._db.rollback()
+        except sqlite3.Error, aiosqlite.Error:
+            return
 
     async def update(self, project: Project) -> None:
         """Update an existing project, failing if no row matched.
@@ -144,6 +166,7 @@ WHERE id=?""",
             )
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
+            await self._safe_rollback()
             msg = f"Failed to update project {project.id!r}"
             logger.warning(
                 PERSISTENCE_PROJECT_SAVE_FAILED,
@@ -184,6 +207,7 @@ ON CONFLICT(id) DO UPDATE SET
             )
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
+            await self._safe_rollback()
             msg = f"Failed to save project {project.id!r}"
             logger.warning(
                 PERSISTENCE_PROJECT_SAVE_FAILED,
@@ -313,6 +337,7 @@ ON CONFLICT(id) DO UPDATE SET
             )
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
+            await self._safe_rollback()
             msg = f"Failed to delete project {project_id!r}"
             logger.warning(
                 PERSISTENCE_PROJECT_DELETE_FAILED,

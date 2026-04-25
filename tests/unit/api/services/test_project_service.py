@@ -137,11 +137,12 @@ async def test_update_persists_and_emits_api_project_updated() -> None:
 
 
 async def test_create_raises_when_project_already_exists() -> None:
-    """``create`` rejects existing ids; only the WARNING audit fires.
+    """``create`` rejects existing ids; one WARNING audit fires.
 
     Pins the atomic-create contract: ``API_PROJECT_CREATED`` at INFO
-    must NOT fire when the row already exists -- otherwise an
-    "update masquerading as create" lands in audit history.
+    must NOT fire when the row already exists, AND a single WARNING
+    must fire with ``error_type`` + ``project_id`` so incident triage
+    can correlate the failure (CLAUDE.md `## Logging`).
     """
     repo = _FakeProjectRepo()
     service = ProjectService(repo=repo)
@@ -156,17 +157,24 @@ async def test_create_raises_when_project_already_exists() -> None:
 
     audits = [log for log in logs if log["event"] == API_PROJECT_CREATED]
     info_audits = [log for log in audits if log.get("log_level") == "info"]
+    warning_audits = [log for log in audits if log.get("log_level") == "warning"]
     assert info_audits == [], (
         f"no INFO success audit may fire on duplicate create -- got {info_audits}"
     )
+    assert len(warning_audits) == 1, (
+        f"expected one WARNING audit on duplicate create -- got {warning_audits}"
+    )
+    assert warning_audits[0]["error_type"] == "DuplicateRecordError"
+    assert warning_audits[0]["project_id"] == project.id
 
 
 async def test_update_raises_when_project_missing() -> None:
-    """``update`` rejects missing ids; only the WARNING audit fires.
+    """``update`` rejects missing ids; one WARNING audit fires.
 
     Pins the atomic-update contract: ``API_PROJECT_UPDATED`` at INFO
-    must NOT fire when the row does not exist -- otherwise a
-    "fresh insert masquerading as update" lands in audit history.
+    must NOT fire when the row does not exist, AND a single WARNING
+    must fire with ``error_type`` + ``project_id`` so incident triage
+    can correlate the failure.
     """
     repo = _FakeProjectRepo()
     service = ProjectService(repo=repo)
@@ -180,9 +188,15 @@ async def test_update_raises_when_project_missing() -> None:
 
     audits = [log for log in logs if log["event"] == API_PROJECT_UPDATED]
     info_audits = [log for log in audits if log.get("log_level") == "info"]
+    warning_audits = [log for log in audits if log.get("log_level") == "warning"]
     assert info_audits == [], (
         f"no INFO success audit may fire on update of missing row -- got {info_audits}"
     )
+    assert len(warning_audits) == 1, (
+        f"expected one WARNING audit on missing-row update -- got {warning_audits}"
+    )
+    assert warning_audits[0]["error_type"] == "RecordNotFoundError"
+    assert warning_audits[0]["project_id"] == project.id
 
 
 async def test_delete_returns_true_and_emits_api_project_deleted() -> None:

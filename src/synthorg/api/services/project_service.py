@@ -16,6 +16,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_PROJECT_CREATED,
     API_PROJECT_DELETED,
+    API_PROJECT_FETCH_FAILED,
     API_PROJECT_LISTED,
     API_PROJECT_UPDATED,
 )
@@ -62,8 +63,11 @@ class ProjectService:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
+            # Single-project fetch failures get their own event so
+            # endpoint-specific alerting can distinguish them from
+            # list-level failures (``API_PROJECT_LISTED``).
             logger.warning(
-                API_PROJECT_LISTED,
+                API_PROJECT_FETCH_FAILED,
                 project_id=project_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

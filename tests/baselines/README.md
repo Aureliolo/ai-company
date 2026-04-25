@@ -18,7 +18,7 @@ absolute-seconds threshold without representing a real slowdown.  The
 old design treated this as a regression and forced operators to
 "refresh the baseline" each time, which masked actual per-test
 slowdowns under the bigger absolute number.  Per-test cost is
-dimension-correct: it normalises against population size and only
+dimension-correct: it normalizes against population size and only
 fires when individual tests actually slow down.  The baseline stays
 valid until per-test cost drifts.
 
