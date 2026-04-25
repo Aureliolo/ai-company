@@ -1,0 +1,92 @@
+name: CI Preflight
+
+# Detect missing repository setup (environments, labels, branch protection,
+# GitHub App installation) and surface it as a single tracking issue. Runs
+# in parallel with the rest of CI on every push and pull request, plus
+# manual dispatch. Hybrid blocking: warns on PR / non-main pushes, fails
+# the job on push to main so upstream stays loud about drift.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Run preflight checks
+        id: check
+        uses: ./.github/actions/ci-preflight-check
+        with:
+          gh-token: ${{ github.token }}
+
+      - name: Open / update tracking issue
+        if: steps.check.outputs.gaps-found == 'true'
+        uses: ./.github/actions/post-tracking-issue
+        with:
+          title: "CI setup incomplete -- please configure the following"
+          labels: "automation:ci-preflight,type:ci,prio:high"
+          body: ${{ steps.check.outputs.body }}
+          pin: 'true'
+          gh-token: ${{ github.token }}
+
+      - name: Close tracking issue when all checks pass
+        if: steps.check.outputs.gaps-found == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PREFLIGHT_TITLE: "CI setup incomplete -- please configure the following"
+          COMMIT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Search by title alone, same dedup key as post-tracking-issue.
+          # Use jq --arg so titles with shell metacharacters are safe.
+          ISSUE_NUMBER=$(gh issue list --state open \
+            --search "in:title \"$PREFLIGHT_TITLE\"" --json number,title \
+            | jq -r --arg title "$PREFLIGHT_TITLE" \
+              '[.[] | select(.title == $title)] | .[0].number // empty')
+
+          if [ -n "$ISSUE_NUMBER" ]; then
+            gh issue comment "$ISSUE_NUMBER" \
+              --body "Preflight passed at \`$COMMIT_SHA\`. Closing -- this issue will reopen automatically if a check regresses."
+            gh issue close "$ISSUE_NUMBER"
+            echo "Closed tracking issue #$ISSUE_NUMBER"
+          else
+            echo "No open preflight tracking issue to close."
+          fi
+
+      - name: Fail on push to main when gaps remain
+        if: >-
+          steps.check.outputs.gaps-found == 'true'
+          && github.event_name == 'push'
+          && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          echo "::error::CI setup gaps detected on a push to main. See the open tracking issue for the checklist."
+          exit 1
+
+      - name: Warn on non-main when gaps remain
+        if: >-
+          steps.check.outputs.gaps-found == 'true'
+          && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+        shell: bash
+        run: |
+          echo "::warning::CI setup gaps detected. See the open tracking issue for the checklist. (Non-blocking on this trigger; this job blocks on push to main.)"
