@@ -32,6 +32,11 @@ var (
 	commitsBetween  = selfupdate.CommitsBetween
 )
 
+// currentBuildCommit returns the commit SHA stamped into the running
+// binary by GoReleaser at build time. Wrapped in a function variable so
+// tests can stub it without touching the version package globals.
+var currentBuildCommit = func() string { return version.Commit }
+
 // runChangelogWalk renders the per-release Highlights walk (stable channel)
 // or the combined commit-list view (dev channel) before the install confirm
 // prompt in updateCLI. The walk is informational and never blocks the
@@ -123,26 +128,31 @@ func runStableHighlightsWalk(ctx context.Context, cmd *cobra.Command, result sel
 // so a per-release walk is uninformative -- a flat commit list is what the
 // user actually wants to see.
 //
-// The GitHub compare endpoint requires both refs to be exact tag names, so
-// we normalise the version strings (which may lack the leading "v" -- the
-// CLI's own version.Version is set without it) before calling out. When
-// compare fails (e.g. the installed dev pre-release tag was pruned from
-// the remote, or the network call errors) we ALWAYS surface the failure
-// with a warning explaining why the rich walk did not render -- silent
-// fallbacks have repeatedly bitten users who could not tell whether the
-// changelog was missing because of an empty range or a real error.
+// The GitHub compare endpoint accepts tags or commit SHAs on either side,
+// and we deliberately prefer the embedded build SHA over the installed tag
+// for the base ref: dev pre-release tags are auto-pruned from the remote
+// shortly after newer dev tags publish, so a tag-based base routinely 404s
+// once a few rollovers have happened. The embedded SHA, by contrast, is
+// permanent. We still normalise the version strings for the user-facing
+// labels (which may lack the leading "v" -- the CLI's own version.Version
+// is set without it) and for the head ref, which is the freshly-published
+// latest and unlikely to be pruned in the seconds between check and walk.
+//
+// When compare fails we ALWAYS surface the failure with a warning
+// explaining why the rich walk did not render -- silent fallbacks have
+// repeatedly bitten users who could not tell whether the changelog was
+// missing because of an empty range or a real error.
 func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate.CheckResult) {
 	opts := GetGlobalOpts(ctx)
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	base := normalizeVersionRef(result.CurrentVersion)
 	head := normalizeVersionRef(result.LatestVersion)
-	commitRange, err := commitsBetween(ctx, base, head)
+	apiBase := effectiveBaseRef(base, currentBuildCommit())
+	commitRange, err := commitsBetween(ctx, apiBase, head)
 	if err != nil {
 		out.Warn(fmt.Sprintf("Could not fetch commit list for %s..%s: %v", base, head, err))
-		out.HintError(
-			"This usually means the installed dev pre-release tag was pruned from GitHub " +
-				"(dev releases are auto-rolled). Showing terse update notice instead.")
+		out.HintError(devCommitWalkErrorHint(apiBase != base))
 		printOfflineNotice(cmd, result)
 		return
 	}
@@ -177,6 +187,54 @@ func normalizeVersionRef(v string) string {
 		return v
 	}
 	return "v" + v
+}
+
+// effectiveBaseRef chooses which ref to pass to the GitHub compare API for
+// the "installed" side of the dev-channel commit walk. Prefers the embedded
+// build commit SHA (permanent on the remote) over the installed tag (which
+// is auto-pruned from the remote once a few newer dev releases roll over).
+// Falls back to the tag for builds without a stamped commit, e.g. local
+// `go build` or `go run` where Commit is "none" / "dev".
+func effectiveBaseRef(tagRef, commitSHA string) string {
+	if isStableCommitSHA(commitSHA) {
+		return commitSHA
+	}
+	return tagRef
+}
+
+// isStableCommitSHA reports whether s looks like a real git commit SHA
+// (>= 7 hex chars). Sentinel ldflags values like "none", "dev", and the
+// empty string fail this check, which is the trigger for falling back to
+// the tag-based ref.
+func isStableCommitSHA(s string) bool {
+	if len(s) < 7 {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+		case r >= 'a' && r <= 'f':
+		case r >= 'A' && r <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// devCommitWalkErrorHint returns the HintError body shown when the dev
+// commit-walk compare API call fails. The wording differs based on whether
+// we already used the embedded commit SHA: with a SHA the tag-pruning
+// explanation no longer fits, so we name the more likely real causes
+// (network, rate limit) instead of misdirecting the user.
+func devCommitWalkErrorHint(usedCommitSHA bool) string {
+	if usedCommitSHA {
+		return "This is usually a transient network error or GitHub rate limit. " +
+			"Showing terse update notice instead."
+	}
+	return "This usually means the installed dev pre-release tag was pruned from GitHub " +
+		"(dev releases are auto-rolled), or this is a local build without an embedded " +
+		"commit SHA. Showing terse update notice instead."
 }
 
 // shouldShowWalk reports whether the walk UI should run for this invocation.

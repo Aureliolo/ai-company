@@ -34,6 +34,16 @@ func withCommitsBetween(t *testing.T, stub func(ctx context.Context, base, head 
 	t.Cleanup(func() { commitsBetween = prev })
 }
 
+// withCurrentBuildCommit installs a stub for the package-level
+// currentBuildCommit var. Tests use it to drive runDevCommitWalk down the
+// "embedded SHA" branch without rebuilding the binary with custom ldflags.
+func withCurrentBuildCommit(t *testing.T, sha string) {
+	t.Helper()
+	prev := currentBuildCommit
+	currentBuildCommit = func() string { return sha }
+	t.Cleanup(func() { currentBuildCommit = prev })
+}
+
 // newWalkTestCmd returns a cobra.Command with a captured stdout/stderr
 // buffer and a non-prompting GlobalOpts that still carries Hints=always so
 // HintError lines render. Used by walk error-branch tests.
@@ -313,8 +323,10 @@ func TestRunDevCommitWalk_warnsOnEmptyRange(t *testing.T) {
 // the original user report: a dev-channel installed version stamped without
 // the "v" prefix MUST be normalised to "vX.Y.Z-dev.N" before reaching
 // commitsBetween, otherwise GitHub's compare API returns 404 for every
-// invocation.
+// invocation. This exercises the tag-fallback path where the embedded
+// commit SHA is a sentinel ("none") so effectiveBaseRef returns the tag.
 func TestRunDevCommitWalk_normalisesVersionRefs(t *testing.T) {
+	withCurrentBuildCommit(t, "none") // force the tag-fallback branch
 	var seenBase, seenHead string
 	withCommitsBetween(t, func(_ context.Context, base, head string) (selfupdate.CommitRange, error) {
 		seenBase, seenHead = base, head
@@ -330,6 +342,115 @@ func TestRunDevCommitWalk_normalisesVersionRefs(t *testing.T) {
 	}
 	if seenHead != "v0.7.3-dev.19" {
 		t.Errorf("head passed to commitsBetween = %q, want %q", seenHead, "v0.7.3-dev.19")
+	}
+}
+
+// TestRunDevCommitWalk_usesEmbeddedCommitSHA is the regression guard for
+// pruned-dev-tag 404s: when the binary has a real build commit SHA stamped
+// in, the compare API call must use the SHA as the base ref so the request
+// keeps working even after the installed tag has been auto-rolled off the
+// remote. The user-facing warn / offline-notice text must still show the
+// human-readable version label, not the raw SHA.
+func TestRunDevCommitWalk_usesEmbeddedCommitSHA(t *testing.T) {
+	const buildSHA = "deadbeefcafebabe1234567890abcdef12345678"
+	withCurrentBuildCommit(t, buildSHA)
+	var seenBase, seenHead string
+	withCommitsBetween(t, func(_ context.Context, base, head string) (selfupdate.CommitRange, error) {
+		seenBase, seenHead = base, head
+		return selfupdate.CommitRange{}, errors.New("simulated rate limit")
+	})
+	cmd, buf := newWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "0.7.3-dev.20", LatestVersion: "0.7.3-dev.24"}
+
+	runDevCommitWalk(cmd.Context(), cmd, result)
+
+	if seenBase != buildSHA {
+		t.Errorf("base passed to commitsBetween = %q, want embedded SHA %q", seenBase, buildSHA)
+	}
+	if seenHead != "v0.7.3-dev.24" {
+		t.Errorf("head passed to commitsBetween = %q, want %q", seenHead, "v0.7.3-dev.24")
+	}
+
+	got := buf.String()
+	// Warn label uses the version refs, not the SHA.
+	requireContains(t, got,
+		"Could not fetch commit list for v0.7.3-dev.20..v0.7.3-dev.24",
+		"simulated rate limit",
+		"transient network error or GitHub rate limit",
+		"New version available: v0.7.3-dev.24",
+	)
+	// And critically, the SHA must NOT leak into the user-facing warn line.
+	if strings.Contains(got, buildSHA) {
+		t.Errorf("user-facing output should not contain raw build SHA\n--- got ---\n%s", got)
+	}
+	// The tag-pruned hint must NOT show when we already used the SHA --
+	// it would misdirect the user about the actual cause.
+	if strings.Contains(got, "tag was pruned") {
+		t.Errorf("tag-pruned hint should not appear on the SHA-base path\n--- got ---\n%s", got)
+	}
+}
+
+func TestEffectiveBaseRef(t *testing.T) {
+	tests := []struct {
+		name      string
+		tagRef    string
+		commitSHA string
+		want      string
+	}{
+		{"prefers full SHA over tag", "v0.7.3-dev.20", "deadbeefcafebabe1234567890abcdef12345678", "deadbeefcafebabe1234567890abcdef12345678"},
+		{"prefers short SHA (>= 7 chars) over tag", "v0.7.3-dev.20", "deadbee", "deadbee"},
+		{"falls back to tag for none sentinel", "v0.7.3-dev.20", "none", "v0.7.3-dev.20"},
+		{"falls back to tag for dev sentinel", "v0.7.3-dev.20", "dev", "v0.7.3-dev.20"},
+		{"falls back to tag for empty SHA", "v0.7.3-dev.20", "", "v0.7.3-dev.20"},
+		{"falls back to tag for too-short SHA", "v0.7.3-dev.20", "abc123", "v0.7.3-dev.20"},
+		{"falls back to tag for non-hex SHA", "v0.7.3-dev.20", "notahexstring", "v0.7.3-dev.20"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := effectiveBaseRef(tt.tagRef, tt.commitSHA); got != tt.want {
+				t.Errorf("effectiveBaseRef(%q, %q) = %q, want %q", tt.tagRef, tt.commitSHA, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsStableCommitSHA(t *testing.T) {
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{"deadbeefcafebabe1234567890abcdef12345678", true}, // full 40-char SHA
+		{"DEADBEEFCAFEBABE1234567890ABCDEF12345678", true}, // uppercase hex
+		{"DeadBeef", true},       // mixed case, >= 7 chars
+		{"deadbee", true},        // exactly 7 chars
+		{"abc123", false},        // too short
+		{"", false},              // empty
+		{"none", false},          // GoReleaser default sentinel
+		{"dev", false},           // local-build sentinel
+		{"unknown", false},       // generic sentinel
+		{"deadbeefXXX", false},   // non-hex chars
+		{"v0.7.3-dev.20", false}, // version tag, not a SHA
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := isStableCommitSHA(tt.in); got != tt.want {
+				t.Errorf("isStableCommitSHA(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDevCommitWalkErrorHint(t *testing.T) {
+	tagHint := devCommitWalkErrorHint(false)
+	if !strings.Contains(tagHint, "tag was pruned") {
+		t.Errorf("tag-fallback hint should mention tag pruning, got %q", tagHint)
+	}
+	shaHint := devCommitWalkErrorHint(true)
+	if strings.Contains(shaHint, "tag was pruned") {
+		t.Errorf("SHA-base hint should NOT mention tag pruning, got %q", shaHint)
+	}
+	if !strings.Contains(shaHint, "rate limit") {
+		t.Errorf("SHA-base hint should mention transient network/rate limit, got %q", shaHint)
 	}
 }
 
