@@ -25,7 +25,7 @@ var supportedConfigKeys = []string{
 	"auto_start_after_wipe", "auto_update_cli",
 	"backend_port",
 	"backup_create_timeout", "backup_restore_timeout",
-	"channel", "color",
+	"changelog_view", "channel", "color",
 	"default_nats_stream_prefix", "default_nats_url",
 	"dhi_registry", "docker_sock",
 	"fine_tuning", "fine_tuning_variant",
@@ -75,6 +75,7 @@ Supported keys:
   auto_start_after_wipe Auto-start containers after wipe
   auto_update_cli       Auto-accept CLI self-updates
   backend_port          Backend API port
+  changelog_view        Default changelog view for 'synthorg update' walk: "highlights" or "commits"
   channel               Update channel
   color                 Color output mode
   docker_sock           Docker socket path
@@ -111,6 +112,7 @@ Supported keys:
   auto_start_after_wipe  Auto-start containers after wipe: "true" or "false"
   auto_update_cli        Auto-accept CLI self-updates: "true" or "false"
   backend_port           Backend API port: 1-65535
+  changelog_view         Default 'synthorg update' walk view: "highlights" or "commits"
   channel                Update channel: "stable" or "dev"
   color                  Color output: "always", "auto", "never"
   docker_sock            Docker socket path (absolute)
@@ -267,7 +269,7 @@ var gettableConfigKeys = []string{
 	"auto_start_after_wipe", "auto_update_cli",
 	"backend_port",
 	"backup_create_timeout", "backup_restore_timeout",
-	"channel", "color",
+	"changelog_view", "channel", "color",
 	"default_nats_stream_prefix", "default_nats_url",
 	"dhi_registry", "docker_sock",
 	"fine_tuning", "fine_tuning_variant",
@@ -445,6 +447,8 @@ func applyConfigValue(state *config.State, key, value string) error {
 		return setBool(value, key, &state.AutoUpdateCLI)
 	case "backend_port":
 		return setPort(value, "backend_port", state.WebPort, &state.BackendPort)
+	case "changelog_view":
+		return setEnum(value, key, config.IsValidChangelogView, config.ChangelogViewNames, &state.ChangelogView)
 	case "channel":
 		return setEnum(value, key, config.IsValidChannel, config.ChannelNames, &state.Channel)
 	case "color":
@@ -665,6 +669,8 @@ func resetConfigValue(state *config.State, key string) error {
 		state.AutoUpdateCLI = defaults.AutoUpdateCLI
 	case "backend_port":
 		state.BackendPort = defaults.BackendPort
+	case "changelog_view":
+		state.ChangelogView = ""
 	case "channel":
 		state.Channel = defaults.Channel
 	case "color":
@@ -794,6 +800,8 @@ func configGetValue(state config.State, key string) string {
 		return strconv.FormatBool(state.AutoUpdateCLI)
 	case "backend_port":
 		return strconv.Itoa(state.BackendPort)
+	case "changelog_view":
+		return state.ChangelogViewOrDefault()
 	case "channel":
 		return state.DisplayChannel()
 	case "color":
