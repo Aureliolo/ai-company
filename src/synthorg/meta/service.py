@@ -6,11 +6,13 @@ and Chief of Staff confidence learning.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Literal
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Literal
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import ProposalOutcome
 from synthorg.meta.chief_of_staff.outcome_store import MemoryBackendOutcomeStore
+from synthorg.meta.errors import SelfImprovementTriggerError
 from synthorg.meta.factory import (
     build_appliers,
     build_confidence_adjuster,
@@ -22,6 +24,7 @@ from synthorg.meta.factory import (
 )
 from synthorg.meta.models import (
     GuardVerdict,
+    ImprovementCycleResult,
     ImprovementProposal,
     OrgSignalSnapshot,
     ProposalAltitude,
@@ -49,11 +52,58 @@ from synthorg.observability.events.meta import (
     META_CYCLE_COMPLETED,
     META_CYCLE_NO_TRIGGERS,
     META_CYCLE_STARTED,
+    META_CYCLE_TRIGGERED,
     META_PROPOSAL_GUARD_REJECTED,
     META_ROLLOUT_PRECONDITION_FAILED,
     META_ROLLOUT_REGRESSION_DETECTED,
     META_SERVICE_CLOSE_FAILED,
 )
+
+# Module-level constants for ``get_config`` redaction.  Paths use the
+# dotted notation that ``model_dump`` produces (i.e., the JSON keys at
+# each nesting level).  Adding a new secret -> append the dotted path
+# here.  An unknown path is a no-op so misspellings fail loud only via
+# the unit-test coverage in ``test_service_get_config``.
+_SECRET_PATHS: frozenset[str] = frozenset(
+    {
+        "code_modification.github_token",
+    }
+)
+_REDACTED: str = "***redacted***"
+
+
+def _redact_secrets(
+    dump: dict[str, Any],
+    paths: frozenset[str],
+) -> dict[str, Any]:
+    """Return a copy of *dump* with each path in *paths* masked.
+
+    Operates on a copy so the caller's source data is never mutated.
+    Unknown paths are silently ignored: redaction must remain a
+    safe-default operation even when the config schema is in flux.
+    """
+    redacted = dict(dump)
+    for path in paths:
+        keys = path.split(".")
+        node: Any = redacted
+        # Walk down a copy at each level so the parent dict in
+        # ``redacted`` is updated in place without mutating any nested
+        # dict from the original ``dump``.
+        for key in keys[:-1]:
+            child = node.get(key)
+            if not isinstance(child, dict):
+                node = None
+                break
+            cloned = dict(child)
+            node[key] = cloned
+            node = cloned
+        if node is None:
+            continue
+        leaf = keys[-1]
+        if leaf in node and node[leaf] is not None:
+            node[leaf] = _REDACTED
+    return redacted
+
 
 if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -152,6 +202,12 @@ class SelfImprovementService:
             )
             raise ValueError(msg)
         self._config = config
+        # Hold direct references for facade methods (trigger_cycle,
+        # get_config). Rollout strategies still receive these via the
+        # build helper below; the references here are *not* a parallel
+        # copy -- the same objects flow into the rollout layer.
+        self._snapshot_builder = snapshot_builder
+        self._clock = clock
         self._rule_engine = build_rule_engine(config)
         self._strategies = build_strategies(config, provider=provider)
         self._guards = build_guards(config, approval_store=approval_store)
@@ -540,6 +596,57 @@ class SelfImprovementService:
                 outcome,
                 proposal=proposal,
             )
+
+    def get_config(self) -> dict[str, Any]:
+        """Return the active self-improvement config with secrets redacted.
+
+        The dump preserves the exact field structure of
+        :class:`SelfImprovementConfig` for ops debugging while masking
+        every path in :data:`_SECRET_PATHS` -- callers (notably the MCP
+        ``synthorg_meta_get_config`` tool) get a useful, auditable
+        readout without leaking GitHub PATs into telemetry.
+        """
+        dump = self._config.model_dump(mode="json")
+        return _redact_secrets(dump, _SECRET_PATHS)
+
+    async def trigger_cycle(self) -> ImprovementCycleResult:
+        """Run a full improvement cycle synchronously and return the outcome.
+
+        Builds an :class:`OrgSignalSnapshot` via the wired snapshot
+        builder, then awaits :meth:`run_cycle`. The result wraps the
+        produced proposals plus run timing so the MCP caller can
+        identify and audit the trigger.
+
+        Raises:
+            SelfImprovementTriggerError: When no snapshot builder is
+                configured. Triggering a cycle without real signals
+                would only generate misleading proposals; failing
+                fast is preferable to running a no-op against an
+                empty snapshot.
+        """
+        if self._snapshot_builder is None:
+            msg = (
+                "SelfImprovementService.trigger_cycle requires a wired "
+                "snapshot_builder; the meta loop cannot generate "
+                "useful proposals without live signals."
+            )
+            raise SelfImprovementTriggerError(msg)
+        started_at = datetime.now(UTC)
+        snapshot = await self._snapshot_builder()
+        proposals = await self.run_cycle(snapshot)
+        completed_at = datetime.now(UTC)
+        result = ImprovementCycleResult(
+            started_at=started_at,
+            completed_at=completed_at,
+            proposals=proposals,
+        )
+        logger.info(
+            META_CYCLE_TRIGGERED,
+            cycle_id=result.cycle_id,
+            proposals_count=result.proposals_count,
+            duration_seconds=(completed_at - started_at).total_seconds(),
+        )
+        return result
 
     async def close(self) -> None:
         """Flush analytics emitter, close appliers, and release resources."""

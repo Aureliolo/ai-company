@@ -12,6 +12,7 @@ META_CYCLE_STARTED: Final[str] = "meta.cycle.started"
 META_CYCLE_COMPLETED: Final[str] = "meta.cycle.completed"
 META_CYCLE_NO_TRIGGERS: Final[str] = "meta.cycle.no_triggers"
 META_CYCLE_FAILED: Final[str] = "meta.cycle.failed"
+META_CYCLE_TRIGGERED: Final[str] = "meta.cycle.triggered"
 
 # -- Signal aggregation events ------------------------------------------
 

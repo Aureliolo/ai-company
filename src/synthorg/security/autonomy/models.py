@@ -8,6 +8,11 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from synthorg.core.enums import AutonomyLevel, DowngradeReason, compare_autonomy
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
+# Minimum length (after whitespace strip) required for an autonomy
+# change reason.  Pulled into a module constant so the validator below
+# stays compliant with the project's "no magic numbers" lint rule.
+_MIN_REASON_LENGTH: Final[int] = 3
+
 
 class AutonomyPreset(BaseModel):
     """A named autonomy preset defining action routing rules.
@@ -195,6 +200,80 @@ class EffectiveAutonomy(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+
+class AutonomyUpdate(BaseModel):
+    """Request payload for changing an agent's autonomy level.
+
+    Used by the MCP write facade and any future direct service caller.
+    The mutation does not happen here -- the request is logged and, when
+    an approval store is wired, enqueued for human approval before any
+    runtime effect.
+
+    Attributes:
+        requested_level: The desired autonomy level for the agent.
+        reason: Human-readable justification for the change. Required so
+            audit logs and approval reviewers have context.
+        requested_by: Identifier of the actor requesting the change.
+            ``None`` lets the registry infer the actor from the
+            invocation context.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    requested_level: AutonomyLevel = Field(description="Requested autonomy level")
+    reason: NotBlankStr = Field(
+        max_length=2048,
+        description="Why the change is requested (min length 3)",
+    )
+    requested_by: NotBlankStr | None = Field(
+        default=None,
+        description="Identifier of the requesting actor",
+    )
+
+    @model_validator(mode="after")
+    def _validate_reason_length(self) -> Self:
+        """Reject reasons that are shorter than the minimum non-blank length."""
+        if len(self.reason.strip()) < _MIN_REASON_LENGTH:
+            msg = (
+                f"reason must contain at least {_MIN_REASON_LENGTH} "
+                "non-whitespace characters"
+            )
+            raise ValueError(msg)
+        return self
+
+
+class AutonomyUpdateResult(BaseModel):
+    """Outcome of an autonomy update request.
+
+    All autonomy changes route through human approval, so the result
+    advertises the agent's *current* level alongside the level that was
+    requested. ``promotion_pending`` is ``True`` whenever a human review
+    is still required; ``approval_id`` is populated when an approval
+    store is wired and an item was successfully enqueued.
+
+    Attributes:
+        agent_id: The agent whose autonomy was requested to change.
+        current_level: The agent's effective autonomy level today.
+        requested_level: The level that was asked for.
+        promotion_pending: Whether human approval is still required.
+        approval_id: Identifier of the enqueued approval item, or
+            ``None`` when no approval store was wired.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    agent_id: NotBlankStr = Field(description="Agent identifier")
+    current_level: AutonomyLevel = Field(description="Current autonomy level")
+    requested_level: AutonomyLevel = Field(description="Requested autonomy level")
+    promotion_pending: bool = Field(
+        default=True,
+        description="Whether the change is awaiting human approval",
+    )
+    approval_id: NotBlankStr | None = Field(
+        default=None,
+        description="Approval-item identifier when an approval was enqueued",
+    )
 
 
 class AutonomyOverride(BaseModel):

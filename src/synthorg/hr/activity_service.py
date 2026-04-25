@@ -215,6 +215,213 @@ class ActivityFeedService:
         )
         return page, total
 
+    async def list_recent_activity(
+        self,
+        *,
+        project: str | None = None,
+        task_id: str | None = None,
+        offset: int,
+        limit: int,
+        window_hours: int = _DEFAULT_WINDOW_HOURS,
+    ) -> tuple[tuple[ActivityEvent, ...], int]:
+        """Return a page of recent activity not scoped to a single agent.
+
+        Powers the MCP ``synthorg_activities_list`` tool: operators see
+        a recent feed across all agents, optionally narrowed to a
+        specific ``project`` or ``task_id``. Lifecycle events (which
+        are intrinsically agent-scoped) are included only in the
+        unfiltered view; filtering by ``task_id`` or ``project`` drops
+        lifecycle events automatically since they don't carry those
+        identifiers. Delegations are agent-scoped and therefore not
+        included by this method.
+
+        Args:
+            project: Optional project filter. When set, only events
+                whose underlying record has a matching ``project_id``
+                are returned.
+            task_id: Optional task filter. When set, only events whose
+                underlying record has a matching ``task_id`` are
+                returned.
+            offset: Page offset (>= 0).
+            limit: Page size (> 0).
+            window_hours: Time window in hours; defaults to 168 (7d).
+
+        Returns:
+            Tuple of ``(page, total)``.
+
+        Raises:
+            ValueError: If pagination or window inputs are invalid.
+        """
+        self._validate_pagination(offset=offset, limit=limit)
+        self._validate_window(window_hours=window_hours)
+        now = datetime.now(UTC)
+        since = now - timedelta(hours=window_hours)
+
+        lifecycle_events: tuple = ()  # type: ignore[type-arg]
+        # Skip lifecycle when filtering: lifecycle records are
+        # agent-scoped without project/task identifiers.
+        if project is None and task_id is None:
+            try:
+                lifecycle_events = await self._lifecycle_repo.list_events(
+                    since=since,
+                    limit=_LIFECYCLE_CAP,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                    source="lifecycle_repo",
+                    since=since.isoformat(),
+                    until=now.isoformat(),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                lifecycle_events = ()
+
+        try:
+            task_metrics = self._performance_tracker.get_task_metrics(
+                since=since,
+                until=now,
+            )
+        except Exception as exc:
+            logger.warning(
+                HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                source="performance_tracker",
+                since=since.isoformat(),
+                until=now.isoformat(),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            task_metrics = ()
+        if task_id is not None:
+            task_metrics = tuple(r for r in task_metrics if r.task_id == task_id)
+        # TaskMetricRecord has no project field; project filter narrows
+        # the cost source instead.
+
+        async with asyncio.TaskGroup() as tg:
+            cost_task = tg.create_task(
+                self._fetch_costs_unscoped(since, now),
+            )
+            tool_task = tg.create_task(
+                self._fetch_tools_unscoped(since, now),
+            )
+        cost_records = _collect_result(cost_task, source="cost_tracker")
+        tool_invocations = _collect_result(tool_task, source="tool_tracker")
+
+        if task_id is not None:
+            cost_records = tuple(r for r in cost_records if r.task_id == task_id)
+            tool_invocations = tuple(
+                r for r in tool_invocations if getattr(r, "task_id", None) == task_id
+            )
+        if project is not None:
+            cost_records = tuple(r for r in cost_records if r.project_id == project)
+
+        currency = await self._resolve_currency()
+        timeline = merge_activity_timeline(
+            lifecycle_events=lifecycle_events,
+            task_metrics=task_metrics,
+            cost_records=cost_records,
+            tool_invocations=tool_invocations,
+            currency=currency,
+        )
+        total = len(timeline)
+        page = timeline[offset : offset + limit]
+        logger.info(
+            HR_ACTIVITY_AGENT_FETCHED,
+            agent_id=None,
+            project=project,
+            task_id=task_id,
+            event_count=len(page),
+            total=total,
+            window_hours=window_hours,
+            currency=currency,
+        )
+        return page, total
+
+    async def _fetch_costs_unscoped(
+        self,
+        since: datetime,
+        now: datetime,
+    ) -> tuple[CostRecord, ...]:
+        """Best-effort no-agent cost fetch."""
+        if self._cost_tracker is None:
+            return ()
+        try:
+            return await self._cost_tracker.get_records(start=since, end=now)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                source="cost_tracker",
+                since=since.isoformat(),
+                until=now.isoformat(),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ()
+
+    async def _fetch_tools_unscoped(
+        self,
+        since: datetime,
+        now: datetime,
+    ) -> tuple[ToolInvocationRecord, ...]:
+        """Best-effort no-agent tool fetch."""
+        if self._tool_invocation_tracker is None:
+            return ()
+        try:
+            return await self._tool_invocation_tracker.get_records(
+                start=since,
+                end=now,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                source="tool_invocation_tracker",
+                since=since.isoformat(),
+                until=now.isoformat(),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ()
+
+    def _validate_pagination(self, *, offset: int, limit: int) -> None:
+        """Validate offset and limit, logging before each raise."""
+        if offset < 0:
+            logger.warning(
+                HR_ACTIVITY_INVALID_REQUEST,
+                param="offset",
+                value=offset,
+            )
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            logger.warning(
+                HR_ACTIVITY_INVALID_REQUEST,
+                param="limit",
+                value=limit,
+            )
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
+
+    def _validate_window(self, *, window_hours: int) -> None:
+        """Validate window_hours; logged before raise."""
+        if window_hours < 1 or window_hours > _MAX_WINDOW_HOURS:
+            logger.warning(
+                HR_ACTIVITY_INVALID_REQUEST,
+                param="window_hours",
+                value=window_hours,
+                max_allowed=_MAX_WINDOW_HOURS,
+            )
+            msg = (
+                f"window_hours must be between 1 and {_MAX_WINDOW_HOURS}, "
+                f"got {window_hours}"
+            )
+            raise ValueError(msg)
+
     def _validate_request(
         self,
         *,

@@ -13,7 +13,9 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
+    CollaborationCalibration,
     CollaborationMetricRecord,
+    CollaborationOverride,
     CollaborationScoreResult,
     TaskMetricRecord,
     TrendResult,
@@ -444,6 +446,67 @@ class PerformanceTracker:
         return await self._collaboration_strategy.score(
             agent_id=agent_id,
             records=records,
+        )
+
+    async def get_collaboration_calibration(
+        self,
+        agent_id: NotBlankStr,
+    ) -> CollaborationCalibration:
+        """Return a stable calibration readout for an agent.
+
+        The shape is deliberately curated -- ``strategy_name`` and the
+        bounded ``component_weights`` map describe the active scoring
+        strategy without leaking strategy-private internals. Swapping
+        the underlying strategy never changes the envelope shape.
+
+        Args:
+            agent_id: Agent to read calibration for.
+
+        Returns:
+            ``CollaborationCalibration`` covering the active strategy,
+            window labels, sample size, override (if any), and last
+            calibration timestamp.
+        """
+        strategy = self._collaboration_strategy
+        strategy_name = NotBlankStr(strategy.name)
+
+        # ``describe_weights`` is optional on the protocol; empty tuple
+        # is a valid response for strategies that do not advertise
+        # weights (or for hand-rolled stubs in tests).
+        describe = getattr(strategy, "describe_weights", None)
+        weights: tuple[tuple[NotBlankStr, float], ...] = ()
+        if callable(describe):
+            try:
+                raw = describe()
+            except Exception as exc:
+                logger.warning(
+                    PERF_SNAPSHOT_FAILED,
+                    agent_id=str(agent_id),
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    where="describe_weights",
+                )
+                raw = ()
+            weights = tuple((NotBlankStr(name), float(value)) for name, value in raw)
+
+        active_override: CollaborationOverride | None = None
+        if self._override_store is not None:
+            active_override = self._override_store.get_active_override(agent_id)
+
+        async with self._metrics_lock:
+            records = tuple(self._collab_metrics.get(str(agent_id), []))
+        last_calibrated_at: AwareDatetime | None = None
+        if records:
+            last_calibrated_at = max(r.recorded_at for r in records)
+
+        return CollaborationCalibration(
+            agent_id=agent_id,
+            strategy_name=strategy_name,
+            window_sizes=tuple(self._config.windows),
+            component_weights=weights,
+            active_override=active_override,
+            sample_size=len(records),
+            last_calibrated_at=last_calibrated_at,
         )
 
     async def get_snapshots(
