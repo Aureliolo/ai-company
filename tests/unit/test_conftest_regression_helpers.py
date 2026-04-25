@@ -121,29 +121,46 @@ def test_load_baseline_returns_none_when_missing(
     assert _module()._load_baseline_for_conftest() is None  # type: ignore[attr-defined]
 
 
-def test_load_baseline_returns_none_for_malformed_json(
+def test_load_baseline_raises_for_malformed_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Malformed JSON returns ``None`` rather than crashing the hook."""
+    """Malformed JSON raises ``BaselineMalformedError`` rather than skipping.
+
+    The previous behaviour silently returned ``None``, which masked
+    the very class of typo the regression rail exists to catch.  A
+    corrupt baseline must surface so the operator fixes the file
+    instead of pushing without the regression check.
+    """
+    from tests.baselines.loader import BaselineMalformedError
+
     baseline = tmp_path / "unit_timing.json"
     baseline.write_text("not json", encoding="utf-8")
     _patch_baseline(monkeypatch, baseline)
-    assert _module()._load_baseline_for_conftest() is None  # type: ignore[attr-defined]
+    with pytest.raises(BaselineMalformedError):
+        _module()._load_baseline_for_conftest()  # type: ignore[attr-defined]
 
 
-def test_load_baseline_returns_none_when_required_field_missing(
+def test_load_baseline_raises_when_required_field_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Missing ``unit_suite_seconds`` returns ``None`` (KeyError path)."""
+    """A baseline missing ``unit_suite_seconds`` AND ``per_test_ms`` raises.
+
+    Without either field, the loader has no per-test cost to compare
+    against -- silently disabling the rail would let a typo slip
+    through unnoticed.
+    """
+    from tests.baselines.loader import BaselineMalformedError
+
     baseline = tmp_path / "unit_timing.json"
     baseline.write_text(
         json.dumps({"test_count": 10_000}),
         encoding="utf-8",
     )
     _patch_baseline(monkeypatch, baseline)
-    assert _module()._load_baseline_for_conftest() is None  # type: ignore[attr-defined]
+    with pytest.raises(BaselineMalformedError):
+        _module()._load_baseline_for_conftest()  # type: ignore[attr-defined]
 
 
 def test_emit_regression_banner_writes_to_stderr(

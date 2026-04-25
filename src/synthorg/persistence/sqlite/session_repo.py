@@ -200,25 +200,38 @@ class SQLiteSessionRepository:
         return False
 
     async def revoke_all_for_user(self, user_id: str) -> int:
-        """Revoke all active sessions for a user."""
+        """Revoke all active sessions for a user.
+
+        Captures the session-id snapshot BEFORE committing the UPDATE
+        so a SELECT failure cannot leave the DB committed-revoked
+        while ``self._revoked`` (in-memory set) stays unaware -- a
+        partial-success state would route the affected sessions
+        through the auth fast path until the next ``load_revoked``.
+        """
         now = datetime.now(UTC).isoformat()
         async with self._write_lock:
             try:
+                # SELECT first: capture the ids that WILL be revoked
+                # while they are still pending.  If this read fails we
+                # have not yet committed any change.
+                cursor = await self._db.execute(
+                    "SELECT session_id FROM sessions "
+                    "WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
+                    (user_id, now),
+                )
+                rows = await cursor.fetchall()
+                if not rows:
+                    return 0
                 cursor = await self._db.execute(
                     "UPDATE sessions SET revoked = 1 "
                     "WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
                     (user_id, now),
                 )
-                await self._db.commit()
                 count = cursor.rowcount
-                if count == 0:
-                    return 0
-                cursor = await self._db.execute(
-                    "SELECT session_id FROM sessions "
-                    "WHERE user_id = ? AND revoked = 1 AND expires_at > ?",
-                    (user_id, now),
-                )
-                rows = await cursor.fetchall()
+                # Commit only after both the SELECT snapshot and the
+                # UPDATE succeeded; in-memory mutation only happens
+                # after a successful commit.
+                await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()

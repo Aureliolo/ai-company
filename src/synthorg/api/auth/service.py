@@ -13,7 +13,10 @@ import jwt
 
 from synthorg.api.auth.models import User  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_AUTH_FAILED
+from synthorg.observability.events.api import (
+    API_AUTH_FAILED,
+    API_AUTH_REFRESH_CREATED,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.auth.config import AuthConfig
@@ -225,6 +228,48 @@ class AuthService:
             secret,
             algorithms=[self._config.jwt_algorithm],
             options={"require": ["exp", "iat", "sub", "jti"], "verify_aud": False},
+        )
+
+    async def persist_refresh_token(
+        self,
+        store: object,
+        *,
+        token_hash: str,
+        session_id: str,
+        user_id: str,
+        expires_at: datetime,
+    ) -> None:
+        """Persist a refresh token through the auth-domain boundary.
+
+        Centralises the refresh-store write + audit log so callers
+        (notably ``make_session_cookies``) do not reach into
+        ``app_state._refresh_store`` directly.  The repo handle is
+        passed in rather than held by the service so this stays
+        compatible with the existing AuthService construction (no
+        constructor change required).
+
+        Args:
+            store: The :class:`RefreshTokenRepository` instance to
+                write through.  Typed as ``object`` to keep this
+                module free of persistence-layer imports.
+            token_hash: HMAC-SHA256 hex digest of the raw refresh token.
+            session_id: Session identifier.
+            user_id: User identifier.
+            expires_at: Refresh token expiry (UTC).
+
+        Raises:
+            QueryError: If the underlying repo write fails.
+        """
+        await store.create(  # type: ignore[attr-defined]
+            token_hash=token_hash,
+            session_id=session_id,
+            user_id=user_id,
+            expires_at=expires_at,
+        )
+        logger.info(
+            API_AUTH_REFRESH_CREATED,
+            session_id=session_id,
+            user_id=user_id,
         )
 
     def hash_api_key(self, raw_key: str) -> str:

@@ -122,7 +122,8 @@ class SQLiteOntologyEntityRepository:
                 )
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
-                await self._db.rollback()
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Entity '{entity.name}' already exists"
                 logger.warning(
                     ONTOLOGY_ENTITY_DUPLICATE,
@@ -130,6 +131,20 @@ class SQLiteOntologyEntityRepository:
                     error=str(exc),
                 )
                 raise OntologyDuplicateError(msg) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                # Other DB-layer failures (locked, IO error, ...) must
+                # not silently escape; rollback + log + translate to
+                # OntologyError so callers see a domain-typed failure.
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to register entity '{entity.name}'"
+                logger.warning(
+                    ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
+                    entity_name=entity.name,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+                raise OntologyError(msg) from exc
         # Mutation-audit logging belongs in the service layer, not in
         # repositories.  Keeping ``logger.info(ONTOLOGY_ENTITY_REGISTERED)``
         # here would duplicate the audit trail every time multiple

@@ -1,6 +1,7 @@
 """SQLite repository implementation for agent runtime state persistence."""
 
 import asyncio
+import contextlib
 import sqlite3
 
 import aiosqlite
@@ -9,7 +10,7 @@ from pydantic import ValidationError
 from synthorg.core.enums import ExecutionStatus
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.agent_state import AgentRuntimeState
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AGENT_STATE_ACTIVE_QUERIED,
     PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED,
@@ -63,11 +64,14 @@ INSERT OR REPLACE INTO agent_states (
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to save agent state for {state.agent_id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_AGENT_STATE_SAVE_FAILED,
                     agent_id=state.agent_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -144,11 +148,14 @@ INSERT OR REPLACE INTO agent_states (
                 deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to delete agent state for {agent_id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_AGENT_STATE_DELETE_FAILED,
                     agent_id=agent_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
         if not deleted:

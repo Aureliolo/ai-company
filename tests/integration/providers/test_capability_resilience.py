@@ -302,7 +302,7 @@ class TestBatchGetCapabilitiesResilience:
     async def test_propagates_resource_exhaustion_errors(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        exception_factory: type[BaseException],
+        exception_factory: type[Exception],
     ) -> None:
         """``MemoryError`` / ``RecursionError`` escape uncaught.
 

@@ -25,7 +25,7 @@ from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
     SecretRetrievalError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     CONNECTION_CREATED,
     CONNECTION_DELETED,
@@ -338,12 +338,17 @@ class ConnectionCatalog:
                             connection_name=name,
                             secret_id=ref.secret_id,
                         )
-                except Exception:
-                    logger.exception(
+                except Exception as exc:
+                    # SEC-1: secret backends carry credentials; raw
+                    # exception strings via ``logger.exception`` can
+                    # leak backend details.  Use the structured
+                    # safe_error_description path instead.
+                    logger.warning(
                         CONNECTION_DELETED,
                         connection_name=name,
                         secret_id=ref.secret_id,
-                        error="secret delete failed after repo delete",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
             self._invalidate_cache()
             logger.info(CONNECTION_DELETED, connection_name=name)
@@ -504,15 +509,19 @@ class ConnectionCatalog:
                 try:
                     await self._secret_backend.delete(new_secret_id)
                 except Exception as cleanup_exc:
-                    logger.exception(
+                    # SEC-1: see sibling handler -- avoid raw str(exc)
+                    # in case the secret backend's exception message
+                    # contains backend-internal credentials.
+                    logger.warning(
                         OAUTH_TOKEN_EXCHANGED,
                         connection_name=name,
                         secret_id=new_secret_id,
-                        error=(
+                        error_context=(
                             "rollback delete failed; manual cleanup "
                             "required for orphaned OAuth secret"
                         ),
-                        cleanup_exception=str(cleanup_exc),
+                        error_type=type(cleanup_exc).__name__,
+                        error=safe_error_description(cleanup_exc),
                     )
                 raise
             # Repo save succeeded -- drop any previously-referenced

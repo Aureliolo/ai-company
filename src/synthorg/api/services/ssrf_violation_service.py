@@ -30,7 +30,7 @@ from synthorg.security.ssrf_violation import (
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
-    from synthorg.persistence.ssrf_violation_repo import SsrfViolationRepository
+    from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
 
 logger = get_logger(__name__)
 

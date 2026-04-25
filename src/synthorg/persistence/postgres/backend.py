@@ -168,7 +168,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.persistence.risk_override_repo import RiskOverrideRepository
     from synthorg.persistence.settings_protocol import SettingsRepository
-    from synthorg.persistence.ssrf_violation_repo import SsrfViolationRepository
+    from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
     from synthorg.persistence.subworkflow_repo import SubworkflowRepository
     from synthorg.persistence.task_protocol import TaskRepository
     from synthorg.persistence.user_protocol import (

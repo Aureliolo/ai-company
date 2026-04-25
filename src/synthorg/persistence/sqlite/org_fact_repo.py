@@ -179,6 +179,13 @@ class SQLiteOrgFactRepository:
 
     Args:
         db: Open aiosqlite connection with ``row_factory`` set.
+        write_lock: Optional shared lock used to serialize writes on
+            the shared connection.  Inject the
+            :class:`SQLitePersistenceBackend._shared_write_lock` so
+            writes from this repo coordinate with sibling repos that
+            share the same connection.  Defaults to ``None``, in
+            which case the repo creates a private :class:`asyncio.Lock`
+            (suitable for standalone test construction).
     """
 
     def __init__(

@@ -5,6 +5,7 @@ Provides ``SQLiteTrainingResultRepository`` which persists
 """
 
 import asyncio
+import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -18,7 +19,7 @@ from synthorg.hr.training.models import (
     TrainingApprovalHandle,
     TrainingResult,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
@@ -191,6 +192,13 @@ class SQLiteTrainingResultRepository:
     Args:
         db: An open aiosqlite connection with ``row_factory``
             set to ``aiosqlite.Row``.
+        write_lock: Optional shared lock used to serialize writes on
+            the shared connection.  Inject the
+            :class:`SQLitePersistenceBackend._shared_write_lock` so
+            writes from this repo coordinate with sibling repos that
+            share the same connection.  Defaults to ``None``, in
+            which case the repo creates a private :class:`asyncio.Lock`
+            (suitable for standalone test construction).
     """
 
     def __init__(
@@ -223,12 +231,15 @@ class SQLiteTrainingResultRepository:
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to save training result {result.id!r}"
-                logger.exception(
+                logger.warning(
                     HR_TRAINING_PERSISTENCE_ERROR,
                     result_id=str(result.id),
                     plan_id=str(result.plan_id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -256,10 +267,11 @@ LIMIT 1""",
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch result for plan {plan_id!r}"
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PERSISTENCE_ERROR,
                 plan_id=str(plan_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -290,10 +302,11 @@ LIMIT 1""",
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch latest result for {agent_id!r}"
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PERSISTENCE_ERROR,
                 agent_id=str(agent_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:

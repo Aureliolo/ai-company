@@ -231,34 +231,51 @@ def test_skips_when_baseline_missing(
     )
 
 
-def test_skips_when_baseline_is_malformed_json(
+def test_raises_when_baseline_is_malformed_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Malformed JSON disables the guard rather than crashing."""
+    """Malformed JSON surfaces a ``BaselineMalformedError`` loudly.
+
+    The previous behaviour silently disabled the guard on a typo, which
+    defeated the very class of error the rail exists to catch.  A
+    corrupt baseline must surface so the operator fixes the file
+    instead of pushing without the regression check.
+    """
+    from tests.baselines.loader import BaselineMalformedError
+
     bad = tmp_path / "unit_timing.json"
     bad.write_text("not json", encoding="utf-8")
     _patch_baseline(monkeypatch, bad)
-    assert not _MODULE._check_timing_regression(  # type: ignore[attr-defined]
-        elapsed=10_000.0,
-        run_all=True,
-        test_count=10_000,
-    )
+    with pytest.raises(BaselineMalformedError):
+        _MODULE._check_timing_regression(  # type: ignore[attr-defined]
+            elapsed=10_000.0,
+            run_all=True,
+            test_count=10_000,
+        )
 
 
-def test_skips_when_baseline_missing_fields(
+def test_raises_when_baseline_missing_fields(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Baseline without test_count nor per_test_ms disables the guard."""
+    """Baseline missing ``test_count`` raises rather than silently skipping.
+
+    A baseline that exists but is incomplete is a typo signal -- the
+    regression guard must fail loud so the operator restores the
+    missing field.
+    """
+    from tests.baselines.loader import BaselineMalformedError
+
     bad = tmp_path / "unit_timing.json"
     bad.write_text(json.dumps({"unit_suite_seconds": 100.0}), encoding="utf-8")
     _patch_baseline(monkeypatch, bad)
-    assert not _MODULE._check_timing_regression(  # type: ignore[attr-defined]
-        elapsed=200.0,
-        run_all=True,
-        test_count=10_000,
-    )
+    with pytest.raises(BaselineMalformedError):
+        _MODULE._check_timing_regression(  # type: ignore[attr-defined]
+            elapsed=200.0,
+            run_all=True,
+            test_count=10_000,
+        )
 
 
 # ── snapshot loader (positive coverage) ──────────────────────────

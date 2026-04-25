@@ -277,16 +277,18 @@ class SQLiteSettingsRepository:
                     (namespace, key),
                 )
                 await self._db.commit()
+                deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete setting {namespace}/{key}"
-                logger.exception(
+                logger.warning(
                     SETTINGS_DELETE_FAILED,
                     namespace=namespace,
                     key=key,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return deleted
 
     async def delete_namespace(self, namespace: NotBlankStr) -> int:
         """Delete all settings in a namespace. Return count."""
@@ -297,15 +299,17 @@ class SQLiteSettingsRepository:
                     (namespace,),
                 )
                 await self._db.commit()
+                rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete namespace {namespace}"
-                logger.exception(
+                logger.warning(
                     SETTINGS_DELETE_FAILED,
                     namespace=namespace,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount
+        return rowcount
 
     async def delete_namespace_returning_keys(
         self,

@@ -196,6 +196,11 @@ def _load_baseline_snapshot() -> _BaselineSnapshot | None:
     Centralised in ``tests/baselines/loader.py`` so the contract stays
     identical between this script (pre-push) and
     ``tests/conftest.py::pytest_sessionfinish`` (regression banner).
+
+    Returns ``None`` only when the baseline file does not exist; a
+    malformed baseline propagates :class:`BaselineMalformedError` so
+    the operator fixes the typo instead of silently pushing without
+    the regression rail.
     """
     return _shared_load_baseline_snapshot(_BASELINE_PATH)
 

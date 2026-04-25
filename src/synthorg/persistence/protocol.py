@@ -83,7 +83,7 @@ from synthorg.persistence.risk_override_repo import (
     RiskOverrideRepository,  # noqa: TC001
 )
 from synthorg.persistence.settings_protocol import SettingsRepository  # noqa: TC001
-from synthorg.persistence.ssrf_violation_repo import (
+from synthorg.persistence.ssrf_violation_protocol import (
     SsrfViolationRepository,  # noqa: TC001
 )
 from synthorg.persistence.subworkflow_repo import (

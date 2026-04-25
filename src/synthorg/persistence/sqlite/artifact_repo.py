@@ -80,7 +80,10 @@ class SQLiteArtifactRepository:
         # connection).
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
-    async def _safe_rollback(self) -> None:
+    async def _safe_rollback(
+        self,
+        failure_event: str = PERSISTENCE_ARTIFACT_SAVE_FAILED,
+    ) -> None:
         """Best-effort rollback on the shared connection.
 
         ``SQLiteArtifactRepository`` shares a single
@@ -96,12 +99,20 @@ class SQLiteArtifactRepository:
         the caller is propagating.  We DO log the rollback failure so
         a tainted shared connection leaves a trail in observability
         instead of silently degrading later writes.
+
+        Args:
+            failure_event: Event constant attributed to the rollback
+                failure log.  Defaults to ``PERSISTENCE_ARTIFACT_SAVE_FAILED``
+                so existing call sites stay valid; ``delete()`` should
+                pass ``PERSISTENCE_ARTIFACT_DELETE_FAILED`` so a
+                rollback-after-delete failure is filed against the
+                correct operation in dashboards.
         """
         try:
             await self._db.rollback()
         except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
             logger.warning(
-                PERSISTENCE_ARTIFACT_SAVE_FAILED,
+                failure_event,
                 error_type=type(rollback_exc).__name__,
                 error=safe_error_description(rollback_exc),
                 rollback_failed=True,
@@ -329,8 +340,9 @@ WHERE id=?""",
                     "DELETE FROM artifacts WHERE id = ?", (artifact_id,)
                 )
                 await self._db.commit()
+                deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._safe_rollback()
+                await self._safe_rollback(PERSISTENCE_ARTIFACT_DELETE_FAILED)
                 msg = f"Failed to delete artifact {artifact_id!r}"
                 logger.warning(
                     PERSISTENCE_ARTIFACT_DELETE_FAILED,
@@ -339,4 +351,4 @@ WHERE id=?""",
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount > 0
+            return deleted

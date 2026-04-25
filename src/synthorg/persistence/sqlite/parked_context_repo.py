@@ -1,6 +1,7 @@
 """SQLite repository implementation for parked agent execution contexts."""
 
 import asyncio
+import contextlib
 import json
 import sqlite3
 
@@ -60,11 +61,14 @@ INSERT OR REPLACE INTO parked_contexts (
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to save parked context {context.id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
                     parked_id=context.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 

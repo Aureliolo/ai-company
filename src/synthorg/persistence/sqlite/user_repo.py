@@ -6,6 +6,7 @@ Both use upsert semantics for ``save`` operations.
 """
 
 import asyncio
+import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -191,11 +192,14 @@ ON CONFLICT(id) DO UPDATE SET
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to save user {user.id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_USER_SAVE_FAILED,
                     user_id=user.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 constraint = _classify_sqlite_user_error(str(exc))
                 if constraint is not None:
@@ -465,6 +469,8 @@ ON CONFLICT(id) DO UPDATE SET
                 await self._db.commit()
                 deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 constraint = _classify_sqlite_user_error(str(exc))
                 if constraint is not None:
                     msg = f"Failed to delete user {user_id!r}"
@@ -472,17 +478,19 @@ ON CONFLICT(id) DO UPDATE SET
                         PERSISTENCE_USER_DELETE_FAILED,
                         user_id=user_id,
                         constraint=constraint,
-                        exc_info=True,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
                     raise ConstraintViolationError(
                         msg,
                         constraint=constraint,
                     ) from exc
                 msg = f"Failed to delete user {user_id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_USER_DELETE_FAILED,
                     user_id=user_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
         return deleted
@@ -553,11 +561,14 @@ ON CONFLICT(id) DO UPDATE SET
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to save API key {key.id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_API_KEY_SAVE_FAILED,
                     key_id=key.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -696,11 +707,14 @@ ON CONFLICT(id) DO UPDATE SET
                 await self._db.commit()
                 deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to delete API key {key_id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_API_KEY_DELETE_FAILED,
                     key_id=key_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
         return deleted

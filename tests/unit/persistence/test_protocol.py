@@ -33,7 +33,7 @@ from synthorg.persistence.preset_repository import (
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.settings_protocol import SettingsRepository
-from synthorg.persistence.ssrf_violation_repo import SsrfViolationRepository
+from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.persistence.training_repos import (
     TrainingPlanRepository,

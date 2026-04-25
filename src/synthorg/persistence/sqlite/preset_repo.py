@@ -1,9 +1,10 @@
 """SQLite repository implementation for custom personality presets."""
 
 import asyncio
+import contextlib
 import sqlite3
 
-import aiosqlite  # noqa: TC002
+import aiosqlite
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -80,6 +81,8 @@ ON CONFLICT(name) DO UPDATE SET
                 )
                 await self._db.commit()
             except sqlite3.Error as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to save custom preset {name!r}"
                 logger.warning(
                     PRESET_CUSTOM_SAVE_FAILED,
@@ -182,6 +185,8 @@ ON CONFLICT(name) DO UPDATE SET
                     deleted = cursor.rowcount > 0
                 await self._db.commit()
             except sqlite3.Error as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
                 msg = f"Failed to delete custom preset {name!r}"
                 logger.warning(
                     PRESET_CUSTOM_DELETE_FAILED,

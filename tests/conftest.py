@@ -172,7 +172,7 @@ _start_key = pytest.StashKey[float]()
 # regression check.  The two hooks below close the gap:
 #
 #  - ``pytest_sessionfinish`` on each worker copies the worker-local
-#    accumulator into ``config.workeroutput`` (which xdist serialises
+#    accumulator into ``config.workeroutput`` (which xdist serializes
 #    back to the controller).
 #  - ``pytest_testnodedown`` on the controller sums the per-worker
 #    contributions back into the module-level accumulator, so when
@@ -236,8 +236,12 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 def _load_baseline_for_conftest() -> tuple[float, int, float] | None:
     """Return ``(baseline_secs, baseline_count, threshold_ratio)`` or ``None``.
 
-    Returns ``None`` when the baseline is missing or malformed --
-    callers skip the regression check rather than blocking the run.
+    Returns ``None`` only when the baseline file does not exist
+    (fresh checkout, no baseline yet -- callers skip the regression
+    check).  A baseline that exists but is malformed propagates a
+    :class:`tests.baselines.loader.BaselineMalformedError`: silently
+    disabling the regression rail on a typo would defeat the very
+    failure mode it exists to catch.
 
     Delegates to :func:`tests.baselines.loader.load_baseline_snapshot`
     so the validation contract is identical to the pre-push runner

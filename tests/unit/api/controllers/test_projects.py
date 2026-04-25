@@ -3,7 +3,7 @@
 from typing import Any
 
 import pytest
-import structlog
+import structlog.testing
 from litestar.testing import TestClient
 
 from tests.unit.api.conftest import make_auth_headers
