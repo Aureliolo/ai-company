@@ -1,6 +1,6 @@
 ---
 description: "Full codebase audit: launches 153 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
-argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only] [--quick]"
+argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only]"
 allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
@@ -33,7 +33,6 @@ Launch 153 specialized agents to audit the entire codebase (or a targeted scope)
 
 Flags:
 - `--report-only` -- skip issue creation, findings files only
-- `--quick` -- skip deep-dive on zero-finding categories
 
 ### Setup output directory
 
@@ -2704,15 +2703,15 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 ## Phase 3: Validate Findings (sonnet agents)
 
-**Required for standard runs.** For `--quick` runs or when fewer than 5 critical+high+medium findings exist, validation may be skipped.
+**Required on every run.** Validation runs on all findings -- critical, high, medium, low, and info -- with no opt-out and no severity threshold. This skill is for huge audits; the false-positive filter must apply uniformly across severities so INDEX.md is not contaminated by un-validated noise.
 
-After all launched audit agents complete, launch validation agents to verify findings. The number of agents depends on scope (153 for `full`, fewer for scoped runs).
+After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (152 for `full` since agent 98 is retired; fewer for scoped runs).
 
 ### Process
 
 1. Read all finding files present in `_audit/latest/findings/`
-2. Collect all critical + high severity findings into a validation queue
-3. If queue exceeds 50 findings, prioritize by clustering related findings (same file/module)
+2. Collect ALL findings -- every severity, including low and info -- into a validation queue
+3. If queue exceeds 50 findings, prioritize by clustering related findings (same file/module). Order batches by severity descending (critical first) so the highest-impact verdicts land earliest, but every finding still gets validated
 4. Split the queue into batches of ~12 findings each
 5. Launch one **sonnet** validation agent per batch (in parallel, `run_in_background: true`)
 
@@ -2747,8 +2746,6 @@ Findings to validate:
 2. Delete FALSE_POSITIVE findings entirely from the audit files (edit in place)
 3. Mark INTENTIONAL findings as excluded (keep in file but prefix with `[INTENTIONAL]`)
 4. Report: "Validated N findings. Removed M false positives (X%)."
-
-Validation may be skipped when `--quick` is set or when fewer than 5 critical+high+medium findings exist.
 
 ---
 
@@ -2841,18 +2838,6 @@ The timestamp uses second-level precision (`%H%M%S`) so back-to-back runs in the
 
 Verify `_audit/` is in `.gitignore` (existing behavior). The `_audit/.ignore.yaml` ignore list (see below) is also gitignored by virtue of the parent.
 
-### Phase 0 sub-step: cost / time estimate
-
-Before launching agents, estimate run cost and time. Print to stdout:
-
-> Estimated run time: ~14 min. Estimated cost: $X.XX (Y on Sonnet, Z on Haiku, W on Opus).
-
-Time formula: `(batch_count * avg_batch_duration_from_history) + validation_time + synthesis_time`. First run defaults: ~45s/batch, ~30s/validation batch, ~60s synthesis.
-
-Cost formula: per-model rate * estimated prompt size * agent count.
-
-A new `--budget <USD>` flag aborts if estimate exceeds budget. The existing `--quick` flag still skips zero-finding deep-dives.
-
 ### Persistent ignore list
 
 `_audit/.ignore.yaml` (gitignored):
@@ -2873,9 +2858,9 @@ When building INDEX (Phase 4), read `.ignore.yaml`. Findings with a matching `fi
 
 Phase 5 triage gets a new option: "Ignore permanently" -- appends to `.ignore.yaml` with reason and optional expiry.
 
-### Phase 3 update: validate medium severity
+### Phase 3 update: validate every finding
 
-Phase 3 currently validates critical+high. Update to validate **critical + high + medium**. Low and info still skipped (validation cost not worth it). Adds ~30-50% validation batches; justified because medium findings have caused real public-facing drift (the 13k tests claim) to slip past prior audits.
+Validation runs over **every finding at every severity** -- critical, high, medium, low, info. There is no opt-out and no severity threshold. The previous "skip lower severities to save validation work" carve-out is removed: this skill is for HUGE audits, the false-positive filter must apply uniformly, and public-facing drift (the "13k tests" precedent) survived past audits precisely because lower-severity findings were untriaged. Phase 3.5 also promotes public-facing findings up one severity, so an unvalidated `low` becomes an unvalidated `medium` in INDEX.md -- exactly the noise this validation phase exists to remove.
 
 ### Phase 3 update: evidence requirement enforcement
 
@@ -3045,7 +3030,7 @@ If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 
 1. **Every agent writes to `_audit/latest/findings/`** using the Write tool, not Bash
 2. **Architecture brief in every prompt** -- no blind agents
-3. **Validation is required** for critical+high+medium findings on standard runs (may be skipped with `--quick` or fewer than 5 findings)
+3. **Validation is required** for every finding at every severity on every run -- no opt-out, no threshold
 4. **Batch execution** -- ~10 agents per batch, wait between batches
 5. **Model selection**:
    - **Haiku**: pure pattern matching with low ambiguity (grep + filter, regex over fixed token sets, listing TODOs).
