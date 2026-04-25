@@ -13,7 +13,16 @@ from pydantic import ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
-from synthorg.meta.mcp.handlers.common import err, ok
+from synthorg.meta.mcp.handlers.common import (
+    actor_id as _actor_id,
+)
+from synthorg.meta.mcp.handlers.common import (
+    err,
+    ok,
+)
+from synthorg.meta.mcp.handlers.common import (
+    require_non_blank as _require_non_blank,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_ARGUMENT_INVALID,
@@ -47,23 +56,6 @@ def _log_failed(tool: str, exc: Exception) -> None:
         error_type=type(exc).__name__,
         error=safe_error_description(exc),
     )
-
-
-def _actor_id(actor: Any) -> str | None:
-    if actor is None:
-        return None
-    agent_id = getattr(actor, "id", None)
-    if agent_id is not None:
-        return str(agent_id)
-    name = getattr(actor, "name", None)
-    return name if isinstance(name, str) and name else None
-
-
-def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    raw = arguments.get(key)
-    if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(key, _TY_NON_BLANK)
-    return raw.strip()
 
 
 async def autonomy_get(
@@ -189,7 +181,7 @@ async def collaboration_get_score(
         return err(exc)
     try:
         score = await app_state.performance_tracker.get_collaboration_score(
-            agent_id,
+            NotBlankStr(agent_id),
         )
     except MemoryError, RecursionError:
         raise

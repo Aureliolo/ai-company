@@ -251,6 +251,16 @@ class ActivityFeedService:
 
         Raises:
             ValueError: If pagination or window inputs are invalid.
+
+        Note:
+            ``project`` and ``task_id`` filters are applied in process
+            after fetching every record in the window. The sources do
+            not currently expose a scoped query interface, so the
+            filter step here narrows the merged timeline rather than
+            the per-source fetches. Acceptable while window volume
+            stays bounded by ``_LIFECYCLE_CAP`` and the configured
+            window duration; revisit if the unfiltered fetch dominates
+            request latency.
         """
         self._validate_pagination(offset=offset, limit=limit)
         self._validate_window(window_hours=window_hours)
@@ -284,6 +294,8 @@ class ActivityFeedService:
                 since=since,
                 until=now,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,

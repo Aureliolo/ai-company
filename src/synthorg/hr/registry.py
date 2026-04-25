@@ -9,7 +9,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import (
     AgentStatus,
     ApprovalRiskLevel,
@@ -584,12 +583,22 @@ class AgentRegistryService:
 
         approval_id: str | None = None
         if approval_store is not None:
+            # Local import breaks the import cycle:
+            # ``synthorg.core.approval`` -> ``synthorg.ontology.decorator`` ->
+            # ... -> ``synthorg.communication.meeting.participant`` ->
+            # ``synthorg.hr.registry``. The class is only needed inside this
+            # branch, so deferring the import to call time keeps module
+            # bootstrap acyclic without weakening the call-site contract.
+            from synthorg.core.approval import (  # noqa: PLC0415
+                ApprovalItem as _ApprovalItem,
+            )
+
             # 16 hex chars (64 bits) keeps collision probability negligible
             # for approval-queue volumes while still fitting compactly into
             # log lines and audit trails.
             approval_id = f"approval-{uuid.uuid4().hex[:16]}"
             requested_by = update.requested_by or "system"
-            item = ApprovalItem(
+            item = _ApprovalItem(
                 id=approval_id,
                 action_type="autonomy:promote",
                 title=(

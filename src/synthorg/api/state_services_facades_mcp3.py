@@ -9,10 +9,11 @@ for the five services META-MCP-3 introduces or wires onto AppState:
 - ``subworkflow_service`` -- subworkflow control plane.
 - ``self_improvement_service`` -- meta-loop trigger and config readout.
 
-The mixin keeps the parent ``state_services_facades.py`` under the
-project's 800-line ceiling and follows the same conventions (audit
-event on attach, one-shot setter, ``ServiceUnavailableError`` on read
-when not wired) as the META-MCP-4 mixin.
+This is the META-MCP-3 mixin; the parallel META-MCP-4 mixin lives in
+``state_services_facades_mcp4.py``. Both follow the same conventions
+(audit event on attach, one-shot setter, ``ServiceUnavailableError`` on
+read when not wired) and exist as separate files purely so the parent
+``state_services_facades.py`` stays under the project's 800-line ceiling.
 """
 
 from typing import Any

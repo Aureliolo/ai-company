@@ -25,6 +25,9 @@ from synthorg.meta.mcp.errors import (
     invalid_argument,
 )
 from synthorg.meta.mcp.handlers.common import (
+    actor_id as _actor_id,
+)
+from synthorg.meta.mcp.handlers.common import (
     capability_gap,
     coerce_pagination,
     dump_many,
@@ -32,6 +35,9 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
     paginate_sequence,
     require_destructive_guardrails,
+)
+from synthorg.meta.mcp.handlers.common import (
+    require_non_blank as _require_non_blank,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -80,23 +86,6 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
         tool_name=tool,
         violation=exc.violation,
     )
-
-
-def _actor_id(actor: Any) -> str | None:
-    if actor is None:
-        return None
-    agent_id = getattr(actor, "id", None)
-    if agent_id is not None:
-        return str(agent_id)
-    name = getattr(actor, "name", None)
-    return name if isinstance(name, str) and name else None
-
-
-def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    raw = arguments.get(key)
-    if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(key, _TY_NON_BLANK)
-    return raw.strip()
 
 
 def _execution_service(app_state: Any) -> WorkflowExecutionService | None:

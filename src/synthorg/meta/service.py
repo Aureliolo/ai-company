@@ -36,7 +36,7 @@ from synthorg.meta.models import (
 )
 from synthorg.meta.rules.builtin import default_rules
 from synthorg.meta.telemetry.factory import build_analytics_emitter
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_CONFIDENCE_ADJUSTMENT_FAILED,
     COS_LEARNING_ENABLED,
@@ -52,6 +52,7 @@ from synthorg.observability.events.meta import (
     META_CYCLE_COMPLETED,
     META_CYCLE_NO_TRIGGERS,
     META_CYCLE_STARTED,
+    META_CYCLE_TRIGGER_FAILED,
     META_CYCLE_TRIGGERED,
     META_PROPOSAL_GUARD_REJECTED,
     META_ROLLOUT_PRECONDITION_FAILED,
@@ -283,10 +284,16 @@ class SelfImprovementService:
 
         try:
             await applier.verify_github_token()
-        except GitHubAPIError:
-            logger.exception(
+        except GitHubAPIError as exc:
+            # SEC-1: never let raw exception text leak into telemetry on
+            # credential-bearing paths -- the GitHub API client may include
+            # the bearer header in error messages. ``safe_error_description``
+            # is the project-wide redactor mandated by CLAUDE.md ``## Logging``.
+            logger.warning(
                 META_CODE_GITHUB_CREDS_INVALID,
                 reason="token_verification_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         logger.info(META_CODE_GITHUB_CREDS_VALID)
@@ -635,10 +642,36 @@ class SelfImprovementService:
                 "snapshot_builder; the meta loop cannot generate "
                 "useful proposals without live signals."
             )
+            logger.warning(
+                META_CYCLE_TRIGGER_FAILED,
+                reason="no_snapshot_builder",
+            )
             raise SelfImprovementTriggerError(msg)
         started_at = datetime.now(UTC)
-        snapshot = await self._snapshot_builder()
-        proposals = await self.run_cycle(snapshot)
+        try:
+            snapshot = await self._snapshot_builder()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                META_CYCLE_TRIGGER_FAILED,
+                reason="snapshot_builder_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        try:
+            proposals = await self.run_cycle(snapshot)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                META_CYCLE_TRIGGER_FAILED,
+                reason="run_cycle_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         completed_at = datetime.now(UTC)
         result = ImprovementCycleResult(
             started_at=started_at,

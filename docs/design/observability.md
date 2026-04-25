@@ -197,6 +197,19 @@ names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 
 All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` on credential-sensitive paths -- never `logger.exception(..., error=str(exc))` -- to avoid leaking secrets through traceback frame-locals (SEC-1).
 
+**Self-improvement meta-loop events (`observability/events/meta.py`):**
+
+| Constant | Level | When fired |
+|----------|-------|------------|
+| `META_CYCLE_TRIGGERED` | INFO | `SelfImprovementService.trigger_cycle` completed successfully. Carries `cycle_id`, `proposals_count`, and `duration_seconds`. Emitted by both the in-process meta loop and the `synthorg_meta_trigger_cycle` MCP tool. |
+| `META_CYCLE_TRIGGER_FAILED` | WARNING | `trigger_cycle` could not produce a `ImprovementCycleResult`. `reason` is `"no_snapshot_builder"` (precondition), `"snapshot_builder_failed"` (builder raised), or `"run_cycle_failed"` (cycle body raised). Logs `error_type` and a `safe_error_description(exc)` on the latter two paths so callers see the failure even when they do not catch the re-raise. |
+
+**Workflow version events (`observability/events/workflow_version.py`):**
+
+| Constant | Level | When fired |
+|----------|-------|------------|
+| `WORKFLOW_VERSION_INVALID_REQUEST` | WARNING | `WorkflowVersionService` rejected an `offset`/`limit`/`revision` argument before hitting the repository. Lets ops trace bad caller input separately from repository-layer failures. |
+
 **Communication subscriber backpressure (`observability/events/communication.py`):**
 
 | Constant | Level | When fired |

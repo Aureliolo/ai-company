@@ -92,13 +92,20 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
     multiple inheritance so the shared helper methods
     (``_require_service``, ``_set_once``) resolve at runtime.
 
+    The META-MCP-3 accessors (``workflow_service``,
+    ``workflow_execution_service``, ``workflow_version_service``,
+    ``subworkflow_service``, ``self_improvement_service``) live on
+    :class:`_MetaMcp3FacadesMixin`.
+
     The META-MCP-4 accessors (``activity_feed_service``,
     ``agent_health_service``, ``agent_version_service``,
     ``ceremony_policy_service``, ``coordination_service``,
     ``memory_service``, ``personality_service``,
     ``scaling_decision_service``) live on
-    :class:`_MetaMcp4FacadesMixin` to keep this module under the
-    800-line ceiling; they are composed in via inheritance.
+    :class:`_MetaMcp4FacadesMixin`.
+
+    Both mixins exist as separate files purely to keep this module
+    under the 800-line ceiling; they are composed in via inheritance.
     """
 
     _set_once: Any

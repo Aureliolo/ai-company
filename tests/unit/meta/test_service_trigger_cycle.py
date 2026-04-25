@@ -20,7 +20,10 @@ from synthorg.meta.models import (
     OrgTelemetrySummary,
 )
 from synthorg.meta.service import SelfImprovementService
-from synthorg.observability.events.meta import META_CYCLE_TRIGGERED
+from synthorg.observability.events.meta import (
+    META_CYCLE_TRIGGER_FAILED,
+    META_CYCLE_TRIGGERED,
+)
 
 
 def _snapshot() -> OrgSignalSnapshot:
@@ -90,3 +93,36 @@ class TestTriggerCycle:
         service = _service(snapshot_builder=None)
         with pytest.raises(SelfImprovementTriggerError):
             await service.trigger_cycle()
+
+    @pytest.mark.unit
+    async def test_no_builder_logs_trigger_failed(self) -> None:
+        # Direct callers of the facade (notably the
+        # ``synthorg_meta_trigger_cycle`` MCP tool) need a service-level
+        # failure record before the exception propagates so they are
+        # not left dark in the audit trail.
+        service = _service(snapshot_builder=None)
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(SelfImprovementTriggerError),
+        ):
+            await service.trigger_cycle()
+        events = [e for e in logs if e.get("event") == META_CYCLE_TRIGGER_FAILED]
+        assert events, "expected META_CYCLE_TRIGGER_FAILED log entry"
+        assert events[0]["reason"] == "no_snapshot_builder"
+
+    @pytest.mark.unit
+    async def test_builder_failure_propagates_and_logs(self) -> None:
+        async def _boom_builder() -> OrgSignalSnapshot:
+            msg = "snapshot builder crashed"
+            raise RuntimeError(msg)
+
+        service = _service(snapshot_builder=_boom_builder)
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(RuntimeError),
+        ):
+            await service.trigger_cycle()
+        events = [e for e in logs if e.get("event") == META_CYCLE_TRIGGER_FAILED]
+        assert events, "expected META_CYCLE_TRIGGER_FAILED log entry"
+        assert events[0]["reason"] == "snapshot_builder_failed"
+        assert events[0]["error_type"] == "RuntimeError"

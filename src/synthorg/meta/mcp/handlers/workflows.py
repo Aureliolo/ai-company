@@ -547,12 +547,13 @@ async def _subworkflows_delete(  # noqa: PLR0911 -- error mapping fans out
     service = _subworkflow_service(app_state)
     if service is None:
         return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
+    deleted_by = _actor_id(resolved_actor) or "mcp"
     try:
         await service.delete(
             NotBlankStr(sub_id),
             NotBlankStr(version),
             reason=reason,
-            actor_id=_actor_id(resolved_actor) or "mcp",
+            actor_id=deleted_by,
         )
     except SubworkflowHasParentsError as exc:
         _log_failed(tool, exc)
@@ -569,7 +570,7 @@ async def _subworkflows_delete(  # noqa: PLR0911 -- error mapping fans out
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_id(resolved_actor),
+        actor_agent_id=deleted_by,
         reason=reason,
         target_id=f"{sub_id}@{version}",
     )

@@ -223,6 +223,50 @@ def _coerce_bounded_int(
     return value
 
 
+_TY_NON_BLANK = "non-blank string"
+
+
+def require_non_blank(arguments: dict[str, Any], key: str) -> str:
+    """Extract a non-blank, stripped string argument or raise.
+
+    Centralised so every handler does the same validation: missing,
+    non-string, blank-after-strip all map to ``ArgumentValidationError``
+    with ``domain_code=invalid_argument``.
+
+    Args:
+        arguments: Parsed tool arguments.
+        key: Argument name.
+
+    Returns:
+        The argument value with surrounding whitespace stripped.
+
+    Raises:
+        ArgumentValidationError: If missing, not a string, or blank after
+            stripping.
+    """
+    raw = arguments.get(key)
+    if not isinstance(raw, str) or not raw.strip():
+        raise invalid_argument(key, _TY_NON_BLANK)
+    return raw.strip()
+
+
+def actor_id(actor: Any) -> str | None:
+    """Return a stable audit identifier for ``actor`` (prefers ``.id``).
+
+    Returns ``None`` when ``actor`` is ``None`` or carries neither a
+    non-``None`` ``.id`` nor a non-blank ``.name``. Centralised so every
+    handler emits the same identifier shape into audit events and
+    service calls.
+    """
+    if actor is None:
+        return None
+    agent_id = getattr(actor, "id", None)
+    if agent_id is not None:
+        return str(agent_id)
+    name = getattr(actor, "name", None)
+    return name if isinstance(name, str) and name else None
+
+
 def require_arg[T](arguments: dict[str, Any], key: str, ty: type[T]) -> T:
     """Extract a typed required argument or raise ``ArgumentValidationError``.
 

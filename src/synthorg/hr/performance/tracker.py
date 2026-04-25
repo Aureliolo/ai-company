@@ -478,7 +478,18 @@ class PerformanceTracker:
         if callable(describe):
             try:
                 raw = describe()
+                weights = tuple(
+                    (NotBlankStr(name), float(value)) for name, value in raw
+                )
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
+                # Coercion failures (malformed pair, blank component name,
+                # non-numeric weight) are folded into the same fail-soft
+                # path as ``describe_weights`` raising directly so one bad
+                # strategy descriptor cannot take down the whole calibration
+                # readout. The caller surfaces ``component_weights=()`` and
+                # the warning lets ops trace the source.
                 logger.warning(
                     PERF_SNAPSHOT_FAILED,
                     agent_id=str(agent_id),
@@ -486,8 +497,7 @@ class PerformanceTracker:
                     error_type=type(exc).__name__,
                     where="describe_weights",
                 )
-                raw = ()
-            weights = tuple((NotBlankStr(name), float(value)) for name, value in raw)
+                weights = ()
 
         active_override: CollaborationOverride | None = None
         if self._override_store is not None:

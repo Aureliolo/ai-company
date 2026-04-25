@@ -89,7 +89,6 @@ def _summary(sub_id: str, *, name: str = "Inner") -> SubworkflowSummary:
 def _service(registry: AsyncMock | None = None) -> SubworkflowService:
     return SubworkflowService(
         registry=registry or AsyncMock(),
-        definition_repo=AsyncMock(),
     )
 
 

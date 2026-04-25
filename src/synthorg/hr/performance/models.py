@@ -475,8 +475,8 @@ class CollaborationCalibration(BaseModel):
 
     Returned by ``PerformanceTracker.get_collaboration_calibration`` for
     the MCP ``synthorg_collaboration_get_calibration`` tool. The shape
-    is intentionally curated -- callers see ``strategy_name`` and a
-    bounded ``component_weights`` map, but they do not see strategy-
+    is intentionally curated -- callers see ``strategy_name`` and the
+    bounded ``component_weights`` tuple, but they do not see strategy-
     private internals. Swapping the underlying
     :class:`~synthorg.hr.performance.protocols.CollaborationScoringStrategy`
     therefore does not change the envelope shape MCP consumers depend on.
@@ -485,8 +485,12 @@ class CollaborationCalibration(BaseModel):
         agent_id: The agent the calibration was computed for.
         strategy_name: Name of the active scoring strategy.
         window_sizes: Rolling-window labels the strategy aggregates over.
-        component_weights: Per-component weight map (keys are stable
-            component identifiers like ``"handoff_acceptance"``).
+        component_weights: Ordered tuple of ``(component_name, weight)``
+            pairs, where ``component_name`` is a stable identifier like
+            ``"handoff_acceptance"``. A tuple-of-tuples (rather than a
+            dict) is used so the wire shape is fully ordered and stays
+            JSON-serialisable; callers that need lookup semantics should
+            convert via ``dict(component_weights)`` at the call site.
         active_override: Currently-active human override, if any.
         sample_size: Number of collaboration samples backing the active
             window. ``0`` is valid (cold-start agents).

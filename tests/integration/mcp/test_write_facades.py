@@ -145,6 +145,44 @@ def _parse(result: str) -> dict[str, Any]:
     return body
 
 
+def _minimal_workflow_definition_dict(
+    *,
+    workflow_id: str = "wfdef-1",
+) -> dict[str, Any]:
+    """Return a dict that round-trips through ``WorkflowDefinition.model_validate``.
+
+    Used by error-mapping tests so the mocked service exception path is
+    actually exercised (an empty ``definition`` would fail Pydantic
+    validation in the handler before the service is ever called).
+    """
+    return {
+        "id": workflow_id,
+        "name": "Test",
+        "workflow_type": "sequential_pipeline",
+        "version": "1.0.0",
+        "is_subworkflow": False,
+        "inputs": [
+            {"name": "payload", "type": "string", "required": True},
+        ],
+        "outputs": [],
+        "nodes": [
+            {"id": "start", "type": "start", "label": "Start"},
+            {"id": "end", "type": "end", "label": "End"},
+        ],
+        "edges": [
+            {
+                "id": "e1",
+                "source_node_id": "start",
+                "target_node_id": "end",
+                "type": "sequential",
+            },
+        ],
+        "created_by": "tester",
+        "created_at": "2026-04-25T00:00:00+00:00",
+        "updated_at": "2026-04-25T00:00:00+00:00",
+    }
+
+
 class TestNoFallbackEventsEmitted:
     """Live facades never emit the legacy MCP_HANDLER_SERVICE_FALLBACK event."""
 
@@ -268,7 +306,13 @@ class TestHappyPathServiceInvocations:
             )
         )
         assert body["status"] == "ok"
-        app_state.performance_tracker.get_collaboration_calibration.assert_awaited_once()
+        # Pin the routed argument: the handler must wrap ``agent_id``
+        # in ``NotBlankStr`` before calling the tracker. A regression
+        # that drops the wrapping or the agent_id entirely would slip
+        # past a bare ``assert_awaited_once`` check.
+        app_state.performance_tracker.get_collaboration_calibration.assert_awaited_once_with(
+            NotBlankStr("agent-1"),
+        )
 
     async def test_autonomy_update_routes_through_registry(
         self,
@@ -288,7 +332,17 @@ class TestHappyPathServiceInvocations:
             )
         )
         assert body["status"] == "ok"
+        # Pin the routed arguments: handler must forward
+        # NotBlankStr(agent_id) plus an AutonomyUpdate carrying the
+        # exact level / reason it received, plus the wired approval
+        # store on a kwarg.
         app_state.agent_registry.update_autonomy.assert_awaited_once()
+        call = app_state.agent_registry.update_autonomy.await_args
+        assert call.args[0] == "agent-1"
+        update = call.args[1]
+        assert update.requested_level == AutonomyLevel.SEMI
+        assert update.reason == "trusted operator"
+        assert call.kwargs["approval_store"] is app_state.approval_store
 
     async def test_activities_list_routes_through_feed_service(
         self,
@@ -304,7 +358,14 @@ class TestHappyPathServiceInvocations:
             )
         )
         assert body["status"] == "ok"
+        # Pin the routed filter: handler must forward ``task_id`` (and
+        # leave ``project`` as ``None``) to the feed service alongside
+        # the default pagination + window. A regression that drops the
+        # filter would otherwise still pass a bare ``assert_awaited_once``.
         app_state.activity_feed_service.list_recent_activity.assert_awaited_once()
+        kwargs = app_state.activity_feed_service.list_recent_activity.await_args.kwargs
+        assert kwargs["task_id"] == "task-1"
+        assert kwargs["project"] is None
 
 
 class TestErrorPaths:
@@ -406,23 +467,17 @@ class TestErrorPaths:
         body = _parse(
             await handlers["synthorg_workflows_create"](
                 app_state=app_state,
-                arguments={
-                    "definition": {
-                        "id": "wfdef-1",
-                        "name": "Test",
-                        "created_by": "tester",
-                        "nodes": [],
-                        "edges": [],
-                    }
-                },
+                arguments={"definition": _minimal_workflow_definition_dict()},
                 actor=actor,
             )
         )
-        # Pydantic will reject the empty definition first; either path is
-        # an error envelope (the handler maps Pydantic ValidationError to
-        # invalid_argument and the service exception to already_exists).
+        # Minimally-valid definition makes it past Pydantic, so the
+        # service mock is actually invoked and the
+        # ``WorkflowDefinitionExistsError`` -> ``already_exists`` mapping
+        # is exercised.
         assert body["status"] == "error"
-        assert body["domain_code"] in {"invalid_argument", "already_exists"}
+        assert body["domain_code"] == "already_exists"
+        app_state.workflow_service.create_definition.assert_awaited_once()
 
     async def test_workflows_update_revision_mismatch(
         self,
@@ -442,17 +497,21 @@ class TestErrorPaths:
             )
         )
         handlers = build_handler_map()
-        # Same caveat as above -- minimal dict won't pass Pydantic; the
-        # important assertion is the envelope shape (no fallback emitted).
         body = _parse(
             await handlers["synthorg_workflows_update"](
                 app_state=app_state,
-                arguments={"definition": {"revision": 1}},
+                arguments={
+                    "definition": {
+                        **_minimal_workflow_definition_dict(),
+                        "revision": 1,
+                    },
+                },
                 actor=actor,
             )
         )
         assert body["status"] == "error"
-        assert body["domain_code"] in {"invalid_argument", "conflict"}
+        assert body["domain_code"] == "conflict"
+        app_state.workflow_service.update_definition.assert_awaited_once()
 
     async def test_subworkflows_delete_has_parents(
         self,
@@ -595,3 +654,69 @@ class TestDestructiveAuditEvents:
         events = [e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED]
         assert events, "expected MCP_DESTRUCTIVE_OP_EXECUTED audit event"
         assert events[0]["target_id"] == "wfexec-1"
+
+
+class TestCapabilityGapFallbacks:
+    """Optional services missing from AppState surface ``capability_gap``.
+
+    Locks in the contract that handlers gated on ``has_<service>`` /
+    ``getattr(..., None)`` checks return the dedicated
+    ``capability_gap`` envelope -- not ``service_fallback`` -- when the
+    optional service is intentionally not wired. Prevents a regression
+    where a future refactor accidentally drops the guard and either
+    crashes (``AttributeError``) or surfaces ``MCP_HANDLER_SERVICE_FALLBACK``.
+    """
+
+    async def test_activities_list_returns_capability_gap_when_unwired(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        app_state.has_activity_feed_service = False
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_activities_list"](
+                app_state=app_state,
+                arguments={"task_id": "task-1"},
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "not_supported"
+        app_state.activity_feed_service.list_recent_activity.assert_not_awaited()
+
+    async def test_meta_get_config_returns_capability_gap_when_unwired(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        app_state.has_self_improvement_service = False
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_meta_get_config"](
+                app_state=app_state,
+                arguments={},
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "not_supported"
+        app_state.self_improvement_service.get_config.assert_not_called()
+
+    async def test_meta_trigger_cycle_returns_capability_gap_when_unwired(
+        self,
+        app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        app_state.has_self_improvement_service = False
+        handlers = build_handler_map()
+        body = _parse(
+            await handlers["synthorg_meta_trigger_cycle"](
+                app_state=app_state,
+                arguments={},
+                actor=actor,
+            )
+        )
+        assert body["status"] == "error"
+        assert body["domain_code"] == "not_supported"
+        app_state.self_improvement_service.trigger_cycle.assert_not_awaited()

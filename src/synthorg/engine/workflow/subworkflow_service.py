@@ -32,9 +32,6 @@ if TYPE_CHECKING:
         ParentReference,
         SubworkflowSummary,
     )
-    from synthorg.persistence.workflow_definition_repo import (
-        WorkflowDefinitionRepository,
-    )
 
 logger = get_logger(__name__)
 
@@ -77,16 +74,14 @@ class SubworkflowService:
     :class:`SubworkflowRegistry` directly for low-level resolution.
     """
 
-    __slots__ = ("_definition_repo", "_registry")
+    __slots__ = ("_registry",)
 
     def __init__(
         self,
         *,
         registry: SubworkflowRegistry,
-        definition_repo: WorkflowDefinitionRepository,
     ) -> None:
         self._registry = registry
-        self._definition_repo = definition_repo
 
     async def list_summaries(
         self,
@@ -102,6 +97,16 @@ class SubworkflowService:
         list. Results are sorted by ``(name, latest_version,
         subworkflow_id)`` and offset/limit are applied here so callers
         get a stable total count.
+
+        Note:
+            Sort + slice run in process rather than at the SQL layer
+            because :class:`SubworkflowSummary.version_count` requires
+            aggregating every version row per subworkflow; a true
+            SQL push-down would need a per-backend window-function
+            rewrite (see :meth:`SubworkflowRegistry.list_page`). This
+            is acceptable while subworkflow rosters stay small; revisit
+            if request latency starts being dominated by the full
+            fetch.
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
@@ -189,7 +194,9 @@ class SubworkflowService:
         repository's atomic ``delete_if_unreferenced``. A parent that
         appears in the narrow TOCTOU window between this check and the
         registry call still gets caught at the SQL level and surfaces
-        as a `SubworkflowIOError`.
+        as a :class:`SubworkflowHasParentsError` (or its base class
+        :class:`SubworkflowIOError` when the cascade error is raised
+        directly by the repository).
 
         Raises:
             SubworkflowHasParentsError: If any live parent workflow

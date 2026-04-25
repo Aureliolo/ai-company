@@ -178,6 +178,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             },
             "reason": {
                 "type": "string",
+                "minLength": 3,
                 "description": (
                     "Why the change is requested (min 3 non-whitespace "
                     "chars after strip)"
