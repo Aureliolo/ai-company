@@ -56,6 +56,18 @@ class TestAutonomyUpdate:
             )
 
     @pytest.mark.unit
+    def test_whitespace_padded_short_reason_rejected(self) -> None:
+        # The validator strips before measuring length; a single
+        # non-whitespace char between padding still fails the 3-char
+        # floor. Pin this so the strip-before-length branch cannot
+        # regress to a raw-length check.
+        with pytest.raises(ValidationError):
+            AutonomyUpdate(
+                requested_level=AutonomyLevel.FULL,
+                reason=" a ",
+            )
+
+    @pytest.mark.unit
     def test_frozen(self) -> None:
         update = AutonomyUpdate(
             requested_level=AutonomyLevel.SEMI,

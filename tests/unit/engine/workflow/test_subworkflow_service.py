@@ -123,6 +123,12 @@ class TestSubworkflowServiceList:
         with pytest.raises(ValueError, match="offset"):
             await service.list_summaries(offset=-1, limit=10)
 
+    @pytest.mark.unit
+    async def test_invalid_limit_rejected(self) -> None:
+        service = _service()
+        with pytest.raises(ValueError, match="limit"):
+            await service.list_summaries(offset=0, limit=0)
+
 
 class TestSubworkflowServiceGet:
     @pytest.mark.unit

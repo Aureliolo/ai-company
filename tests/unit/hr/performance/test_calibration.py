@@ -9,7 +9,6 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.budget.currency import CurrencyCode
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.collaboration_override_store import (
     CollaborationOverrideStore,
@@ -128,8 +127,3 @@ class TestCalibrationFacade:
         # No describe() on stub -> empty weights, but the envelope still
         # carries a stable shape (other consumers must not break).
         assert calibration.component_weights == ()
-
-
-# Silence unused-import warning when the currency module is only used
-# via the metric helper above.
-_ = CurrencyCode

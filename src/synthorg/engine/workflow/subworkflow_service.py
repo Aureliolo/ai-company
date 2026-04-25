@@ -21,7 +21,9 @@ from synthorg.engine.errors import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_definition import (
+    SUBWORKFLOW_DELETE_BLOCKED,
     SUBWORKFLOW_DELETED,
+    SUBWORKFLOW_INVALID_REQUEST,
     SUBWORKFLOW_REGISTERED,
 )
 
@@ -141,6 +143,12 @@ class SubworkflowService:
             latest = await self._registry.latest_version(subworkflow_id)
             if latest is None:
                 msg = f"Subworkflow {subworkflow_id!r} has no versions in the registry"
+                logger.warning(
+                    SUBWORKFLOW_INVALID_REQUEST,
+                    subworkflow_id=str(subworkflow_id),
+                    version="<latest>",
+                    reason="no_versions",
+                )
                 raise SubworkflowNotFoundError(
                     msg,
                     subworkflow_id=str(subworkflow_id),
@@ -165,6 +173,13 @@ class SubworkflowService:
             msg = (
                 f"Cannot create subworkflow from definition {definition.id!r}: "
                 "is_subworkflow flag is False"
+            )
+            logger.warning(
+                SUBWORKFLOW_INVALID_REQUEST,
+                subworkflow_id=str(definition.id),
+                version=str(definition.version),
+                reason="not_subworkflow",
+                saved_by=saved_by,
             )
             raise SubworkflowIOError(msg)
         await self._registry.register(definition)
@@ -214,10 +229,9 @@ class SubworkflowService:
                 f"workflow(s): {names}"
             )
             logger.warning(
-                SUBWORKFLOW_DELETED,
+                SUBWORKFLOW_DELETE_BLOCKED,
                 subworkflow_id=subworkflow_id,
                 version=version,
-                deleted=False,
                 blocked_by_parents=len(parents),
                 actor_id=actor_id,
                 reason=reason,

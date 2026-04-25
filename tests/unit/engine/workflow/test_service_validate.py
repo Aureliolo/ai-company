@@ -1,7 +1,6 @@
 """Tests for WorkflowService.validate_definition()."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -113,4 +112,4 @@ class TestValidateDefinition:
 
 
 # Unused-import silencer for static analysis.
-_ = (Any, NotBlankStr)
+_ = NotBlankStr

@@ -154,13 +154,28 @@ def _require_int(arguments: dict[str, Any], key: str) -> int:
 
 
 def _subworkflow_service(app_state: Any) -> SubworkflowService | None:
-    """Return the wired subworkflow service, or ``None`` to trigger gap."""
-    return getattr(app_state, "subworkflow_service", None)
+    """Return the wired subworkflow service, or ``None`` to trigger gap.
+
+    Gates on ``has_subworkflow_service`` first because the
+    ``AppState.subworkflow_service`` property raises
+    ``ServiceUnavailableError`` when the slot is empty -- ``getattr``
+    only catches ``AttributeError`` and would otherwise let the
+    property's exception escape past the ``capability_gap`` fallback.
+    """
+    if not getattr(app_state, "has_subworkflow_service", False):
+        return None
+    return app_state.subworkflow_service  # type: ignore[no-any-return]
 
 
 def _version_service(app_state: Any) -> WorkflowVersionService | None:
-    """Return the wired version service, or ``None`` to trigger gap."""
-    return getattr(app_state, "workflow_version_service", None)
+    """Return the wired version service, or ``None`` to trigger gap.
+
+    See :func:`_subworkflow_service` for the rationale -- the same
+    ``has_<service>`` predicate guards the call site.
+    """
+    if not getattr(app_state, "has_workflow_version_service", False):
+        return None
+    return app_state.workflow_version_service  # type: ignore[no-any-return]
 
 
 def _service(app_state: Any) -> WorkflowService:

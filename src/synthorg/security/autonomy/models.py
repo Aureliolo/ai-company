@@ -253,8 +253,11 @@ class AutonomyUpdateResult(BaseModel):
     All autonomy changes route through human approval, so the result
     advertises the agent's *current* level alongside the level that was
     requested. ``promotion_pending`` is ``True`` whenever a human review
-    is still required; ``approval_id`` is populated when an approval
-    store is wired and an item was successfully enqueued.
+    is still required; ``approval_enqueued`` distinguishes "successfully
+    queued for review" from "no approval store was wired so the request
+    is effectively dropped" -- both formerly looked identical because
+    ``promotion_pending`` stayed ``True`` either way and only
+    ``approval_id`` differed.
 
     Note:
         ``promotion_pending`` defaults to ``True`` because every change
@@ -267,8 +270,14 @@ class AutonomyUpdateResult(BaseModel):
         current_level: The agent's effective autonomy level today.
         requested_level: The level that was asked for.
         promotion_pending: Whether human approval is still required.
+        approval_enqueued: Whether an approval item was successfully
+            persisted to a wired approval store. ``False`` means the
+            request reached the registry but no approval store was
+            available; the change is effectively dropped and the
+            caller should retry once the approval pipeline is wired.
         approval_id: Identifier of the enqueued approval item, or
-            ``None`` when no approval store was wired.
+            ``None`` when no approval store was wired
+            (``approval_enqueued=False``) -- always paired.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -279,6 +288,13 @@ class AutonomyUpdateResult(BaseModel):
     promotion_pending: bool = Field(
         default=True,
         description="Whether the change is awaiting human approval",
+    )
+    approval_enqueued: bool = Field(
+        default=False,
+        description=(
+            "Whether the request was persisted to an approval store; "
+            "False means no approval store was wired"
+        ),
     )
     approval_id: NotBlankStr | None = Field(
         default=None,

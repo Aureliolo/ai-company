@@ -89,7 +89,15 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 
 
 def _execution_service(app_state: Any) -> WorkflowExecutionService | None:
-    return getattr(app_state, "workflow_execution_service", None)
+    # The concrete ``AppState.workflow_execution_service`` property
+    # raises ``ServiceUnavailableError`` when the slot is empty, so we
+    # gate on the ``has_<service>`` predicate first instead of relying
+    # on ``getattr(..., default)`` -- which only catches
+    # ``AttributeError`` and would otherwise let the property's exception
+    # short-circuit the handler before it could return ``capability_gap``.
+    if not getattr(app_state, "has_workflow_execution_service", False):
+        return None
+    return app_state.workflow_execution_service  # type: ignore[no-any-return]
 
 
 def _parse_start_args(
@@ -105,13 +113,21 @@ def _parse_start_args(
     arg_context = "context"
     ty_object = "object"
     def_id = _require_non_blank(arguments, _ARG_DEF_ID)
-    project_raw = arguments.get(arg_project) or "default"
-    if not isinstance(project_raw, str) or not project_raw.strip():
+    # Treat ``project`` as missing only when the caller omits it (or
+    # passes ``None``); a blank or whitespace-only value is explicitly
+    # invalid input, not a request for the default project.
+    project_raw = arguments.get(arg_project, "default")
+    if project_raw is None:
+        project_raw = "default"
+    if not isinstance(project_raw, str):
+        raise invalid_argument(arg_project, _TY_NON_BLANK)
+    project = project_raw.strip()
+    if not project:
         raise invalid_argument(arg_project, _TY_NON_BLANK)
     context_raw = arguments.get(arg_context, {})
     if not isinstance(context_raw, dict):
         raise invalid_argument(arg_context, ty_object)
-    return def_id, project_raw.strip(), context_raw
+    return def_id, project, context_raw
 
 
 async def workflow_executions_list(
@@ -226,15 +242,19 @@ async def workflow_executions_cancel(  # noqa: PLR0911 -- error mapping
 ) -> str:
     """Cancel a running workflow execution (destructive)."""
     tool = "synthorg_workflow_executions_cancel"
-    try:
-        execution_id = _require_non_blank(arguments, _ARG_EXEC_ID)
-    except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
-        return err(exc)
+    # Run the destructive-op triple BEFORE argument parsing so anonymous
+    # or unconfirmed callers see the guardrail violation first (the
+    # contract every other admin_tool surfaces) instead of an
+    # ``invalid_argument`` envelope when ``execution_id`` is missing.
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
+        return err(exc)
+    try:
+        execution_id = _require_non_blank(arguments, _ARG_EXEC_ID)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
         return err(exc)
     service = _execution_service(app_state)
     if service is None:

@@ -76,6 +76,14 @@ SUBWORKFLOW_RESOLVED: Final[str] = "workflow.subworkflow.resolved"
 SUBWORKFLOW_DELETED: Final[str] = "workflow.subworkflow.deleted"
 """A subworkflow version was deleted from the registry."""
 
+SUBWORKFLOW_DELETE_BLOCKED: Final[str] = "workflow.subworkflow.delete_blocked"
+"""A subworkflow delete was rejected because parents still reference it.
+
+Distinct from :data:`SUBWORKFLOW_DELETED` so audit-trail and deletion
+metrics can separate successful removals from parent-cascade rejections
+without inspecting structured fields.
+"""
+
 SUBWORKFLOW_CYCLE_DETECTED: Final[str] = "workflow.subworkflow.cycle_detected"
 """Static cycle detection rejected a subworkflow reference graph."""
 

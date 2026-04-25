@@ -34,6 +34,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import structlog.testing
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
@@ -135,7 +136,7 @@ def fake_app_state() -> SimpleNamespace:
     ns.cost_tracker.get_agent_cost.return_value = 0.0
     ns.config_resolver = AsyncMock()
     ns.config_resolver.get_budget_config.return_value = _sync_dumped(
-        {"currency": "USD"},
+        {"currency": DEFAULT_CURRENCY},
     )
 
     ns.approval_store = AsyncMock()

@@ -96,6 +96,7 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     workflow_service.update_definition.return_value = workflow_def
     workflow_service.validate_definition.return_value = WorkflowValidationResult()
     ns.workflow_service = workflow_service
+    ns.has_workflow_service = True
 
     execution_service = AsyncMock()
     dummy_execution = _sync_dumped(
@@ -106,12 +107,14 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     execution_service.activate.return_value = dummy_execution
     execution_service.cancel_execution.return_value = dummy_execution
     ns.workflow_execution_service = execution_service
+    ns.has_workflow_execution_service = True
 
     sub_service = AsyncMock()
     sub_service.list_summaries.return_value = ((), 0)
     sub_service.get.return_value = workflow_def
     sub_service.create.return_value = workflow_def
     ns.subworkflow_service = sub_service
+    ns.has_subworkflow_service = True
 
     version_service = AsyncMock()
     version_service.list_versions.return_value = ((), 0)
@@ -119,6 +122,7 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
         {"entity_id": "wfdef-1", "version": 1}
     )
     ns.workflow_version_service = version_service
+    ns.has_workflow_version_service = True
 
     si_service = AsyncMock()
     si_service.get_config = MagicMock(return_value={"enabled": False})

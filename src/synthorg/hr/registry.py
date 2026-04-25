@@ -582,6 +582,7 @@ class AgentRegistryService:
         )
 
         approval_id: str | None = None
+        approval_enqueued = False
         if approval_store is not None:
             # Local import breaks the import cycle:
             # ``synthorg.core.approval`` -> ``synthorg.ontology.decorator`` ->
@@ -617,6 +618,7 @@ class AgentRegistryService:
                 },
             )
             await approval_store.add(item)
+            approval_enqueued = True
 
         # Mirror REST: every change pends; nothing mutates the agent's
         # identity here.  The approval queue drives any subsequent
@@ -633,6 +635,7 @@ class AgentRegistryService:
             current_level=current_level,
             requested_level=update.requested_level,
             promotion_pending=True,
+            approval_enqueued=approval_enqueued,
             approval_id=approval_id,
         )
 
