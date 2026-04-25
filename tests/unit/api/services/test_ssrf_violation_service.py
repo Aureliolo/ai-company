@@ -19,11 +19,12 @@ import structlog
 from synthorg.api.services.ssrf_violation_service import SsrfViolationService
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.api import (
+    API_SSRF_VIOLATION_FETCH_FAILED,
     API_SSRF_VIOLATION_LISTED,
     API_SSRF_VIOLATION_RECORDED,
     API_SSRF_VIOLATION_STATUS_UPDATED,
 )
-from synthorg.persistence.errors import DuplicateRecordError
+from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 pytestmark = pytest.mark.unit
@@ -209,6 +210,80 @@ async def test_list_audits_status_filter_none() -> None:
     assert len(listed) == 1
     assert listed[0]["status_filter"] is None
     assert listed[0]["count"] == 0
+
+
+class _RaisingReadRepo(_FakeSsrfViolationRepo):
+    """Stub that raises ``QueryError`` on every read.
+
+    Pins the read-side failure audits (``API_SSRF_VIOLATION_FETCH_FAILED``
+    for ``get`` and the WARNING form of ``API_SSRF_VIOLATION_LISTED`` for
+    ``list_violations``) -- these were added in round 5 / 6 and would
+    otherwise regress unnoticed since the success-path tests only
+    cover the happy branch.
+    """
+
+    async def get(self, violation_id: NotBlankStr) -> SsrfViolation | None:
+        msg = "boom"
+        raise QueryError(msg)
+
+    async def list_violations(
+        self,
+        *,
+        status: SsrfViolationStatus | None = None,
+        limit: int = 100,
+    ) -> tuple[SsrfViolation, ...]:
+        msg = "boom"
+        raise QueryError(msg)
+
+
+async def test_get_failure_emits_fetch_failed_audit() -> None:
+    """``get()`` failures fire ``API_SSRF_VIOLATION_FETCH_FAILED``.
+
+    Distinct from list-level failures so endpoint-specific alerting
+    can route single-fetch errors separately.
+    """
+    service = SsrfViolationService(repo=_RaisingReadRepo())
+
+    with (
+        structlog.testing.capture_logs() as logs,
+        pytest.raises(QueryError),
+    ):
+        await service.get(NotBlankStr("sv-x"))
+
+    audits = [log for log in logs if log["event"] == API_SSRF_VIOLATION_FETCH_FAILED]
+    assert len(audits) == 1
+    assert audits[0]["log_level"] == "warning"
+    assert audits[0]["error_type"] == "QueryError"
+    assert audits[0]["violation_id"] == "sv-x"
+    # The list-level event must NOT fire on a single-fetch failure.
+    assert not any(log["event"] == API_SSRF_VIOLATION_LISTED for log in logs)
+
+
+async def test_list_failure_emits_warning_listed_audit() -> None:
+    """``list_violations()`` failures fire WARNING ``API_SSRF_VIOLATION_LISTED``.
+
+    Carries ``error_type`` + ``status_filter`` + ``limit`` for incident
+    triage -- success-path emits INFO with ``count``, failure-path
+    emits WARNING with the request shape.
+    """
+    service = SsrfViolationService(repo=_RaisingReadRepo())
+
+    with (
+        structlog.testing.capture_logs() as logs,
+        pytest.raises(QueryError),
+    ):
+        await service.list_violations(status=SsrfViolationStatus.PENDING, limit=50)
+
+    audits = [log for log in logs if log["event"] == API_SSRF_VIOLATION_LISTED]
+    warnings = [log for log in audits if log.get("log_level") == "warning"]
+    info_audits = [log for log in audits if log.get("log_level") == "info"]
+    assert info_audits == [], (
+        f"INFO success-shape audit must not fire when list raises -- got {info_audits}"
+    )
+    assert len(warnings) == 1
+    assert warnings[0]["error_type"] == "QueryError"
+    assert warnings[0]["status_filter"] == SsrfViolationStatus.PENDING.value
+    assert warnings[0]["limit"] == 50
 
 
 async def test_update_status_emits_audit_on_success() -> None:

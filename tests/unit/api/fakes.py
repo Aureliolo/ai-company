@@ -29,7 +29,11 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.persistence.errors import (
+    DuplicateRecordError,
+    QueryError,
+    RecordNotFoundError,
+)
 from synthorg.persistence.preset_repository import PresetListRow, PresetRow
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
@@ -425,8 +429,10 @@ class FakeArtifactRepository:
     def __init__(self) -> None:
         self._artifacts: dict[str, Artifact] = {}
 
-    async def save(self, artifact: Artifact) -> None:
+    async def save(self, artifact: Artifact) -> bool:
+        created = artifact.id not in self._artifacts
         self._artifacts[artifact.id] = artifact
+        return created
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         return self._artifacts.get(artifact_id)
@@ -459,16 +465,12 @@ class FakeProjectRepository:
 
     async def create(self, project: Project) -> None:
         if project.id in self._projects:
-            from synthorg.persistence.errors import DuplicateRecordError
-
             msg = f"Project with id {project.id!r} already exists"
             raise DuplicateRecordError(msg)
         self._projects[project.id] = project
 
     async def update(self, project: Project) -> None:
         if project.id not in self._projects:
-            from synthorg.persistence.errors import RecordNotFoundError
-
             msg = f"No project with id {project.id!r}"
             raise RecordNotFoundError(msg)
         self._projects[project.id] = project

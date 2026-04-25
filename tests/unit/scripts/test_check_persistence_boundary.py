@@ -316,6 +316,26 @@ def test_non_mutation_logs_inside_persistence_not_flagged(
         "logger.critical(PERSISTENCE_USER_PERSISTED, user_id=u.id)\n",
         # Event passed via the ``event`` keyword.
         "logger.info(event=PERSISTENCE_USER_SAVED, user_id=u.id)\n",
+        # Aliased import: ``from ... import EVENT as EVT`` then
+        # ``logger.info(EVT, ...)``.  The alias resolver in
+        # ``_build_alias_map`` rewrites ``EVT`` back to the original
+        # constant name before the suffix check.
+        (
+            "from synthorg.observability.events.persistence import "
+            "PERSISTENCE_USER_SAVED as EVT\n"
+            "logger.info(EVT, user_id=u.id)\n"
+        ),
+        # Module-attribute access: ``logger.info(events.PERSISTENCE_FOO_SAVED, ...)``.
+        # The Attribute resolver picks the rightmost identifier.
+        "logger.info(events.PERSISTENCE_FOO_SAVED, user_id=u.id)\n",
+        # Raw string literal (the most obvious escape hatch).  The
+        # value-suffix check matches ``.saved`` / ``.created`` /
+        # ``.updated`` / ``.deleted`` / ``.persisted`` regardless of
+        # case so this fires.
+        'logger.info("persistence.user.saved", user_id=u.id)\n',
+        'logger.info("persistence.user.deleted", user_id=u.id)\n',
+        # Mixed-case literal: matched case-insensitively.
+        'logger.info("Persistence.User.Updated", user_id=u.id)\n',
     ],
 )
 def test_ast_scanner_catches_logger_shapes_regex_missed(

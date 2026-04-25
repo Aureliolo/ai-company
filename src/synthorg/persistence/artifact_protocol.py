@@ -11,11 +11,19 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 class ArtifactRepository(Protocol):
     """CRUD + query interface for Artifact persistence."""
 
-    async def save(self, artifact: Artifact) -> None:
-        """Persist an artifact (insert or update).
+    async def save(self, artifact: Artifact) -> bool:
+        """Persist an artifact (insert or update) atomically.
+
+        The lifecycle outcome is returned so callers can attach the
+        correct ``API_ARTIFACT_CREATED`` / ``API_ARTIFACT_UPDATED``
+        audit event without a TOCTOU ``get`` + ``save`` race.
 
         Args:
             artifact: The artifact to persist.
+
+        Returns:
+            ``True`` when this call inserted a new row, ``False`` when
+            it updated an existing row in place.
 
         Raises:
             PersistenceError: If the operation fails.

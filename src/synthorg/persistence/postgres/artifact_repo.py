@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from synthorg.core.artifact import Artifact
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
@@ -51,11 +51,22 @@ class PostgresArtifactRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def save(self, artifact: Artifact) -> None:
-        """Persist an artifact via upsert (insert or update on conflict).
+    async def save(self, artifact: Artifact) -> bool:
+        """Persist an artifact atomically; return whether it was inserted.
+
+        Uses Postgres' ``RETURNING (xmax = 0) AS created`` trick on
+        an upsert to derive the lifecycle outcome inside the same
+        atomic operation -- no TOCTOU ``get`` + ``save`` race.
+        ``xmax = 0`` indicates the row was freshly inserted; any
+        other ``xmax`` value indicates the conflict path (UPDATE
+        SET ...) ran instead.
 
         Args:
             artifact: Artifact model to persist.
+
+        Returns:
+            ``True`` when this call inserted a new row, ``False`` when
+            it updated an existing row in place.
 
         Raises:
             QueryError: If the database operation fails.
@@ -78,7 +89,8 @@ ON CONFLICT(id) DO UPDATE SET
     description=EXCLUDED.description,
     content_type=EXCLUDED.content_type,
     size_bytes=EXCLUDED.size_bytes,
-    created_at=EXCLUDED.created_at""",
+    created_at=EXCLUDED.created_at
+RETURNING (xmax = 0) AS created""",
                     (
                         artifact.id,
                         artifact.type.value,
@@ -91,15 +103,20 @@ ON CONFLICT(id) DO UPDATE SET
                         created_at_dt,
                     ),
                 )
+                row = await cur.fetchone()
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save artifact {artifact.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_SAVE_FAILED,
                 artifact_id=artifact.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+        # ``RETURNING`` always yields exactly one row on a successful
+        # upsert (the matched-then-updated or newly-inserted row).
+        return bool(row[0]) if row is not None else False
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         """Retrieve an artifact by primary key.
@@ -127,10 +144,11 @@ ON CONFLICT(id) DO UPDATE SET
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch artifact {artifact_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_FETCH_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -144,10 +162,11 @@ ON CONFLICT(id) DO UPDATE SET
             artifact = Artifact.model_validate(row)
         except (ValueError, ValidationError, KeyError) as exc:
             msg = f"Failed to deserialize artifact {artifact_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -205,14 +224,22 @@ ON CONFLICT(id) DO UPDATE SET
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list artifacts"
-            logger.exception(PERSISTENCE_ARTIFACT_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_ARTIFACT_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
 
         try:
             artifacts = tuple(Artifact.model_validate(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
             msg = "Failed to deserialize artifacts"
-            logger.exception(PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
 
         logger.debug(PERSISTENCE_ARTIFACT_LISTED, count=len(artifacts))
@@ -240,10 +267,11 @@ ON CONFLICT(id) DO UPDATE SET
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete artifact {artifact_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_DELETE_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 

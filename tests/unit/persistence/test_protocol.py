@@ -371,8 +371,8 @@ class _FakeSettingsRepository:
 
 
 class _FakeArtifactRepository:
-    async def save(self, artifact: Artifact) -> None:
-        pass
+    async def save(self, artifact: Artifact) -> bool:
+        return True
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         return None

@@ -81,13 +81,24 @@ _LOGGING_METHODS: Final[frozenset[str]] = frozenset(
     {"debug", "info", "warning", "error", "exception", "critical"}
 )
 
-# Suffixes that mark an entity-mutation audit constant.
+# Suffixes that mark an entity-mutation audit constant.  The first
+# tuple covers SCREAMING_SNAKE constant names (``PERSISTENCE_USER_SAVED``);
+# the second covers the corresponding event-string values
+# (``"persistence.user.saved"``) so the scanner catches both
+# constant references AND raw string literals at logger call sites.
 _MUTATION_SUFFIXES: Final[tuple[str, ...]] = (
     "_SAVED",
     "_CREATED",
     "_UPDATED",
     "_DELETED",
     "_PERSISTED",
+)
+_MUTATION_VALUE_SUFFIXES: Final[tuple[str, ...]] = (
+    ".saved",
+    ".created",
+    ".updated",
+    ".deleted",
+    ".persisted",
 )
 
 # Lifecycle / infrastructure events whose constants happen to end in a
@@ -257,28 +268,92 @@ def _is_logger_call(call: ast.Call) -> str | None:
     return call.func.attr
 
 
-def _extract_event_constant(call: ast.Call) -> ast.Name | None:
-    """Return the ``Name`` node naming the event constant for *call*.
+def _extract_event_node(call: ast.Call) -> ast.expr | None:
+    """Return the AST node carrying the event-constant argument for *call*.
 
     Logging calls in this codebase pass the event constant as the first
-    positional argument (`logger.info(EVENT, key=...)`).  Some sites
-    pass it via the ``event`` keyword instead.  Only ``Name`` references
-    count -- string literals and dynamic expressions are ignored
-    because the audit-event protocol mandates module-level constants.
+    positional argument (``logger.info(EVENT, key=...)``); some sites
+    pass it via the ``event`` keyword.  Both forms are accepted, and
+    the returned node may be:
+
+    - :class:`ast.Name` (``EVENT``) -- the canonical case.
+    - :class:`ast.Attribute` (``events.EVENT`` / ``module.EVENT``) --
+      module-attribute access.
+    - :class:`ast.Constant` with a string value
+      (``logger.info("persistence.user.saved", ...)``) -- the
+      escape-hatch literal form.
+
+    Dynamic expressions (variables built at runtime, f-strings, etc.)
+    are ignored: the audit-event protocol mandates static event names,
+    so anything else is not a real audit emission worth gating.
     """
     if call.args:
         first = call.args[0]
-        if isinstance(first, ast.Name):
+        if isinstance(first, (ast.Name, ast.Attribute, ast.Constant)):
             return first
     for kw in call.keywords:
-        if kw.arg == "event" and isinstance(kw.value, ast.Name):
+        if kw.arg == "event" and isinstance(
+            kw.value, (ast.Name, ast.Attribute, ast.Constant)
+        ):
             return kw.value
     return None
 
 
+def _build_alias_map(tree: ast.AST) -> dict[str, str]:
+    """Return ``{local_name: imported_name}`` for ``import ... as ...`` lines.
+
+    Used to resolve aliased imports so the scanner cannot be bypassed
+    by ``from synthorg.observability.events.persistence import
+    PERSISTENCE_USER_SAVED as EVT`` followed by ``logger.info(EVT, ...)``.
+
+    Module-level only -- function-scoped imports are ignored on the
+    grounds that they are rare and adding scope tracking would balloon
+    the script.  If a real escape ever shows up, the fallback string-
+    value check below still catches it.
+    """
+    aliases: dict[str, str] = {}
+    for node in tree.body if isinstance(tree, ast.Module) else ():
+        if isinstance(node, (ast.ImportFrom, ast.Import)):
+            for alias in node.names:
+                if alias.asname:
+                    aliases[alias.asname] = alias.name
+    return aliases
+
+
+def _resolve_event_token(
+    node: ast.expr, aliases: dict[str, str]
+) -> tuple[str | None, str | None]:
+    """Resolve *node* to ``(canonical_name, literal_value)``.
+
+    ``canonical_name`` is the identifier form
+    (``PERSISTENCE_USER_SAVED``) when the event reference is a
+    :class:`ast.Name`/:class:`ast.Attribute`; ``literal_value`` is the
+    string form (``"persistence.user.saved"``) when the event is
+    written as a :class:`ast.Constant`.  Either may be ``None``.
+    Aliased Names are resolved through *aliases* so a renamed import
+    still surfaces its original constant name.
+    """
+    if isinstance(node, ast.Name):
+        return aliases.get(node.id, node.id), None
+    if isinstance(node, ast.Attribute):
+        # ``events.PERSISTENCE_FOO`` -> the rightmost attribute is the
+        # constant name we care about.  Module-prefix is irrelevant
+        # for the suffix check.
+        return node.attr, None
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return None, node.value
+    return None, None
+
+
 def _has_mutation_suffix(constant: str) -> bool:
-    """``True`` when *constant* ends in a mutation-suffix marker."""
+    """``True`` when *constant* (identifier form) ends in a mutation suffix."""
     return any(constant.endswith(suffix) for suffix in _MUTATION_SUFFIXES)
+
+
+def _has_mutation_value_suffix(value: str) -> bool:
+    """``True`` when *value* (string-literal form) ends in a mutation suffix."""
+    lower = value.lower()
+    return any(lower.endswith(suffix) for suffix in _MUTATION_VALUE_SUFFIXES)
 
 
 def _scan_persistence_mutation_logs(file_path: Path, rel: str) -> list[str]:
@@ -310,32 +385,49 @@ def _scan_persistence_mutation_logs(file_path: Path, rel: str) -> list[str]:
         return [f"{rel}:{exc.lineno or 0}: unable to parse file: {exc.msg}"]
     issues: list[str] = []
     lines = text.splitlines()
+    aliases = _build_alias_map(tree)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         if _is_logger_call(node) is None:
             continue
-        const_node = _extract_event_constant(node)
-        if const_node is None:
+        event_node = _extract_event_node(node)
+        if event_node is None:
             continue
-        constant = const_node.id
-        if not _has_mutation_suffix(constant):
+        canonical_name, literal_value = _resolve_event_token(event_node, aliases)
+        # The event matches if either the canonical identifier OR the
+        # literal string ends in a mutation suffix.  Resolved aliases
+        # and ``module.CONST`` attribute references both surface as
+        # ``canonical_name``; raw string literals surface as
+        # ``literal_value``.
+        is_mutation = (
+            canonical_name is not None and _has_mutation_suffix(canonical_name)
+        ) or (literal_value is not None and _has_mutation_value_suffix(literal_value))
+        if not is_mutation:
             continue
-        if constant in _MUTATION_LOG_ALLOWED_CONSTANTS:
+        # Allowlist applies to the canonical identifier form only --
+        # the lifecycle constants are always referenced by name in
+        # this codebase.  String-literal usage is treated as a
+        # deliberate escape hatch and never silently allowed.
+        if (
+            canonical_name is not None
+            and canonical_name in _MUTATION_LOG_ALLOWED_CONSTANTS
+        ):
             continue
         # Allow per-line opt-out on either the ``logger.<level>(`` line
-        # OR the line carrying the constant -- multi-line calls span
-        # both, and the marker can be placed on whichever read more
-        # naturally.
+        # OR the line carrying the event token -- multi-line calls
+        # span both, and the marker can be placed on whichever read
+        # more naturally.
         call_line_no = node.lineno
-        constant_line_no = const_node.lineno
+        event_line_no = event_node.lineno
         if _line_has_trailing_marker(
             lines[call_line_no - 1]
-        ) or _line_has_trailing_marker(lines[constant_line_no - 1]):
+        ) or _line_has_trailing_marker(lines[event_line_no - 1]):
             continue
+        display = canonical_name if canonical_name is not None else repr(literal_value)
         issues.append(
             f"{rel}:{call_line_no}: repo-level mutation audit log "
-            f"'{constant}' must move to the service layer "
+            f"{display} must move to the service layer "
             "(repositories must not log mutations themselves; see "
             "docs/reference/persistence-boundary.md). Add "
             "'# lint-allow: persistence-boundary -- <reason>' on the "

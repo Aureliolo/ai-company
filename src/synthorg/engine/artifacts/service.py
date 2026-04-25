@@ -99,17 +99,19 @@ class ArtifactService:
         """Upsert a caller-constructed artifact (used by content upload).
 
         ``save()`` is an upsert -- the same path is taken whether the
-        row exists or not.  Probe the repository for the artifact id
-        first so the audit event reflects the actual lifecycle:
-        ``API_ARTIFACT_CREATED`` for new rows, ``API_ARTIFACT_UPDATED``
-        for an in-place upsert.  Operators keying alerts on
-        ``API_ARTIFACT_UPDATED`` must not see "phantom updates" for
-        first-write upload flows.
+        row exists or not.  The repository performs the create-vs-
+        update decision atomically (SQLite: ``INSERT OR IGNORE`` +
+        conditional ``UPDATE``; Postgres: ``ON CONFLICT ... RETURNING
+        (xmax = 0)``) and returns the lifecycle outcome.  This avoids
+        the TOCTOU window of a separate ``get()`` probe -- concurrent
+        writers can no longer both observe "missing" and both report
+        ``API_ARTIFACT_CREATED``.  Operators keying alerts on
+        ``API_ARTIFACT_UPDATED`` see neither phantom updates on
+        first-write upload flows nor phantom creates on collisions.
         """
-        existing = await self._repo.get(artifact.id)
-        await self._repo.save(artifact)
+        created = await self._repo.save(artifact)
         logger.info(
-            API_ARTIFACT_CREATED if existing is None else API_ARTIFACT_UPDATED,
+            API_ARTIFACT_CREATED if created else API_ARTIFACT_UPDATED,
             artifact_id=artifact.id,
         )
 

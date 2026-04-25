@@ -27,8 +27,10 @@ class _FakeArtifactRepo:
     def __init__(self) -> None:
         self._rows: dict[str, Artifact] = {}
 
-    async def save(self, artifact: Artifact) -> None:
+    async def save(self, artifact: Artifact) -> bool:
+        created = artifact.id not in self._rows
         self._rows[artifact.id] = artifact
+        return created
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         return self._rows.get(artifact_id)
@@ -120,6 +122,10 @@ async def test_save_emits_api_artifact_created_on_first_write() -> None:
 
     assert any(log["event"] == API_ARTIFACT_CREATED for log in logs)
     assert not any(log["event"] == API_ARTIFACT_UPDATED for log in logs)
+    # Pin the first-write branch against the legacy persistence-layer
+    # event (matches the update-path test below): repos are silent on
+    # mutation; the API_ARTIFACT_* events are the canonical audit.
+    assert not any(log["event"] == "persistence.artifact.saved" for log in logs)
 
 
 async def test_delete_returns_true_and_emits_api_artifact_deleted() -> None:

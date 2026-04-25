@@ -86,6 +86,12 @@ class PostgresProjectRepository:
                 )
                 await conn.commit()
         except psycopg.errors.UniqueViolation as exc:
+            logger.warning(
+                PERSISTENCE_PROJECT_SAVE_FAILED,
+                project_id=project.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"Project with id {project.id!r} already exists"
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
@@ -144,6 +150,12 @@ class PostgresProjectRepository:
             )
             raise QueryError(msg) from exc
         if rowcount == 0:
+            logger.warning(
+                PERSISTENCE_PROJECT_SAVE_FAILED,
+                project_id=project.id,
+                error_type="RecordNotFoundError",
+                error="No project with matching id",
+            )
             msg = f"No project with id {project.id!r}"
             raise RecordNotFoundError(msg)
 

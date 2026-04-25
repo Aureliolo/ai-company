@@ -55,6 +55,24 @@ class TestArtifactRepository:
         assert fetched is not None
         assert fetched.description == "refined"
 
+    async def test_save_returns_true_on_insert(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """First-write returns ``True`` so the service can audit CREATED."""
+        created = await backend.artifacts.save(_artifact(artifact_id="new-row"))
+        assert created is True
+
+    async def test_save_returns_false_on_update(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Second write to the same id returns ``False`` (UPDATED audit)."""
+        a = _artifact(artifact_id="existing-row")
+        await backend.artifacts.save(a)
+        updated = a.model_copy(update={"description": "changed"})
+
+        created = await backend.artifacts.save(updated)
+        assert created is False
+
     async def test_list_all(self, backend: PersistenceBackend) -> None:
         await backend.artifacts.save(_artifact(artifact_id="a1"))
         await backend.artifacts.save(_artifact(artifact_id="a2"))

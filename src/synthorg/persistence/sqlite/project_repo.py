@@ -95,6 +95,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             await self._db.commit()
         except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
             await self._safe_rollback()
+            logger.warning(
+                PERSISTENCE_PROJECT_SAVE_FAILED,
+                project_id=project.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"Project with id {project.id!r} already exists"
             raise DuplicateRecordError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -176,6 +182,12 @@ WHERE id=?""",
             )
             raise QueryError(msg) from exc
         if cursor.rowcount == 0:
+            logger.warning(
+                PERSISTENCE_PROJECT_SAVE_FAILED,
+                project_id=project.id,
+                error_type="RecordNotFoundError",
+                error="No project with matching id",
+            )
             msg = f"No project with id {project.id!r}"
             raise RecordNotFoundError(msg)
 

@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
@@ -61,55 +61,90 @@ class SQLiteArtifactRepository:
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
 
-    async def save(self, artifact: Artifact) -> None:
-        """Persist an artifact via upsert (insert or update on conflict).
+    async def save(self, artifact: Artifact) -> bool:
+        """Persist an artifact atomically; return whether it was inserted.
+
+        Implements the upsert as ``INSERT OR IGNORE`` followed by a
+        conditional ``UPDATE``, both inside one transaction.  The
+        first ``INSERT OR IGNORE``'s ``rowcount`` distinguishes the
+        lifecycle outcome without a TOCTOU ``get`` + ``save`` race --
+        concurrent writers can no longer both observe "missing" and
+        both report ``API_ARTIFACT_CREATED``.
 
         Args:
             artifact: Artifact model to persist.
 
+        Returns:
+            ``True`` when this call inserted a new row, ``False`` when
+            it updated an existing row in place.
+
         Raises:
             QueryError: If the database operation fails.
         """
+        params = (
+            artifact.id,
+            artifact.type.value,
+            artifact.path,
+            artifact.task_id,
+            artifact.created_by,
+            artifact.description,
+            artifact.content_type,
+            artifact.size_bytes,
+            (
+                artifact.created_at.astimezone(UTC).isoformat()
+                if artifact.created_at is not None
+                else None
+            ),
+        )
         try:
-            await self._db.execute(
+            insert_cursor = await self._db.execute(
                 """\
-INSERT INTO artifacts (id, type, path, task_id, created_by,
-                       description, content_type, size_bytes, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-    type=excluded.type,
-    path=excluded.path,
-    task_id=excluded.task_id,
-    created_by=excluded.created_by,
-    description=excluded.description,
-    content_type=excluded.content_type,
-    size_bytes=excluded.size_bytes,
-    created_at=excluded.created_at""",
-                (
-                    artifact.id,
-                    artifact.type.value,
-                    artifact.path,
-                    artifact.task_id,
-                    artifact.created_by,
-                    artifact.description,
-                    artifact.content_type,
-                    artifact.size_bytes,
-                    (
-                        artifact.created_at.astimezone(UTC).isoformat()
-                        if artifact.created_at is not None
-                        else None
-                    ),
-                ),
+INSERT OR IGNORE INTO artifacts (id, type, path, task_id, created_by,
+                                 description, content_type, size_bytes, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                params,
             )
+            inserted = insert_cursor.rowcount > 0
+            if not inserted:
+                await self._db.execute(
+                    """\
+UPDATE artifacts SET
+    type=?,
+    path=?,
+    task_id=?,
+    created_by=?,
+    description=?,
+    content_type=?,
+    size_bytes=?,
+    created_at=?
+WHERE id=?""",
+                    (
+                        artifact.type.value,
+                        artifact.path,
+                        artifact.task_id,
+                        artifact.created_by,
+                        artifact.description,
+                        artifact.content_type,
+                        artifact.size_bytes,
+                        (
+                            artifact.created_at.astimezone(UTC).isoformat()
+                            if artifact.created_at is not None
+                            else None
+                        ),
+                        artifact.id,
+                    ),
+                )
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to save artifact {artifact.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_SAVE_FAILED,
                 artifact_id=artifact.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+        return inserted
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         """Retrieve an artifact by primary key.
@@ -130,10 +165,11 @@ ON CONFLICT(id) DO UPDATE SET
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch artifact {artifact_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_FETCH_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -145,10 +181,11 @@ ON CONFLICT(id) DO UPDATE SET
             artifact = _row_to_artifact(row)
         except (ValueError, ValidationError, KeyError) as exc:
             msg = f"Failed to deserialize artifact {artifact_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_ARTIFACT_FETCHED, artifact_id=artifact_id, found=True)
@@ -197,13 +234,21 @@ ON CONFLICT(id) DO UPDATE SET
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list artifacts"
-            logger.exception(PERSISTENCE_ARTIFACT_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_ARTIFACT_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         try:
             artifacts = tuple(_row_to_artifact(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
             msg = "Failed to deserialize artifacts"
-            logger.exception(PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_ARTIFACT_LISTED, count=len(artifacts))
         return artifacts
@@ -227,10 +272,11 @@ ON CONFLICT(id) DO UPDATE SET
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete artifact {artifact_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_DELETE_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return cursor.rowcount > 0
