@@ -1,5 +1,6 @@
 """SQLite repository implementation for Artifact."""
 
+import asyncio
 import sqlite3
 from datetime import UTC, datetime
 
@@ -60,6 +61,14 @@ class SQLiteArtifactRepository:
 
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
+        # Serialise write transactions on the shared
+        # ``aiosqlite.Connection`` -- without this lock, concurrent
+        # ``save``/``delete`` coroutines can interleave their
+        # ``execute`` + ``commit`` calls within the same connection-
+        # scoped transaction, breaking atomicity (one commit / rollback
+        # affects the other's writes).  See the matching note in
+        # ``project_repo.py``.
+        self._write_lock = asyncio.Lock()
 
     async def save(self, artifact: Artifact) -> bool:
         """Persist an artifact atomically; return whether it was inserted.
@@ -98,19 +107,20 @@ class SQLiteArtifactRepository:
             created_at_iso,
             artifact.project_id,
         )
-        try:
-            insert_cursor = await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                insert_cursor = await self._db.execute(
+                    """\
 INSERT OR IGNORE INTO artifacts (id, type, path, task_id, created_by,
                                  description, content_type, size_bytes,
                                  created_at, project_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                params,
-            )
-            inserted = insert_cursor.rowcount > 0
-            if not inserted:
-                await self._db.execute(
-                    """\
+                    params,
+                )
+                inserted = insert_cursor.rowcount > 0
+                if not inserted:
+                    await self._db.execute(
+                        """\
 UPDATE artifacts SET
     type=?,
     path=?,
@@ -122,30 +132,30 @@ UPDATE artifacts SET
     created_at=?,
     project_id=?
 WHERE id=?""",
-                    (
-                        artifact.type.value,
-                        artifact.path,
-                        artifact.task_id,
-                        artifact.created_by,
-                        artifact.description,
-                        artifact.content_type,
-                        artifact.size_bytes,
-                        created_at_iso,
-                        artifact.project_id,
-                        artifact.id,
-                    ),
+                        (
+                            artifact.type.value,
+                            artifact.path,
+                            artifact.task_id,
+                            artifact.created_by,
+                            artifact.description,
+                            artifact.content_type,
+                            artifact.size_bytes,
+                            created_at_iso,
+                            artifact.project_id,
+                            artifact.id,
+                        ),
+                    )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save artifact {artifact.id!r}"
+                logger.warning(
+                    PERSISTENCE_ARTIFACT_SAVE_FAILED,
+                    artifact_id=artifact.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to save artifact {artifact.id!r}"
-            logger.warning(
-                PERSISTENCE_ARTIFACT_SAVE_FAILED,
-                artifact_id=artifact.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
-        return inserted
+                raise QueryError(msg) from exc
+            return inserted
 
     async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         """Retrieve an artifact by primary key.
@@ -266,18 +276,19 @@ WHERE id=?""",
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM artifacts WHERE id = ?", (artifact_id,)
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to delete artifact {artifact_id!r}"
-            logger.warning(
-                PERSISTENCE_ARTIFACT_DELETE_FAILED,
-                artifact_id=artifact_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM artifacts WHERE id = ?", (artifact_id,)
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete artifact {artifact_id!r}"
+                logger.warning(
+                    PERSISTENCE_ARTIFACT_DELETE_FAILED,
+                    artifact_id=artifact_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return cursor.rowcount > 0

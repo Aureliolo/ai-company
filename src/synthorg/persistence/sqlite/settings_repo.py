@@ -5,8 +5,8 @@ from collections.abc import Mapping, Sequence  # noqa: TC003
 
 import aiosqlite
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_DELETE_FAILED,
     SETTINGS_FETCH_FAILED,
@@ -291,3 +291,32 @@ class SQLiteSettingsRepository:
             )
             raise QueryError(msg) from exc
         return cursor.rowcount
+
+    async def delete_namespace_returning_keys(
+        self,
+        namespace: NotBlankStr,
+    ) -> tuple[NotBlankStr, ...]:
+        """Atomic delete-and-return-keys for namespace clear.
+
+        Uses ``DELETE ... RETURNING key`` (SQLite 3.35+) so the
+        ``get_namespace`` snapshot and the delete cannot drift under a
+        concurrent ``set`` -- the returned tuple is exactly the set of
+        keys whose override row was removed by *this* call.
+        """
+        try:
+            cursor = await self._db.execute(
+                "DELETE FROM settings WHERE namespace = ? RETURNING key",
+                (namespace,),
+            )
+            rows = await cursor.fetchall()
+            await self._db.commit()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to delete namespace {namespace}"
+            logger.warning(
+                SETTINGS_DELETE_FAILED,
+                namespace=namespace,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(NotBlankStr(row[0]) for row in rows)

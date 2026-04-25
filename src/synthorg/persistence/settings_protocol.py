@@ -154,3 +154,28 @@ class SettingsRepository(Protocol):
             PersistenceError: If the operation fails.
         """
         ...
+
+    async def delete_namespace_returning_keys(
+        self,
+        namespace: NotBlankStr,
+    ) -> tuple[NotBlankStr, ...]:
+        """Atomically delete all settings in a namespace, returning the keys.
+
+        Equivalent to :meth:`delete_namespace` but returns the keys
+        whose rows were actually removed in a single transaction --
+        callers (notably :class:`SettingsService.delete_namespace`)
+        rely on this to scope per-key change-publish notifications to
+        the subset that genuinely changed, without a TOCTOU
+        ``get_namespace`` + ``delete_namespace`` race.
+
+        Args:
+            namespace: Setting namespace.
+
+        Returns:
+            Tuple of keys (within *namespace*) whose override row
+            was removed by this call, in implementation-defined order.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...

@@ -183,3 +183,34 @@ class TestSettingsListAndDelete:
         # Other namespace untouched
         other = await backend.settings.get_namespace(NS_OTHER)
         assert len(other) == 1
+
+    async def test_delete_namespace_returning_keys_is_atomic(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        """``delete_namespace_returning_keys`` returns exactly the deleted keys.
+
+        Pins the round-13 fix: ``SettingsService.delete_namespace`` uses
+        this method to scope per-key change-publish notifications to
+        rows that genuinely changed.  A drift between the returned keys
+        and the deleted rows would either drop a publish or fire a
+        phantom one.
+        """
+        await backend.settings.set(NS, NotBlankStr("k1"), "v1", _ts(2026, 1, 1))
+        await backend.settings.set(NS, NotBlankStr("k2"), "v2", _ts(2026, 1, 1))
+        await backend.settings.set(NS_OTHER, NotBlankStr("k"), "v", _ts(2026, 1, 1))
+
+        removed = await backend.settings.delete_namespace_returning_keys(NS)
+        assert sorted(str(k) for k in removed) == ["k1", "k2"]
+        # Rows under NS are gone, NS_OTHER is untouched.
+        assert await backend.settings.get_namespace(NS) == ()
+        other = await backend.settings.get_namespace(NS_OTHER)
+        assert len(other) == 1
+
+    async def test_delete_namespace_returning_keys_empty(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        """An empty namespace returns an empty tuple, never raises."""
+        removed = await backend.settings.delete_namespace_returning_keys(NS)
+        assert removed == ()

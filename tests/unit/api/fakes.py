@@ -682,6 +682,14 @@ class FakeSettingsRepository:
         self._store = {k: v for k, v in self._store.items() if k[0] != namespace}
         return len(keys)
 
+    async def delete_namespace_returning_keys(
+        self,
+        namespace: str,
+    ) -> tuple[str, ...]:
+        keys = tuple(k[1] for k in self._store if k[0] == namespace)
+        self._store = {k: v for k, v in self._store.items() if k[0] != namespace}
+        return keys
+
 
 class FakeMessageBus:
     """In-memory message bus for tests."""

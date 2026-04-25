@@ -819,15 +819,26 @@ class SettingsService:
         Raises:
             PersistenceError: If the persistence layer fails.
         """
-        # Capture the set of keys with active DB overrides BEFORE the
-        # delete so we can scope the publish loop to only those keys.
-        # A 1-call probe via ``get_namespace`` is the simplest path that
-        # does not require a new repository method.
+        # Atomic delete-and-return-keys: the repository removes every
+        # override row under *namespace* in one transaction and returns
+        # exactly the keys whose row was actually removed.  This avoids
+        # the TOCTOU race the older ``get_namespace`` + ``delete_namespace``
+        # pair had -- a concurrent ``set`` between the snapshot and the
+        # delete would either drop a publish (key set after snapshot,
+        # then deleted) or fire a phantom one (key visible in snapshot,
+        # then unset before delete).
         ns = NotBlankStr(namespace)
-        overridden_rows = await self._repository.get_namespace(ns)
-        overridden_keys = {row[0] for row in overridden_rows}
-
-        deleted = await self._repository.delete_namespace(ns)
+        try:
+            removed_keys = await self._repository.delete_namespace_returning_keys(ns)
+        except Exception as exc:
+            logger.warning(
+                SETTINGS_VALUE_DELETED,
+                namespace=namespace,
+                phase="delete_namespace_returning_keys",
+                error_type=type(exc).__name__,
+            )
+            raise
+        deleted = len(removed_keys)
 
         self._invalidate_namespace_cache(namespace)
 
@@ -844,8 +855,9 @@ class SettingsService:
             count=deleted,
         )
 
+        removed_key_set = set(removed_keys)
         for definition in self._registry.list_namespace(namespace):
-            if definition.key in overridden_keys:
+            if definition.key in removed_key_set:
                 await self._publish_change(namespace, definition.key, definition)
 
         return deleted

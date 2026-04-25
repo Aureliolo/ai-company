@@ -1,5 +1,6 @@
 """SQLite repository implementation for Project."""
 
+import asyncio
 import json
 import sqlite3
 
@@ -59,6 +60,19 @@ class SQLiteProjectRepository:
 
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
+        # ``aiosqlite.Connection`` runs every command on a dedicated
+        # worker thread, but transactions are connection-scoped: two
+        # coroutines that share a Connection share the SAME transaction
+        # context.  Without a connection-wide lock, coroutine A's
+        # ``execute`` + ``commit`` can interleave with coroutine B's
+        # statements -- B's writes get committed by A's
+        # ``commit`` (or rolled back by A's ``rollback``), breaking
+        # transaction atomicity.  This lock serialises every write
+        # transaction (create / update / save / delete) on this repo
+        # so each one runs ``execute`` -> ``commit``/``rollback`` as
+        # an atomic unit.  Reads are not gated -- they don't open
+        # transactions in autocommit mode.
+        self._write_lock = asyncio.Lock()
 
     @staticmethod
     def _row_params(project: Project) -> tuple[object, ...]:
@@ -84,35 +98,36 @@ class SQLiteProjectRepository:
             DuplicateRecordError: A project with the same id exists.
             QueryError: If the database operation fails.
         """
-        try:
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    """\
 INSERT INTO projects (id, name, description, team, lead,
                       task_ids, deadline, budget, status)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                self._row_params(project),
-            )
-            await self._db.commit()
-        except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
-            await self._safe_rollback()
-            logger.warning(
-                PERSISTENCE_PROJECT_SAVE_FAILED,
-                project_id=project.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = f"Project with id {project.id!r} already exists"
-            raise DuplicateRecordError(msg) from exc
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._safe_rollback()
-            msg = f"Failed to create project {project.id!r}"
-            logger.warning(
-                PERSISTENCE_PROJECT_SAVE_FAILED,
-                project_id=project.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+                    self._row_params(project),
+                )
+                await self._db.commit()
+            except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
+                await self._safe_rollback()
+                logger.warning(
+                    PERSISTENCE_PROJECT_SAVE_FAILED,
+                    project_id=project.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                msg = f"Project with id {project.id!r} already exists"
+                raise DuplicateRecordError(msg) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback()
+                msg = f"Failed to create project {project.id!r}"
+                logger.warning(
+                    PERSISTENCE_PROJECT_SAVE_FAILED,
+                    project_id=project.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def _safe_rollback(self) -> None:
         """Best-effort rollback on the shared connection.
@@ -152,9 +167,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             RecordNotFoundError: No project with this id exists.
             QueryError: If the database operation fails.
         """
-        try:
-            cursor = await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    """\
 UPDATE projects SET
     name=?,
     description=?,
@@ -165,38 +181,38 @@ UPDATE projects SET
     budget=?,
     status=?
 WHERE id=?""",
-                (
-                    project.name,
-                    project.description,
-                    json.dumps(list(project.team)),
-                    project.lead,
-                    json.dumps(list(project.task_ids)),
-                    project.deadline,
-                    project.budget,
-                    project.status.value,
-                    project.id,
-                ),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._safe_rollback()
-            msg = f"Failed to update project {project.id!r}"
-            logger.warning(
-                PERSISTENCE_PROJECT_SAVE_FAILED,
-                project_id=project.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
-        if cursor.rowcount == 0:
-            logger.warning(
-                PERSISTENCE_PROJECT_SAVE_FAILED,
-                project_id=project.id,
-                error_type="RecordNotFoundError",
-                error="No project with matching id",
-            )
-            msg = f"No project with id {project.id!r}"
-            raise RecordNotFoundError(msg)
+                    (
+                        project.name,
+                        project.description,
+                        json.dumps(list(project.team)),
+                        project.lead,
+                        json.dumps(list(project.task_ids)),
+                        project.deadline,
+                        project.budget,
+                        project.status.value,
+                        project.id,
+                    ),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback()
+                msg = f"Failed to update project {project.id!r}"
+                logger.warning(
+                    PERSISTENCE_PROJECT_SAVE_FAILED,
+                    project_id=project.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            if cursor.rowcount == 0:
+                logger.warning(
+                    PERSISTENCE_PROJECT_SAVE_FAILED,
+                    project_id=project.id,
+                    error_type="RecordNotFoundError",
+                    error="No project with matching id",
+                )
+                msg = f"No project with id {project.id!r}"
+                raise RecordNotFoundError(msg)
 
     async def save(self, project: Project) -> None:
         """Persist a project via upsert (migration / import paths).
@@ -207,9 +223,10 @@ WHERE id=?""",
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            await self._db.execute(
-                """\
+        async with self._write_lock:
+            try:
+                await self._db.execute(
+                    """\
 INSERT INTO projects (id, name, description, team, lead,
                       task_ids, deadline, budget, status)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -222,19 +239,19 @@ ON CONFLICT(id) DO UPDATE SET
     deadline=excluded.deadline,
     budget=excluded.budget,
     status=excluded.status""",
-                self._row_params(project),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._safe_rollback()
-            msg = f"Failed to save project {project.id!r}"
-            logger.warning(
-                PERSISTENCE_PROJECT_SAVE_FAILED,
-                project_id=project.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+                    self._row_params(project),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback()
+                msg = f"Failed to save project {project.id!r}"
+                logger.warning(
+                    PERSISTENCE_PROJECT_SAVE_FAILED,
+                    project_id=project.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get(self, project_id: NotBlankStr) -> Project | None:
         """Retrieve a project by primary key.
@@ -350,19 +367,20 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database operation fails.
         """
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM projects WHERE id = ?", (project_id,)
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._safe_rollback()
-            msg = f"Failed to delete project {project_id!r}"
-            logger.warning(
-                PERSISTENCE_PROJECT_DELETE_FAILED,
-                project_id=project_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM projects WHERE id = ?", (project_id,)
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback()
+                msg = f"Failed to delete project {project_id!r}"
+                logger.warning(
+                    PERSISTENCE_PROJECT_DELETE_FAILED,
+                    project_id=project_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return cursor.rowcount > 0

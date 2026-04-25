@@ -53,8 +53,19 @@ class BaselineSnapshot:
 
 
 def positive_finite_float(raw: object) -> float | None:
-    """Coerce *raw* to a strictly positive finite float, or ``None``."""
+    """Coerce *raw* to a strictly positive finite float, or ``None``.
+
+    Strict on input shape: bools (``float(True) == 1.0``) are rejected
+    explicitly.  ``True`` masquerading as a count would silently
+    validate a malformed baseline; the strictness here is the
+    difference between "the rail trips on real regressions" and "the
+    rail trips on a typo nobody noticed".
+    """
     if raw is None:
+        return None
+    if isinstance(raw, bool):
+        # ``bool`` is a subclass of ``int``; ``float(True) == 1.0``
+        # would otherwise sneak through.
         return None
     try:
         candidate = float(raw)  # type: ignore[arg-type]
@@ -102,9 +113,13 @@ def load_baseline_snapshot(path: Path) -> BaselineSnapshot | None:
     """Parse and validate the baseline file at *path*.
 
     Returns ``None`` when the file is missing, malformed, or missing
-    the required fields (``unit_suite_seconds`` + ``test_count``, OR a
-    directly-provided ``per_test_ms``).  ``regression_threshold_ratio``
-    defaults to :data:`_DEFAULT_THRESHOLD_RATIO` if absent.
+    required fields.  ``test_count`` is mandatory in every accepted
+    baseline (it powers the partial-run guard).  In addition, the
+    baseline must supply EITHER ``per_test_ms`` directly OR
+    ``unit_suite_seconds`` -- the loader derives ``per_test_ms`` from
+    ``unit_suite_seconds * 1000 / test_count`` when only the latter
+    is present.  ``regression_threshold_ratio`` defaults to
+    :data:`_DEFAULT_THRESHOLD_RATIO` if absent.
     """
     if not path.exists():
         return None

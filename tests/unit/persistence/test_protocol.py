@@ -369,6 +369,12 @@ class _FakeSettingsRepository:
     async def delete_namespace(self, namespace: str) -> int:
         return 0
 
+    async def delete_namespace_returning_keys(
+        self,
+        namespace: str,
+    ) -> tuple[str, ...]:
+        return ()
+
 
 class _FakeArtifactRepository:
     async def save(self, artifact: Artifact) -> bool:

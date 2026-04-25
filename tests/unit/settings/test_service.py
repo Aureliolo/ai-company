@@ -94,6 +94,7 @@ def mock_repo() -> AsyncMock:
     repo.get_namespace = AsyncMock(return_value=())
     repo.get_all = AsyncMock(return_value=())
     repo.delete_namespace = AsyncMock(return_value=0)
+    repo.delete_namespace_returning_keys = AsyncMock(return_value=())
     return repo
 
 
@@ -446,12 +447,16 @@ class TestDeleteNamespace:
         self, service: SettingsService, mock_repo: AsyncMock
     ) -> None:
         """The deleted-row count is forwarded from the repository."""
-        mock_repo.delete_namespace.return_value = 3
+        mock_repo.delete_namespace_returning_keys.return_value = (
+            "total_monthly",
+            "another_a",
+            "another_b",
+        )
         deleted = await service.delete_namespace("budget")
         assert deleted == 3
-        mock_repo.delete_namespace.assert_awaited_once()
+        mock_repo.delete_namespace_returning_keys.assert_awaited_once()
         # NotBlankStr coercion: assert via positional arg name
-        called_with = mock_repo.delete_namespace.call_args[0][0]
+        called_with = mock_repo.delete_namespace_returning_keys.call_args[0][0]
         assert str(called_with) == "budget"
 
     async def test_invalidates_namespace_cache(
@@ -462,7 +467,7 @@ class TestDeleteNamespace:
         await service.get("budget", "total_monthly")
         assert mock_repo.get.call_count == 1
 
-        mock_repo.delete_namespace.return_value = 1
+        mock_repo.delete_namespace_returning_keys.return_value = ("total_monthly",)
         await service.delete_namespace("budget")
 
         # Subsequent get() must re-query the repo (not hit the cache)
@@ -500,10 +505,7 @@ class TestDeleteNamespace:
         # Only one of the two registered keys has a DB override.
         # The second registered key (``another_key``) has no override
         # row; the publish loop must skip it.
-        mock_repo.get_namespace.return_value = (
-            ("total_monthly", "200.0", "2026-04-25T10:00:00Z"),
-        )
-        mock_repo.delete_namespace.return_value = 1
+        mock_repo.delete_namespace_returning_keys.return_value = ("total_monthly",)
 
         deleted = await svc.delete_namespace("budget")
 
@@ -520,7 +522,12 @@ class TestDeleteNamespace:
 
         from synthorg.observability.events.settings import SETTINGS_VALUE_DELETED
 
-        mock_repo.delete_namespace.return_value = 4
+        mock_repo.delete_namespace_returning_keys.return_value = (
+            "k1",
+            "k2",
+            "k3",
+            "k4",
+        )
         with structlog.testing.capture_logs() as logs:
             await service.delete_namespace("budget")
 
@@ -552,7 +559,7 @@ class TestDeleteNamespace:
             config=config,
             message_bus=bus,
         )
-        mock_repo.delete_namespace.return_value = 0
+        mock_repo.delete_namespace_returning_keys.return_value = ()
 
         with structlog.testing.capture_logs() as logs:
             deleted = await svc.delete_namespace("budget")
