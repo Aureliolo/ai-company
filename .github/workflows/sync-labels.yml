@@ -1,0 +1,48 @@
+name: Sync Labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/labels.yml
+      - .github/workflows/sync-labels.yml
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  sync:
+    name: sync
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Sync labels from .github/labels.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # `yq -o=j -I=0 '.[]'` emits one compact JSON object per label so a
+          # while-read loop can iterate them. `gh label create --force` is
+          # upsert: it creates if missing and updates color/description if
+          # the label already exists. We never delete labels here -- humans
+          # may have added repo-specific ones we shouldn't touch.
+          yq -o=j -I=0 '.[]' .github/labels.yml | while IFS= read -r label_json; do
+            name=$(printf '%s' "$label_json" | jq -r '.name')
+            color=$(printf '%s' "$label_json" | jq -r '.color')
+            description=$(printf '%s' "$label_json" | jq -r '.description // ""')
+
+            echo "::group::sync $name"
+            gh label create "$name" \
+              --color "$color" \
+              --description "$description" \
+              --force
+            echo "::endgroup::"
+          done

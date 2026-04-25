@@ -1,0 +1,45 @@
+# Labels assumed by GitHub Actions workflows in this repo.
+#
+# This file is the source of truth for *workflow-asserted* labels only --
+# labels that the CI/automation surface relies on existing. Human-applied
+# labels (type:*, prio:*, spec:*, scope:*) are managed via the GitHub UI
+# and are not synced from here.
+#
+# Synced by .github/workflows/sync-labels.yml on push to main when this
+# file changes, plus manual workflow_dispatch. Forks should run the
+# manual dispatch once after creation to bootstrap the label set.
+#
+# The sync uses EndBug/label-sync with delete: false, so labels not
+# listed here are left untouched.
+
+- name: automation:ci-health
+  color: B60205
+  description: CI / scheduled-job health regression
+
+- name: automation:ci-preflight
+  color: B60205
+  description: Fork / repo-setup preflight tracker (created by ci-preflight workflow)
+
+- name: automation:release-events
+  color: B60205
+  description: Release pipeline events log + signing / health regressions
+
+- name: type:ci
+  color: 5319e7
+  description: CI / build / release tooling
+
+- name: prio:low
+  color: c2e0c6
+  description: Nice to have, can defer
+
+- name: prio:medium
+  color: fbca04
+  description: Should do, but not blocking
+
+- name: prio:high
+  color: d93f0b
+  description: Important, should be prioritized
+
+- name: "autorelease: pending"
+  color: ededed
+  description: Release-please pending-release marker
