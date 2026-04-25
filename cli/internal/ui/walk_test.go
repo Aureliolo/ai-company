@@ -279,11 +279,13 @@ func TestWalk_viewIncludesHeaderAndFooter(t *testing.T) {
 	if !strings.Contains(out, "[1/2]") {
 		t.Errorf("view should contain position indicator\n--- got ---\n%s", out)
 	}
-	// Non-final batch on last item should show "[n] next batch".
+	// Non-final batch on last item should show "[enter/n] next batch" --
+	// both keys advance, so the footer must surface both to stay
+	// consistent with handleKey.
 	m = updateAndCast(t, m, "enter") // idx=1, last item
 	out = m.View().Content
-	if !strings.Contains(out, "[n] next batch") {
-		t.Errorf("view on last-in-non-final-batch should mention [n] next batch\n--- got ---\n%s", out)
+	if !strings.Contains(out, "[enter/n] next batch") {
+		t.Errorf("view on last-in-non-final-batch should mention [enter/n] next batch\n--- got ---\n%s", out)
 	}
 }
 

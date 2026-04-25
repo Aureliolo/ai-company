@@ -1,7 +1,7 @@
 <!-- HIGHLIGHTS_START -->
 ## Highlights
 
-> _AI-generated summary (model: `openai/gpt-4.1-mini` via GitHub Models). Commit-based changelog below._
+> _AI-generated summary (model: `example-provider/example-medium-001` via GitHub Models). Commit-based changelog below._
 
 ### What you'll notice
 
@@ -17,6 +17,7 @@
 ## CLI Installation
 
 **Linux / macOS:**
+
 ```bash
 curl -sSfL https://synthorg.io/get/install.sh | bash
 ```

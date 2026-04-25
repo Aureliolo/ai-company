@@ -9,6 +9,7 @@ Dev build #5 toward v0.7.3
 ## CLI Installation
 
 **Linux / macOS:**
+
 ```bash
 curl -sSfL https://synthorg.io/get/install.sh | bash
 ```

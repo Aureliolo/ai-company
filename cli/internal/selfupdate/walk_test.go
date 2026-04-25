@@ -261,6 +261,63 @@ func TestReleasesBetween_emptyAPI(t *testing.T) {
 	}
 }
 
+// TestReleasesBetween_paginationContinuesPastBackportPage exercises the
+// regression where a full page entirely below the installed version (e.g.
+// recent backports for an older series) caused listReleases to early-stop
+// and miss in-range releases on subsequent pages. GitHub /releases is
+// ordered by publish time, not semver, so this layout is realistic.
+func TestReleasesBetween_paginationContinuesPastBackportPage(t *testing.T) {
+	// Page 1: 100 backport entries on the v0.5.* series (all <= installed).
+	page1 := make([]devRelease, releasesPerPage)
+	for i := range page1 {
+		page1[i] = devRelease{
+			TagName: fmt.Sprintf("v0.5.%d", releasesPerPage-i),
+			Assets: []Asset{
+				{Name: assetName(), BrowserDownloadURL: expectedURLPrefix + "tag/" + assetName()},
+				{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "tag/checksums.txt"},
+			},
+		}
+	}
+	// Page 2: in-range release (v0.7.5 falls in (v0.7.4, v0.7.6]).
+	page2 := []devRelease{
+		{
+			TagName: "v0.7.5",
+			Assets: []Asset{
+				{Name: assetName(), BrowserDownloadURL: expectedURLPrefix + "tag/" + assetName()},
+				{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "tag/checksums.txt"},
+			},
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		w.Header().Set("Content-Type", "application/json")
+		var body []byte
+		switch page {
+		case "1":
+			body, _ = json.Marshal(page1)
+		case "2":
+			body, _ = json.Marshal(page2)
+		default:
+			body, _ = json.Marshal([]devRelease{})
+		}
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	got, err := releasesBetweenFromURL(context.Background(), srv.URL, "v0.7.4", "v0.7.6", false)
+	if err != nil {
+		t.Fatalf("ReleasesBetween: %v", err)
+	}
+	if len(got) != 1 || got[0].TagName != "v0.7.5" {
+		tags := make([]string, len(got))
+		for i, r := range got {
+			tags[i] = r.TagName
+		}
+		t.Fatalf("tags = %v, want [v0.7.5] (in-range release on page 2 was missed)", tags)
+	}
+}
+
 func TestReleasesBetween_paginationCap(t *testing.T) {
 	// Always return a full page so the loop must hit maxReleasePages.
 	full := make([]devRelease, releasesPerPage)

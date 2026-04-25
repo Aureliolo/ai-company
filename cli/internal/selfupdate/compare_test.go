@@ -220,6 +220,35 @@ func TestCommitsBetween_pathEscapesMetacharacters(t *testing.T) {
 	}
 }
 
+// TestCommitsBetween_subjectSkipsLeadingBlankLines guards firstLine against
+// messages that begin with one or more blank lines: the subject must resolve
+// to the first non-empty line, otherwise commits render with empty subjects.
+func TestCommitsBetween_subjectSkipsLeadingBlankLines(t *testing.T) {
+	resp := compareResponse{
+		TotalCommits: 1,
+		Commits: []compareCommitJSON{{
+			SHA: "deadbeefcafebabe1234",
+			Commit: compareCommitInner{
+				Message: "\n\nsubject line\n\nbody",
+				Author:  compareCommitAuthor{Name: "x", Date: "2026-04-25T00:00:00Z"},
+			},
+		}},
+	}
+	body, _ := json.Marshal(resp)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	got, err := commitsBetweenFromURL(context.Background(), srv.URL+"/{base}...{head}", "a", "b")
+	if err != nil {
+		t.Fatalf("CommitsBetween: %v", err)
+	}
+	if want := "subject line"; got.Commits[0].Subject != want {
+		t.Errorf("Subject = %q, want %q", got.Commits[0].Subject, want)
+	}
+}
+
 func TestCommitsBetween_invalidDateGracefulFallback(t *testing.T) {
 	resp := compareResponse{
 		TotalCommits: 1,

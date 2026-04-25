@@ -236,6 +236,6 @@ func printOfflineNotice(cmd *cobra.Command, result selfupdate.CheckResult) {
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	out.Step(fmt.Sprintf("New version available: %s (current: %s)",
 		result.LatestVersion, result.CurrentVersion))
-	out.HintGuidance(fmt.Sprintf("Release notes: %s/releases/tag/v%s",
+	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/v%s",
 		version.RepoURL, strings.TrimPrefix(result.LatestVersion, "v")))
 }

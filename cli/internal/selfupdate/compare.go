@@ -90,10 +90,14 @@ func commitsBetweenFromURL(ctx context.Context, urlTpl, base, head string) (Comm
 }
 
 // firstLine returns the first non-empty line of a commit message (the
-// subject). Returns the input verbatim if no newline is present.
+// subject). Skips leading blank lines so messages produced with a blank
+// header still surface a meaningful subject. Returns the trimmed input
+// when every line is blank.
 func firstLine(msg string) string {
-	if line, _, ok := strings.Cut(msg, "\n"); ok {
-		return strings.TrimSpace(line)
+	for line := range strings.SplitSeq(msg, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			return trimmed
+		}
 	}
 	return strings.TrimSpace(msg)
 }

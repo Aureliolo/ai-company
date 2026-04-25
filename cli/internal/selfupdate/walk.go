@@ -55,7 +55,7 @@ func releasesBetweenFromURL(ctx context.Context, baseURL, installed, target stri
 		return nil, fmt.Errorf("invalid target version %q: expected vX.Y.Z[-dev.N]", target)
 	}
 
-	all, err := listReleases(ctx, baseURL, installed)
+	all, err := listReleases(ctx, baseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -101,13 +101,17 @@ func releasesBetweenFromURL(ctx context.Context, baseURL, installed, target stri
 }
 
 // listReleases paginates the releases endpoint with per_page=releasesPerPage
-// up to maxReleasePages. Stops early when:
-//   - a page returns < releasesPerPage entries (last page)
-//   - every entry on a page sorts at or below installed (no point reading
-//     deeper history)
+// up to maxReleasePages. Stops when a page returns < releasesPerPage entries
+// (last page) or the page cap is reached.
+//
+// A page-level "older than installed" early-stop is intentionally NOT used:
+// the GitHub /releases endpoint orders by publish time, not semver, so a
+// page entirely <= installed (e.g. recent backports for older series) can
+// still be followed by pages containing in-range releases. The maxReleasePages
+// cap bounds the worst case to releasesPerPage * maxReleasePages entries.
 //
 // Returns the union of all fetched pages (unsorted; caller filters + sorts).
-func listReleases(ctx context.Context, baseURL, installed string) ([]devRelease, error) {
+func listReleases(ctx context.Context, baseURL string) ([]devRelease, error) {
 	var combined []devRelease
 	for page := 1; page <= maxReleasePages; page++ {
 		pageURL, err := buildPageURL(baseURL, page)
@@ -123,9 +127,6 @@ func listReleases(ctx context.Context, baseURL, installed string) ([]devRelease,
 		}
 		combined = append(combined, entries...)
 		if len(entries) < releasesPerPage {
-			break
-		}
-		if installed != "" && allAtOrBelow(entries, installed) {
 			break
 		}
 	}
@@ -144,24 +145,6 @@ func buildPageURL(baseURL string, page int) (string, error) {
 	q.Set("page", strconv.Itoa(page))
 	parsed.RawQuery = q.Encode()
 	return parsed.String(), nil
-}
-
-// allAtOrBelow reports whether every release in entries sorts at or below
-// installed. Used as an early-stop signal: if the entire current page is
-// older than what the user already has, deeper pages cannot contain anything
-// new.
-func allAtOrBelow(entries []devRelease, installed string) bool {
-	for _, r := range entries {
-		cmp, err := compareWithDev(r.TagName, installed)
-		if err != nil {
-			// Malformed tag: be conservative and keep paginating.
-			return false
-		}
-		if cmp > 0 {
-			return false
-		}
-	}
-	return true
 }
 
 // isDevTag reports whether a tag carries the "-dev.N" pre-release suffix.

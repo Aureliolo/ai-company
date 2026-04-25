@@ -63,10 +63,17 @@ type commitWalkModel struct {
 	outcome   CommitWalkOutcome
 }
 
+// commitWalkViewportHeight reserves chrome for the dev-channel walk layout:
+// the title line + viewport trailing newline + footer line = 3 lines. There
+// are no optional fallback / flashMsg rows, so the chrome budget is constant.
+func commitWalkViewportHeight(termHeight int) int {
+	return viewportHeightForChrome(termHeight, 3)
+}
+
 // newCommitWalkModel pre-renders the commit list and wires up the viewport.
 func newCommitWalkModel(in CommitWalkInput) commitWalkModel {
 	w, h := initialDimensions(in.Width, in.Height)
-	vp := viewport.New(viewport.WithWidth(w), viewport.WithHeight(viewportInitialHeight(h)))
+	vp := viewport.New(viewport.WithWidth(w), viewport.WithHeight(commitWalkViewportHeight(h)))
 	vp.SoftWrap = true
 	vp.SetContent(RenderCommitList(in.Commits, w, in.Options))
 	return commitWalkModel{
@@ -93,7 +100,7 @@ func (m commitWalkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.SetWidth(msg.Width)
-		m.viewport.SetHeight(viewportInitialHeight(msg.Height))
+		m.viewport.SetHeight(commitWalkViewportHeight(msg.Height))
 		// Re-render with the new width so subject truncation tracks resize.
 		m.viewport.SetContent(RenderCommitList(m.commits, msg.Width, m.opts))
 		return m, nil

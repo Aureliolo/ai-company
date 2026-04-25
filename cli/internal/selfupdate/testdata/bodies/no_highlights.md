@@ -29,6 +29,7 @@
 ## CLI Installation
 
 **Linux / macOS:**
+
 ```bash
 curl -sSfL https://synthorg.io/get/install.sh | bash
 ```

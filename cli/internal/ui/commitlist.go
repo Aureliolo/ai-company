@@ -74,10 +74,14 @@ func RenderCommitList(r selfupdate.CommitRange, width int, opts Options) string 
 		// Strip ANSI escapes from every operator-visible field so a
 		// hostile commit subject / author / SHA cannot inject terminal
 		// control sequences into the walk. See stripANSI in changelog.go.
+		// Sanitize once per commit and reuse the cleaned values; passing
+		// a still-dirty `c` into formatMeta would re-do the work and risk
+		// drift if a future field is added without the helper coverage.
+		clean := stripANSIInCommit(c)
 		rows[i] = prepared{
-			shortSHA: shortSHA(stripANSI(c.SHA)),
-			subject:  strings.TrimSpace(stripANSI(c.Subject)),
-			suffix:   formatMeta(stripANSIInCommit(c)),
+			shortSHA: shortSHA(clean.SHA),
+			subject:  strings.TrimSpace(clean.Subject),
+			suffix:   formatMeta(clean),
 		}
 	}
 

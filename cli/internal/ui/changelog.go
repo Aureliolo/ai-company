@@ -63,6 +63,12 @@ var boldEmphasisRe = regexp.MustCompile(`\*\*([^*]+)\*\*`)
 // terminal output.
 var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
 
+// releaseHeadingRe matches the Release Please version-heading shape, e.g.
+// "## [0.7.3](https://...) (2026-04-25)" or "## [0.7.3] (2026-04-25)".
+// Only this exact shape is dropped from commit-view rendering -- arbitrary
+// H2 sections in the release body (e.g. "## Migration notes") are kept.
+var releaseHeadingRe = regexp.MustCompile(`^##\s+\[[^\]]+\](?:\([^)]+\))?(?:\s+\([^)]+\))?\s*$`)
+
 // stripANSI removes ANSI escape sequences from s. Applied at every renderer
 // boundary so user-controlled release-body content cannot inject styling /
 // cursor-movement / clear-screen escapes into the operator's terminal.
@@ -139,8 +145,9 @@ func formatCommitLine(line string, st changelogStyle) (string, bool) {
 	if trimmed == "" {
 		return "", false
 	}
-	// Drop release-please version heading.
-	if strings.HasPrefix(trimmed, "## [") || strings.HasPrefix(trimmed, "## ") {
+	// Drop release-please version heading. Other H2 sections (e.g.
+	// "## Migration notes") survive so they render in the commit view.
+	if releaseHeadingRe.MatchString(trimmed) {
 		return "", false
 	}
 	if rest, ok := strings.CutPrefix(trimmed, "### "); ok {

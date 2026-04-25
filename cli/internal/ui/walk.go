@@ -144,22 +144,21 @@ func newWalkModel(in WalkBatchInput) walkModel {
 	}
 
 	width, height := initialDimensions(in.Width, in.Height)
-	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(viewportInitialHeight(height)))
-	vp.SoftWrap = true
-
 	m := walkModel{
 		versions:     in.Versions,
 		idx:          0,
 		view:         view,
 		toggleable:   toggleable,
 		contents:     contents,
-		viewport:     vp,
 		width:        width,
 		height:       height,
 		opts:         in.Options,
 		isFinalBatch: in.IsFinalBatch,
 		result:       WalkBatchResult{Outcome: WalkOutcomeQuit, FinalView: view},
 	}
+	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(m.viewportHeight()))
+	vp.SoftWrap = true
+	m.viewport = vp
 	m.loadCurrentContent()
 	return m
 }
@@ -176,15 +175,33 @@ func initialDimensions(w, h int) (int, int) {
 	return w, h
 }
 
-// viewportInitialHeight reserves room above and below the viewport for the
-// version header (1 line + blank line) and the key-binding footer (blank
-// line + 1 line). Total chrome = 4 lines.
-func viewportInitialHeight(h int) int {
-	const chrome = 4
-	if h <= chrome+1 {
+// viewportHeightForChrome reserves chrome lines for renderView's surrounding
+// layout (header + trailing newline + footer, plus any optional fallback /
+// flash rows the caller knows about). Falls back to 1 when the terminal is
+// too small to render anything meaningful.
+func viewportHeightForChrome(termHeight, chrome int) int {
+	if termHeight <= chrome+1 {
 		return 1
 	}
-	return h - chrome
+	return termHeight - chrome
+}
+
+// viewportHeight returns the viewport height for the current model state.
+// Chrome is computed dynamically because renderView's layout depends on
+// runtime flags: the version header is always 1 line, the trailing newline
+// after the viewport is 1 line, and the footer is 1 line. A non-toggleable
+// version adds a fallback-note line; a non-empty flashMsg adds another.
+// Static-chrome implementations risk overflowing the terminal on small
+// windows when those optional rows appear.
+func (m walkModel) viewportHeight() int {
+	chrome := 3 // header + viewport trailing newline + footer
+	if m.idx < len(m.toggleable) && !m.toggleable[m.idx] {
+		chrome++
+	}
+	if m.flashMsg != "" {
+		chrome++
+	}
+	return viewportHeightForChrome(m.height, chrome)
 }
 
 // versionHeader renders the "── v0.7.3 ─────────────── [1/3]" line shown
@@ -226,7 +243,7 @@ func (m walkModel) handleResize(w, h int) walkModel {
 	m.width = w
 	m.height = h
 	m.viewport.SetWidth(w)
-	m.viewport.SetHeight(viewportInitialHeight(h))
+	m.viewport.SetHeight(m.viewportHeight())
 	m.loadCurrentContent()
 	return m
 }
@@ -234,7 +251,12 @@ func (m walkModel) handleResize(w, h int) walkModel {
 // handleKey processes a key press. Returns the new model + an optional cmd
 // (typically tea.Quit when exiting the batch).
 func (m walkModel) handleKey(key string) (tea.Model, tea.Cmd) {
-	m.flashMsg = ""
+	if m.flashMsg != "" {
+		m.flashMsg = ""
+		// flashMsg lost a line: grow the viewport back so the user gets the
+		// space back on the next render.
+		m.viewport.SetHeight(m.viewportHeight())
+	}
 	switch key {
 	case "ctrl+c", "q":
 		m.result = WalkBatchResult{Outcome: WalkOutcomeQuit, FinalView: m.view}
@@ -293,6 +315,8 @@ func (m walkModel) advance() (tea.Model, tea.Cmd) {
 func (m walkModel) toggleView() walkModel {
 	if !m.toggleable[m.idx] {
 		m.flashMsg = "No AI highlights for this version -- showing commit log."
+		// flashMsg gained a line: shrink the viewport so the layout still fits.
+		m.viewport.SetHeight(m.viewportHeight())
 		return m
 	}
 	if m.view == viewHighlights {
@@ -304,8 +328,11 @@ func (m walkModel) toggleView() walkModel {
 	return m
 }
 
-// loadCurrentContent re-points the viewport at the right pre-rendered slice.
+// loadCurrentContent re-points the viewport at the right pre-rendered slice
+// and resizes it for the chrome the current state consumes (the optional
+// fallback note + flashMsg lines change the chrome budget).
 func (m *walkModel) loadCurrentContent() {
+	m.viewport.SetHeight(m.viewportHeight())
 	if len(m.contents) == 0 {
 		m.viewport.SetContent("")
 		return
@@ -433,7 +460,7 @@ func (m walkModel) renderFooter(muted lipgloss.Style) string {
 	parts = append(parts, "[j/k] scroll", "[g/G] top/bottom")
 	switch {
 	case m.onLastInBatch() && !m.isFinalBatch:
-		parts = append(parts, "[n] next batch")
+		parts = append(parts, "[enter/n] next batch")
 	case m.onLastInBatch() && m.isFinalBatch:
 		parts = append(parts, "[enter] continue")
 	default:

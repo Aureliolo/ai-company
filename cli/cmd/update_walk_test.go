@@ -175,9 +175,10 @@ func TestRunChangelogWalk_quietPrintsOfflineNotice(t *testing.T) {
 
 	runChangelogWalk(cmd.Context(), cmd, result, state)
 	got := buf.String()
-	// JSON mode is quiet, so even offline notice text is suppressed.
-	// We expect zero output rather than error.
-	if strings.Contains(got, "panic") {
-		t.Errorf("runChangelogWalk should never panic\n--- got ---\n%s", got)
+	// JSON mode suppresses the walk and any human-readable offline notice.
+	// Asserting "no output" -- not just "no panic" -- is what guards against
+	// regressions that re-introduce stdout writes in JSON-mode update flows.
+	if strings.TrimSpace(got) != "" {
+		t.Errorf("expected no output in JSON mode\n--- got ---\n%s", got)
 	}
 }
