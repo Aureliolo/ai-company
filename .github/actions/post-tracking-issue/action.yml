@@ -23,8 +23,10 @@ description: |
   Caller contract:
     - The job invoking this action must declare `permissions:
       issues: write`.
-    - `gh-token` is a passthrough for `GH_TOKEN`; pass
-      `${{ github.token }}` unless a higher-permission token is needed.
+    - `gh-token` is a passthrough for `GH_TOKEN`; pass the workflow's
+      `github.token` (referenced as the GitHub Actions expression
+      `github.token` in the caller's YAML) unless a higher-permission
+      token is needed.
 
 inputs:
   title:
@@ -47,16 +49,16 @@ inputs:
     required: false
     default: 'true'
   gh-token:
-    description: |
+    description: >-
       GitHub token with `issues: write` scope on the workflow's own
-      repository. The default `${{ github.token }}` is sufficient for
-      every current caller. The action is single-repo: it always
-      targets `${{ github.repository }}` for both issue lookup/create
-      and pinning, which means it correctly self-targets a fork when
-      the workflow runs in a fork. To open a tracking issue in a
-      *different* repo, the action would need a `repository` input
-      plumbed through both `GH_REPO` and the pin URL -- out of scope
-      until a real cross-repo caller appears.
+      repository. The workflow's default github.token is sufficient
+      for every current caller. The action is single-repo: it always
+      targets the calling workflow's github.repository for both
+      issue lookup/create and pinning, which means it correctly
+      self-targets a fork when the workflow runs in a fork. To open
+      a tracking issue in a *different* repo, the action would need
+      a `repository` input plumbed through both `GH_REPO` and the
+      pin URL -- out of scope until a real cross-repo caller appears.
     required: true
 
 runs:

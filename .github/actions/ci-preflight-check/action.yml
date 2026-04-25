@@ -15,10 +15,12 @@ description: |
 
 inputs:
   gh-token:
-    description: |
-      GitHub token with `metadata: read` and access to the rulesets +
-      environments + labels APIs. The default `${{ github.token }}`
-      is sufficient.
+    description: >-
+      GitHub token with access to the environments, labels, and
+      branches/protection APIs. The workflow's default github.token
+      (passed via the `gh-token` input from the calling workflow) is
+      sufficient when the calling job declares `permissions: { contents:
+      read, issues: write }`.
     required: true
 
 outputs:
