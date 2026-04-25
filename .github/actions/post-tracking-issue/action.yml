@@ -70,10 +70,15 @@ runs:
         # Search by title alone -- a label filter here would miss any
         # issue created via the label-less fallback below and cause
         # the next failure to open a duplicate tracker instead of
-        # commenting on the existing one.
+        # commenting on the existing one. Bind $TITLE via `jq --arg`
+        # (passing through a standalone jq pipe; gh's own --jq flag
+        # does not accept --arg) so titles containing single quotes,
+        # double quotes, or shell metacharacters cannot break the
+        # select filter.
         ISSUE_NUMBER=$(gh issue list --state open \
           --search "in:title \"$TITLE\"" --json number,title \
-          --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
+          | jq -r --arg title "$TITLE" \
+            '[.[] | select(.title == $title)] | .[0].number // empty')
 
         if [ -z "$ISSUE_NUMBER" ]; then
           # Parse `gh issue create`'s stdout URL for the issue number

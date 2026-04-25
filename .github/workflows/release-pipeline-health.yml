@@ -254,9 +254,10 @@ jobs:
   report-failure:
     name: Open / update tracking issue on schedule regression
     needs: health-check
-    # Only the schedule path gets the issue sink. Manual `workflow_dispatch`
-    # failures from a debugging branch shouldn't open repo-wide CI-health
-    # issues; the operator already sees the run output directly.
+    # Only the schedule path opens an `automation:release-events`
+    # tracker. Manual `workflow_dispatch` failures from a debugging
+    # branch shouldn't open repo-wide trackers; the operator already
+    # sees the run output directly.
     if: >-
       always()
       && github.event_name == 'schedule'
@@ -264,7 +265,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      issues: write
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / pin
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
