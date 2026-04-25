@@ -29,13 +29,20 @@ $runId = Get-Date -Format 'yyyy-MM-dd-HHmmss'
 $runDir = "_audit/runs/$runId"
 New-Item -ItemType Directory -Force -Path "$runDir/findings" | Out-Null
 
+# Always remove any existing _audit/latest first so repointing is idempotent.
+# New-Item -Force does not reliably replace an existing symlink/junction with a
+# different target across PowerShell versions, so do it explicitly.
+if (Test-Path "_audit/latest") {
+    Remove-Item -Force -Recurse "_audit/latest"
+}
+
 # Try symlink first (requires Developer Mode or admin), fall back to junction
 # (no privileges needed) so `_audit/latest/findings/...` writes resolve to the
 # current run dir either way.
 try {
-    New-Item -ItemType SymbolicLink -Force -Path "_audit/latest" -Target "runs/$runId" -ErrorAction Stop | Out-Null
+    New-Item -ItemType SymbolicLink -Path "_audit/latest" -Target "runs/$runId" -ErrorAction Stop | Out-Null
 } catch {
-    New-Item -ItemType Junction -Force -Path "_audit/latest" -Target "runs/$runId" | Out-Null
+    New-Item -ItemType Junction -Path "_audit/latest" -Target "runs/$runId" | Out-Null
 }
 ```
 

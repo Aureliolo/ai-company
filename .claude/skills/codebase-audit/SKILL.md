@@ -44,7 +44,7 @@ mkdir -p "$RUN_DIR/findings"
 ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest
 ```
 
-Never delete `_audit/runs/*`. The `_audit/latest` symlink always points at the most recent run; older runs accumulate. On Windows, the OpenCode adapter substitutes `New-Item -ItemType SymbolicLink` for `ln -sfn`.
+Never delete `_audit/runs/*`. The `_audit/latest` symlink always points at the most recent run; older runs accumulate. On Windows, the OpenCode adapter first attempts `New-Item -ItemType SymbolicLink` (requires Developer Mode or admin); on failure it falls back to `New-Item -ItemType Junction`, which needs no special privileges and still resolves as a directory so downstream writes to `_audit/latest/findings/<file>` succeed.
 
 Verify `_audit/` is in `.gitignore`. If not, add it.
 
@@ -1206,7 +1206,7 @@ Read `roadmap.md`, all files matching `docs/*roadmap*`, `docs/future-vision*`,
 You MUST emit Bash output for every numeric/temporal claim you verify:
 - Test count: paste output of `uv run python -m pytest tests/ --collect-only -q | tail -1`
 - Release list: paste output of `gh release list --limit 10`
-- Agent count: paste `ls .claude/agents | wc -l`
+- Subagent file count (counts files in `.claude/agents/`, the on-disk dev subagents -- distinct from the codebase-audit skill's inline agent prompts): paste `ls .claude/agents | wc -l`
 - pyproject.toml version: paste the matching line
 
 Findings without evidence are inadmissible.
@@ -1249,7 +1249,7 @@ For each number, verify against live source:
 - Provider count via `providers/presets.py`
 - Backend count via `persistence/` subdirectories
 - Tool count via `tools/registry.py`
-- Agent count via `ls .claude/agents`
+- Subagent file count (`.claude/agents/` on-disk dev subagents) via `ls .claude/agents`
 - Supported model count via the model registry
 - Line count / file count claims via `find` + `wc`
 
@@ -2571,7 +2571,7 @@ You MUST emit Bash output for every numeric/temporal claim you verify.
 Do not assert "verified" without a corresponding Bash result. Examples:
 - Test count: paste output of `uv run python -m pytest tests/ --collect-only -q | tail -1`
 - Release list: paste output of `gh release list --limit 10`
-- Agent count: paste `ls .claude/agents | wc -l`
+- Subagent file count (counts files in `.claude/agents/`, the on-disk dev subagents -- distinct from the codebase-audit skill's inline agent prompts): paste `ls .claude/agents | wc -l`
 - File count: paste `find <path> -name "*.py" | wc -l`
 - Tool count: paste a grep against tools/registry.py
 
@@ -2832,7 +2832,7 @@ mkdir -p "$RUN_DIR/findings"
 ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest
 ```
 
-The timestamp uses second-level precision (`%H%M%S`) so back-to-back runs in the same minute do not collide and overwrite each other's findings. On Windows, the OpenCode adapter substitutes `New-Item -ItemType SymbolicLink` for `ln -sfn`. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory. `_audit/latest` always points at the most recent run. Older runs accumulate -- never delete `_audit/runs/*`.
+The timestamp uses second-level precision (`%H%M%S`) so back-to-back runs in the same minute do not collide and overwrite each other's findings. On Windows, the OpenCode adapter first attempts `New-Item -ItemType SymbolicLink` (requires Developer Mode or admin); on failure it falls back to `New-Item -ItemType Junction`, which needs no special privileges. Either link type makes `_audit/latest` resolve as a directory, so downstream writes to `_audit/latest/findings/<file>` succeed regardless of which one was created. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory. `_audit/latest` always points at the most recent run. Older runs accumulate -- never delete `_audit/runs/*`.
 
 Verify `_audit/` is in `.gitignore` (existing behavior). The `_audit/.ignore.yaml` ignore list (see below) is also gitignored by virtue of the parent.
 
