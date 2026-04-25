@@ -191,9 +191,6 @@ func (m commitWalkModel) renderView() string {
 
 	title := fmt.Sprintf("dev channel: %s -> %s", m.installed, m.target)
 	count := fmt.Sprintf("%d commits", m.commits.TotalCommits)
-	if m.commits.TotalCommits == 0 {
-		count = "0 commits"
-	}
 
 	var sb strings.Builder
 	sb.WriteString(muted.Render(prefix))

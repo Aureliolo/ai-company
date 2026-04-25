@@ -232,10 +232,10 @@ func (m walkModel) viewportHeight() int {
 	}
 	chrome += wrappedLines(lipgloss.Width(m.renderFooter(muted)), m.width)
 	if m.idx < len(m.toggleable) && !m.toggleable[m.idx] {
-		chrome++
+		chrome += wrappedLines(lipgloss.Width(RenderFallbackNote(m.opts)), m.width)
 	}
 	if m.flashMsg != "" {
-		chrome++
+		chrome += wrappedLines(lipgloss.Width(m.flashMsg), m.width)
 	}
 	return viewportHeightForChrome(m.height, chrome)
 }
