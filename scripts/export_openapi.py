@@ -96,6 +96,9 @@ STANDALONE_HTML = """\
   </style>
 </head>
 <body>
+  <!-- Visually-hidden h1 (do not remove): gives crawlers + screen readers
+       a single semantic heading for this page. The Scalar UI below renders
+       the actual content via JavaScript and does not emit its own h1. -->
   <h1 class="sr-only">SynthOrg REST API Reference</h1>
   <div class="banner">
     Static snapshot of the OpenAPI schema --

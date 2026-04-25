@@ -11,6 +11,10 @@ excluded because Google does not render raw JSON in search results --
 including it produced permanent "Discovered, currently not indexed"
 noise in Search Console without any discoverability benefit.
 
+Exclusion is implemented by **omission from** ``EXTRA_PATHS`` below --
+there is no explicit deny-list. To opt a non-Markdown asset out of the
+sitemap, simply leave it out of the tuple.
+
 Run after ``zensical build``:
 
     uv run python scripts/export_openapi.py
@@ -40,6 +44,12 @@ LOC_TAG = f"{{{SITEMAP_NS}}}loc"
 # the docs root URL, which is derived at runtime from the existing
 # sitemap entries so the script stays in sync with whatever `site_url`
 # mkdocs.yml resolves to (production, staging, PR previews).
+#
+# Add an asset here only if it is a real landing page that benefits
+# from search-engine discovery. Do NOT add raw data files (``.json``,
+# ``.yaml``, etc.) -- Google does not render those in SERP and listing
+# them creates permanent "Discovered, currently not indexed" noise in
+# Search Console (see module docstring for the openapi.json case).
 EXTRA_PATHS: tuple[str, ...] = ("openapi/reference.html",)
 
 

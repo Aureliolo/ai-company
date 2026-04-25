@@ -34,7 +34,7 @@ When running the server locally you also get two kinds of side paths -- document
 | `/api/v1/readyz` | Readiness probe -- returns 200 when persistence + message bus are healthy, 503 otherwise (used by load-balancers to gate traffic) |
 | `/api/v1/ws` | WebSocket endpoint for server-sent events (approvals, meetings, task lifecycle) |
 
-The static snapshot on this page is produced by `scripts/export_openapi.py`, which takes the live Litestar schema and runs it through `inject_rfc9457_responses` to attach RFC 9457 error response shapes to every operation. The result is a superset of what `/docs/openapi.json` returns at runtime.
+The static snapshot on this page is produced by `scripts/export_openapi.py`, which takes the live Litestar schema and runs it through `inject_rfc9457_responses` to attach RFC 9457 error response shapes to every operation. The result is a superset of what `/docs/openapi.json` returns at runtime. The generated `reference.html` carries SEO metadata (descriptive `<title>`, `<meta description>`, `<link rel="canonical">`, and a screen-reader-only `<h1>`) so search engines can surface it as the primary "SynthOrg REST API" landing page; `openapi.json` is intentionally kept out of the sitemap because Google does not render raw JSON in search results.
 
 ---
 
