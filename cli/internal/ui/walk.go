@@ -44,6 +44,13 @@ const (
 	viewCommits    changelogView = "commits"
 )
 
+// maxWalkContentHeight caps the viewport's content rows so the changelog
+// walk renders as a fixed-size inline section instead of inflating to fill
+// the entire terminal. Picked so a typical batch fits "above the fold"
+// without dwarfing the surrounding `synthorg update` output. Larger ranges
+// stay scrollable via j/k and pgup/pgdn.
+const maxWalkContentHeight = 14
+
 // WalkBatchInput drives RunWalkBatch.
 type WalkBatchInput struct {
 	// Versions is the batch -- typically 1 to 3 entries.
@@ -188,13 +195,14 @@ func initialDimensions(w, h int) (int, int) {
 
 // viewportHeightForChrome reserves chrome lines for renderView's surrounding
 // layout (header + trailing newline + footer, plus any optional fallback /
-// flash rows the caller knows about). Falls back to 1 when the terminal is
-// too small to render anything meaningful.
+// flash rows the caller knows about), then caps the result at
+// maxWalkContentHeight. Falls back to 1 when the terminal is too small to
+// render anything meaningful.
 func viewportHeightForChrome(termHeight, chrome int) int {
 	if termHeight <= chrome+1 {
 		return 1
 	}
-	return termHeight - chrome
+	return min(termHeight-chrome, maxWalkContentHeight)
 }
 
 // wrappedLines returns the number of terminal rows a string of the given

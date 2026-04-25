@@ -31,3 +31,9 @@ Dockerfile text eol=lf
 
 # PowerShell scripts -- Windows expects CRLF.
 *.ps1 text eol=crlf
+
+# Web dashboard -- Node, Vitest, MSW, and Caddy all expect LF.
+# Without this pin, core.autocrlf=true on Windows produces CRLF in worktrees
+# while the index stores LF, creating phantom `git status` diffs in
+# generated/checked-in files like web/public/mockServiceWorker.js.
+web/** text=auto eol=lf
