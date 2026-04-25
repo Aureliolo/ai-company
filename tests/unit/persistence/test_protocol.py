@@ -391,6 +391,12 @@ class _FakeArtifactRepository:
 
 
 class _FakeProjectRepository:
+    async def create(self, project: Project) -> None:
+        pass
+
+    async def update(self, project: Project) -> None:
+        pass
+
     async def save(self, project: Project) -> None:
         pass
 

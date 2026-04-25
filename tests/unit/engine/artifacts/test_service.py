@@ -76,8 +76,8 @@ async def test_create_emits_api_artifact_created() -> None:
     )
 
 
-async def test_save_emits_api_artifact_updated() -> None:
-    """``save`` (upsert path used by content uploads) emits ``API_ARTIFACT_UPDATED``."""
+async def test_save_emits_api_artifact_updated_when_row_exists() -> None:
+    """``save`` upsert emits ``API_ARTIFACT_UPDATED`` when row pre-exists."""
     repo = _FakeArtifactRepo()
     service = ArtifactService(repo=repo)
     artifact = Artifact(
@@ -93,7 +93,33 @@ async def test_save_emits_api_artifact_updated() -> None:
         await service.save(artifact)
 
     assert any(log["event"] == API_ARTIFACT_UPDATED for log in logs)
+    assert not any(log["event"] == API_ARTIFACT_CREATED for log in logs)
     assert not any(log["event"] == "persistence.artifact.saved" for log in logs)
+
+
+async def test_save_emits_api_artifact_created_on_first_write() -> None:
+    """``save`` upsert emits ``API_ARTIFACT_CREATED`` when no row pre-exists.
+
+    Pins the create-vs-update audit contract so first-write upload
+    paths do not show up as "phantom updates" in operator dashboards.
+    """
+    repo = _FakeArtifactRepo()
+    service = ArtifactService(repo=repo)
+    artifact = Artifact(
+        id=NotBlankStr("artifact-new"),
+        type=ArtifactType.CODE,
+        path=NotBlankStr("path/to/new.py"),
+        task_id=NotBlankStr("task-1"),
+        created_by=NotBlankStr("agent-1"),
+    )
+
+    assert await repo.get(artifact.id) is None
+
+    with structlog.testing.capture_logs() as logs:
+        await service.save(artifact)
+
+    assert any(log["event"] == API_ARTIFACT_CREATED for log in logs)
+    assert not any(log["event"] == API_ARTIFACT_UPDATED for log in logs)
 
 
 async def test_delete_returns_true_and_emits_api_artifact_deleted() -> None:

@@ -457,6 +457,22 @@ class FakeProjectRepository:
     def __init__(self) -> None:
         self._projects: dict[str, Project] = {}
 
+    async def create(self, project: Project) -> None:
+        if project.id in self._projects:
+            from synthorg.persistence.errors import DuplicateRecordError
+
+            msg = f"Project with id {project.id!r} already exists"
+            raise DuplicateRecordError(msg)
+        self._projects[project.id] = project
+
+    async def update(self, project: Project) -> None:
+        if project.id not in self._projects:
+            from synthorg.persistence.errors import RecordNotFoundError
+
+            msg = f"No project with id {project.id!r}"
+            raise RecordNotFoundError(msg)
+        self._projects[project.id] = project
+
     async def save(self, project: Project) -> None:
         self._projects[project.id] = project
 
@@ -469,7 +485,7 @@ class FakeProjectRepository:
         status: ProjectStatus | None = None,
         lead: NotBlankStr | None = None,
     ) -> tuple[Project, ...]:
-        result = list(self._projects.values())
+        result = sorted(self._projects.values(), key=lambda p: p.id)
         if status is not None:
             result = [p for p in result if p.status == status]
         if lead is not None:

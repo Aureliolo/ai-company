@@ -18,6 +18,10 @@ from synthorg.observability.events.api import (
     API_PROJECT_DELETED,
     API_PROJECT_UPDATED,
 )
+from synthorg.persistence.errors import (
+    DuplicateRecordError,
+    RecordNotFoundError,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -27,6 +31,18 @@ class _FakeProjectRepo:
 
     def __init__(self) -> None:
         self._rows: dict[str, Project] = {}
+
+    async def create(self, project: Project) -> None:
+        if project.id in self._rows:
+            msg = f"Project with id {project.id!r} already exists"
+            raise DuplicateRecordError(msg)
+        self._rows[project.id] = project
+
+    async def update(self, project: Project) -> None:
+        if project.id not in self._rows:
+            msg = f"No project with id {project.id!r}"
+            raise RecordNotFoundError(msg)
+        self._rows[project.id] = project
 
     async def save(self, project: Project) -> None:
         self._rows[project.id] = project
@@ -120,6 +136,55 @@ async def test_update_persists_and_emits_api_project_updated() -> None:
     assert event["status"] == updated.status.value
 
 
+async def test_create_raises_when_project_already_exists() -> None:
+    """``create`` rejects existing ids; only the WARNING audit fires.
+
+    Pins the atomic-create contract: ``API_PROJECT_CREATED`` at INFO
+    must NOT fire when the row already exists -- otherwise an
+    "update masquerading as create" lands in audit history.
+    """
+    repo = _FakeProjectRepo()
+    service = ProjectService(repo=repo)
+    project = _make_project()
+    await service.create(project)
+
+    with (
+        structlog.testing.capture_logs() as logs,
+        pytest.raises(DuplicateRecordError),
+    ):
+        await service.create(project)
+
+    audits = [log for log in logs if log["event"] == API_PROJECT_CREATED]
+    info_audits = [log for log in audits if log.get("log_level") == "info"]
+    assert info_audits == [], (
+        f"no INFO success audit may fire on duplicate create -- got {info_audits}"
+    )
+
+
+async def test_update_raises_when_project_missing() -> None:
+    """``update`` rejects missing ids; only the WARNING audit fires.
+
+    Pins the atomic-update contract: ``API_PROJECT_UPDATED`` at INFO
+    must NOT fire when the row does not exist -- otherwise a
+    "fresh insert masquerading as update" lands in audit history.
+    """
+    repo = _FakeProjectRepo()
+    service = ProjectService(repo=repo)
+    project = _make_project(project_id="proj-ghost")
+
+    with (
+        structlog.testing.capture_logs() as logs,
+        pytest.raises(RecordNotFoundError),
+    ):
+        await service.update(project)
+
+    audits = [log for log in logs if log["event"] == API_PROJECT_UPDATED]
+    info_audits = [log for log in audits if log.get("log_level") == "info"]
+    assert info_audits == [], (
+        f"no INFO success audit may fire on update of missing row -- got {info_audits}"
+    )
+
+
 async def test_delete_returns_true_and_emits_api_project_deleted() -> None:
     """``delete`` returns ``True`` and emits ``API_PROJECT_DELETED``.
 
@@ -183,5 +248,7 @@ async def test_list_projects_filters_by_status_and_lead() -> None:
         status=ProjectStatus.PLANNING,
         lead=None,
     )
-    # Default project status is PLANNING.
-    assert set(all_planning) == {p1, p2}
+    # Default project status is PLANNING.  Assert the tuple directly
+    # to pin the ordering contract documented on
+    # ``ProjectRepository.list_projects`` (ascending id).
+    assert all_planning == (p1, p2)

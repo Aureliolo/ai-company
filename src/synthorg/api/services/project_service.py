@@ -114,6 +114,11 @@ class ProjectService:
     async def create(self, project: Project) -> Project:
         """Persist a freshly-constructed project and audit the create.
 
+        Routes through the atomic :meth:`ProjectRepository.create`
+        method (insert-only, raises :class:`DuplicateRecordError` on
+        existing id) so the ``API_PROJECT_CREATED`` audit can never
+        fire for what was actually an update.
+
         Args:
             project: Fully-validated project to persist.
 
@@ -121,13 +126,13 @@ class ProjectService:
             The same project (identity preserved for caller chaining).
 
         Raises:
-            ConstraintViolationError: Duplicate id or invalid foreign
-                reference (logged at WARNING before propagating).
+            DuplicateRecordError: A project with the same id already
+                exists (logged at WARNING before propagating).
             QueryError: Repository write failure (logged at WARNING
                 before propagating).
         """
         try:
-            await self._repo.save(project)
+            await self._repo.create(project)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -147,22 +152,28 @@ class ProjectService:
         return project
 
     async def update(self, project: Project) -> Project:
-        """Upsert an existing project and audit the update.
+        """Update an existing project in place and audit the update.
+
+        Routes through the atomic :meth:`ProjectRepository.update`
+        method (update-only, raises :class:`RecordNotFoundError` if
+        no row matched) so the ``API_PROJECT_UPDATED`` audit can never
+        fire for what was actually a fresh insert.
 
         Args:
-            project: Project to upsert (must have an existing id).
+            project: Project to update.  ``project.id`` must already
+                exist in persistence.
 
         Returns:
             The same project (identity preserved for caller chaining).
 
         Raises:
-            ConstraintViolationError: Invalid foreign reference (logged
-                at WARNING before propagating).
+            RecordNotFoundError: No project with this id exists
+                (logged at WARNING before propagating).
             QueryError: Repository write failure (logged at WARNING
                 before propagating).
         """
         try:
-            await self._repo.save(project)
+            await self._repo.update(project)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:

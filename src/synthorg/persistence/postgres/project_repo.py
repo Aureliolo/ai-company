@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_DELETE_FAILED,
     PERSISTENCE_PROJECT_DESERIALIZE_FAILED,
@@ -20,7 +20,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_LISTED,
     PERSISTENCE_PROJECT_SAVE_FAILED,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.errors import (
+    DuplicateRecordError,
+    QueryError,
+    RecordNotFoundError,
+)
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -49,8 +53,102 @@ class PostgresProjectRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
+    @staticmethod
+    def _row_params(project: Project) -> tuple[object, ...]:
+        return (
+            project.id,
+            project.name,
+            project.description,
+            Jsonb(list(project.team)),
+            project.lead,
+            Jsonb(list(project.task_ids)),
+            project.deadline,
+            project.budget,
+            project.status.value,
+        )
+
+    async def create(self, project: Project) -> None:
+        """Insert a new project, failing if the id already exists.
+
+        Raises:
+            DuplicateRecordError: A project with this id already exists.
+            QueryError: If the database operation fails.
+        """
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO projects (id, name, description, team, lead,
+                                          task_ids, deadline, budget, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    self._row_params(project),
+                )
+                await conn.commit()
+        except psycopg.errors.UniqueViolation as exc:
+            msg = f"Project with id {project.id!r} already exists"
+            raise DuplicateRecordError(msg) from exc
+        except psycopg.Error as exc:
+            msg = f"Failed to create project {project.id!r}"
+            logger.warning(
+                PERSISTENCE_PROJECT_SAVE_FAILED,
+                project_id=project.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def update(self, project: Project) -> None:
+        """Update an existing project, failing if no row matched.
+
+        Raises:
+            RecordNotFoundError: No project with this id exists.
+            QueryError: If the database operation fails.
+        """
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE projects SET
+                        name=%s,
+                        description=%s,
+                        team=%s,
+                        lead=%s,
+                        task_ids=%s,
+                        deadline=%s,
+                        budget=%s,
+                        status=%s
+                    WHERE id=%s
+                    """,
+                    (
+                        project.name,
+                        project.description,
+                        Jsonb(list(project.team)),
+                        project.lead,
+                        Jsonb(list(project.task_ids)),
+                        project.deadline,
+                        project.budget,
+                        project.status.value,
+                        project.id,
+                    ),
+                )
+                rowcount = cur.rowcount
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to update project {project.id!r}"
+            logger.warning(
+                PERSISTENCE_PROJECT_SAVE_FAILED,
+                project_id=project.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if rowcount == 0:
+            msg = f"No project with id {project.id!r}"
+            raise RecordNotFoundError(msg)
+
     async def save(self, project: Project) -> None:
-        """Persist a project via upsert."""
+        """Persist a project via upsert (migration / import paths)."""
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -68,25 +166,16 @@ class PostgresProjectRepository:
                         budget=EXCLUDED.budget,
                         status=EXCLUDED.status
                     """,
-                    (
-                        project.id,
-                        project.name,
-                        project.description,
-                        Jsonb(list(project.team)),
-                        project.lead,
-                        Jsonb(list(project.task_ids)),
-                        project.deadline,
-                        project.budget,
-                        project.status.value,
-                    ),
+                    self._row_params(project),
                 )
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save project {project.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PROJECT_SAVE_FAILED,
                 project_id=project.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -101,10 +190,11 @@ class PostgresProjectRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch project {project_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PROJECT_FETCH_FAILED,
                 project_id=project_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -116,10 +206,11 @@ class PostgresProjectRepository:
             project = _row_to_project(row)
         except (ValueError, ValidationError, KeyError) as exc:
             msg = f"Failed to deserialize project {project_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PROJECT_DESERIALIZE_FAILED,
                 project_id=project_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_PROJECT_FETCHED, project_id=project_id, found=True)
@@ -156,13 +247,21 @@ class PostgresProjectRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list projects"
-            logger.exception(PERSISTENCE_PROJECT_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_PROJECT_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         try:
             projects = tuple(_row_to_project(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
             msg = "Failed to deserialize projects"
-            logger.exception(PERSISTENCE_PROJECT_DESERIALIZE_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_PROJECT_DESERIALIZE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_PROJECT_LISTED, count=len(projects))
         return projects
@@ -176,10 +275,11 @@ class PostgresProjectRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete project {project_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PROJECT_DELETE_FAILED,
                 project_id=project_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return deleted

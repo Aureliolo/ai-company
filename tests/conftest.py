@@ -261,16 +261,15 @@ def pytest_sessionfinish(
     if partial_run or cannot_compute:
         return
     elapsed = time.monotonic() - _suite_start
+    baseline_per_test_ms = baseline_secs * 1000.0 / baseline_count
     # When the session is mixed (unit + integration), subtract a
     # conservative per-non-unit budget so we are comparing per-unit-ms
     # like-for-like with the baseline.  Use the baseline's own per-test
     # cost as the budget -- non-unit tests are typically slower, so
     # this errs on the side of *not* tripping the rail.
     if non_unit_count > 0:
-        baseline_per_test_ms = baseline_secs * 1000.0 / baseline_count
         non_unit_budget_secs = non_unit_count * baseline_per_test_ms / 1000.0
         elapsed = max(0.0, elapsed - non_unit_budget_secs)
-    baseline_per_test_ms = baseline_secs * 1000.0 / baseline_count
     current_per_test_ms = elapsed * 1000.0 / unit_count
     if current_per_test_ms <= baseline_per_test_ms * threshold_ratio:
         return
