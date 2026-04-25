@@ -165,6 +165,61 @@ func TestCommitsBetween_pathSubstitution(t *testing.T) {
 	}
 }
 
+func TestCommitsBetween_pathEscapesMetacharacters(t *testing.T) {
+	// Tag values containing URL metacharacters must be percent-escaped so
+	// they cannot break out of the path segment (e.g. flip the request to
+	// a different endpoint via "?" or split the path with "/").
+	tests := []struct {
+		name     string
+		base     string
+		head     string
+		wantPath string
+	}{
+		{
+			name:     "question_mark_in_base",
+			base:     "v0.1.0?evil=1",
+			head:     "v0.2.0",
+			wantPath: "/repos/foo/bar/compare/v0.1.0%3Fevil=1...v0.2.0",
+		},
+		{
+			name:     "hash_in_head",
+			base:     "v0.1.0",
+			head:     "v0.2.0#anchor",
+			wantPath: "/repos/foo/bar/compare/v0.1.0...v0.2.0%23anchor",
+		},
+		{
+			name:     "slash_in_tag",
+			base:     "v0.1.0/evil",
+			head:     "v0.2.0",
+			wantPath: "/repos/foo/bar/compare/v0.1.0%2Fevil...v0.2.0",
+		},
+		{
+			name:     "space_in_tag",
+			base:     "v0 1",
+			head:     "v0.2.0",
+			wantPath: "/repos/foo/bar/compare/v0%201...v0.2.0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// r.RequestURI preserves the percent-encoding as sent on the
+			// wire. r.URL.Path silently decodes it, which would defeat the
+			// purpose of this test.
+			var seenURI string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				seenURI = r.RequestURI
+				_, _ = w.Write([]byte(`{"total_commits":0,"commits":[]}`))
+			}))
+			defer srv.Close()
+			urlTpl := srv.URL + "/repos/foo/bar/compare/{base}...{head}"
+			_, _ = commitsBetweenFromURL(context.Background(), urlTpl, tt.base, tt.head)
+			if seenURI != tt.wantPath {
+				t.Errorf("seenURI = %q, want %q", seenURI, tt.wantPath)
+			}
+		})
+	}
+}
+
 func TestCommitsBetween_invalidDateGracefulFallback(t *testing.T) {
 	resp := compareResponse{
 		TotalCommits: 1,

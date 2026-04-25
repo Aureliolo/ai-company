@@ -2,6 +2,8 @@ package selfupdate
 
 import (
 	"context"
+	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -62,15 +64,17 @@ func compareBaseURL() string {
 }
 
 // commitsBetweenFromURL is the testable core of CommitsBetween. urlTpl must
-// contain "{base}" and "{head}" placeholders. base/head are tag/ref values
-// substituted into the template before issuing the request.
+// contain "{base}" and "{head}" placeholders. base/head are URL-path-escaped
+// before substitution so a tag containing "?", "#", "/", or other URL
+// metacharacters cannot break out of the path segment and rewrite the
+// request to a different endpoint.
 func commitsBetweenFromURL(ctx context.Context, urlTpl, base, head string) (CommitRange, error) {
-	u := strings.ReplaceAll(urlTpl, "{base}", base)
-	u = strings.ReplaceAll(u, "{head}", head)
+	u := strings.ReplaceAll(urlTpl, "{base}", url.PathEscape(base))
+	u = strings.ReplaceAll(u, "{head}", url.PathEscape(head))
 
 	resp, err := fetchJSON[compareResponse](ctx, u)
 	if err != nil {
-		return CommitRange{}, err
+		return CommitRange{}, fmt.Errorf("comparing %s...%s: %w", base, head, err)
 	}
 	commits := make([]Commit, len(resp.Commits))
 	for i, c := range resp.Commits {

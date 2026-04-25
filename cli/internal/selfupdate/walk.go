@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,10 +36,25 @@ func releasesBaseURL() string {
 	return "https://api.github.com/repos/" + repoSlug + "/releases"
 }
 
+// versionTagRe matches the project's release-tag grammar: an optional `v`
+// prefix, three numeric components (major.minor.patch), and an optional
+// `-dev.N` pre-release suffix. compareWithDev is internally permissive
+// (parsePart silently coerces non-numeric components to 0), so an upfront
+// regex check is required to surface obviously-malformed installed/target
+// strings instead of producing a confusing empty walk result.
+var versionTagRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+(-dev\.\d+)?$`)
+
 // releasesBetweenFromURL is the testable core of ReleasesBetween. baseURL is
 // the endpoint to paginate against (without per_page / page query params --
 // listReleases adds those).
 func releasesBetweenFromURL(ctx context.Context, baseURL, installed, target string, includeDev bool) ([]Release, error) {
+	if !versionTagRe.MatchString(installed) {
+		return nil, fmt.Errorf("invalid installed version %q: expected vX.Y.Z[-dev.N]", installed)
+	}
+	if !versionTagRe.MatchString(target) {
+		return nil, fmt.Errorf("invalid target version %q: expected vX.Y.Z[-dev.N]", target)
+	}
+
 	all, err := listReleases(ctx, baseURL, installed)
 	if err != nil {
 		return nil, err

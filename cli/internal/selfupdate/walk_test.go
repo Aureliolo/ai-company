@@ -225,6 +225,30 @@ func TestReleasesBetween_rateLimited(t *testing.T) {
 	}
 }
 
+func TestReleasesBetween_invalidInstalledRejected(t *testing.T) {
+	srv := fixtureServer(t, makeReleases("v0.7.5"))
+	defer srv.Close()
+	_, err := releasesBetweenFromURL(context.Background(), srv.URL, "v0.7.NaN", "v0.7.5", false)
+	if err == nil {
+		t.Fatal("expected error for malformed installed version")
+	}
+	if !strings.Contains(err.Error(), "invalid installed version") {
+		t.Errorf("error should mention invalid installed version, got: %v", err)
+	}
+}
+
+func TestReleasesBetween_invalidTargetRejected(t *testing.T) {
+	srv := fixtureServer(t, makeReleases("v0.7.5"))
+	defer srv.Close()
+	_, err := releasesBetweenFromURL(context.Background(), srv.URL, "v0.7.1", "v0.7.NaN", false)
+	if err == nil {
+		t.Fatal("expected error for malformed target version")
+	}
+	if !strings.Contains(err.Error(), "invalid target version") {
+		t.Errorf("error should mention invalid target version, got: %v", err)
+	}
+}
+
 func TestReleasesBetween_emptyAPI(t *testing.T) {
 	srv := fixtureServer(t, []devRelease{})
 	defer srv.Close()

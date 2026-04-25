@@ -130,3 +130,24 @@ func TestRenderCommitList_colorMode(t *testing.T) {
 		t.Errorf("color mode should emit ANSI codes\n--- got ---\n%s", got)
 	}
 }
+
+func TestRenderCommitList_stripsEmbeddedANSIFromCommitFields(t *testing.T) {
+	r := selfupdate.CommitRange{
+		TotalCommits: 1,
+		Commits: []selfupdate.Commit{{
+			SHA:     "abc1234567890abcdef0123456789abcdef01234",
+			Subject: "\x1b[31mfake-warning\x1b[0m: actual subject",
+			Author:  "\x1b[32mevil-author\x1b[0m",
+			Date:    "2026-04-25",
+		}},
+	}
+	got := RenderCommitList(r, 120, Options{NoColor: true})
+	if strings.Contains(got, "\x1b[31m") || strings.Contains(got, "\x1b[32m") || strings.Contains(got, "\x1b[0m") {
+		t.Errorf("RenderCommitList leaked attacker-controlled ANSI escape\n--- got ---\n%q", got)
+	}
+	for _, want := range []string{"fake-warning", "actual subject", "evil-author", "2026-04-25"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("text should be preserved (%q)\n--- got ---\n%s", want, got)
+		}
+	}
+}

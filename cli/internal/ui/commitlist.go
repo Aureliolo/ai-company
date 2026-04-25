@@ -71,10 +71,13 @@ func RenderCommitList(r selfupdate.CommitRange, width int, opts Options) string 
 	}
 	rows := make([]prepared, len(r.Commits))
 	for i, c := range r.Commits {
+		// Strip ANSI escapes from every operator-visible field so a
+		// hostile commit subject / author / SHA cannot inject terminal
+		// control sequences into the walk. See stripANSI in changelog.go.
 		rows[i] = prepared{
-			shortSHA: shortSHA(c.SHA),
-			subject:  strings.TrimSpace(c.Subject),
-			suffix:   formatMeta(c),
+			shortSHA: shortSHA(stripANSI(c.SHA)),
+			subject:  strings.TrimSpace(stripANSI(c.Subject)),
+			suffix:   formatMeta(stripANSIInCommit(c)),
 		}
 	}
 
@@ -130,6 +133,17 @@ func formatMeta(c selfupdate.Commit) string {
 		return ""
 	}
 	return "(" + strings.Join(parts, ", ") + ")"
+}
+
+// stripANSIInCommit returns a copy of c with ANSI escape sequences scrubbed
+// from every operator-visible field. Used by the commit-list renderer at the
+// boundary between attacker-controllable git data and the operator's terminal.
+func stripANSIInCommit(c selfupdate.Commit) selfupdate.Commit {
+	c.Author = stripANSI(c.Author)
+	c.Date = stripANSI(c.Date)
+	c.Subject = stripANSI(c.Subject)
+	c.SHA = stripANSI(c.SHA)
+	return c
 }
 
 // truncate cuts s to fit within the given visual width, appending the

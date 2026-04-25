@@ -47,20 +47,40 @@ func newChangelogStyle(opts Options) changelogStyle {
 var markdownLinkRe = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 
 // commitHashLinkRe matches the trailing commit-hash link Release Please emits:
-// "([abc1234](https://github.com/.../commit/abc1234...))". Stripped from
-// commit-based output to reduce noise in the walk.
-var commitHashLinkRe = regexp.MustCompile(`\s*\(\[[0-9a-f]{7,40}\]\([^)]+\)\)`)
+// "([abc1234](https://github.com/.../commit/abc1234...))". Tightened to
+// match exactly 7 (short) or 40 (full) hex chars -- the only forms git emits
+// -- so the regex engine has no extra backtracking surface on malformed input.
+var commitHashLinkRe = regexp.MustCompile(`\s*\(\[[0-9a-f]{7}(?:[0-9a-f]{33})?\]\([^)]+\)\)`)
 
 // boldEmphasisRe matches `**text**` and captures the inner text. Used to
 // strip Markdown bold from commit subjects in NoColor / Plain mode.
 var boldEmphasisRe = regexp.MustCompile(`\*\*([^*]+)\*\*`)
 
+// ansiEscapeRe matches CSI ("\x1b[...m" and friends) and OSC ("\x1b]...\x07")
+// terminal escape sequences. Release bodies and commit messages are
+// attacker-controllable surfaces; lipgloss does NOT strip embedded escapes
+// from input strings, so a malicious tag or body could otherwise spoof
+// terminal output.
+var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
+
+// stripANSI removes ANSI escape sequences from s. Applied at every renderer
+// boundary so user-controlled release-body content cannot inject styling /
+// cursor-movement / clear-screen escapes into the operator's terminal.
+func stripANSI(s string) string {
+	if !strings.ContainsRune(s, '\x1b') {
+		return s
+	}
+	return ansiEscapeRe.ReplaceAllString(s, "")
+}
+
 // RenderHighlights formats the styled-block content of a release Highlights
 // section. body is expected to be the output of selfupdate.ExtractHighlights,
-// already stripped of markers / "## Highlights" / attribution.
+// already stripped of markers / "## Highlights" / attribution. The renderer
+// also strips any embedded ANSI escape sequences from the input so a hostile
+// release body cannot inject terminal styling / cursor moves into the walk.
 func RenderHighlights(body string, opts Options) string {
 	st := newChangelogStyle(opts)
-	body = strings.ReplaceAll(body, "\r\n", "\n")
+	body = stripANSI(strings.ReplaceAll(body, "\r\n", "\n"))
 	lines := strings.Split(body, "\n")
 	var out strings.Builder
 	for _, line := range lines {
@@ -92,10 +112,12 @@ func formatHighlightLine(line string, st changelogStyle) string {
 }
 
 // RenderCommits formats the commit-based changelog of a release. body is
-// expected to be the output of selfupdate.ExtractCommits.
+// expected to be the output of selfupdate.ExtractCommits. ANSI escape
+// sequences embedded in the input are stripped before rendering -- see
+// stripANSI for the threat model.
 func RenderCommits(body string, opts Options) string {
 	st := newChangelogStyle(opts)
-	body = strings.ReplaceAll(body, "\r\n", "\n")
+	body = stripANSI(strings.ReplaceAll(body, "\r\n", "\n"))
 	lines := strings.Split(body, "\n")
 	var out strings.Builder
 	for _, line := range lines {

@@ -185,3 +185,49 @@ func TestRenderFallbackNote_plainNoANSI(t *testing.T) {
 		t.Errorf("Plain mode should not emit ANSI codes, got %q", got)
 	}
 }
+
+func TestStripANSI(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain_text_unchanged", "hello world", "hello world"},
+		{"strip_csi_color", "\x1b[31mWARNING\x1b[0m: bad", "WARNING: bad"},
+		{"strip_csi_bold", "\x1b[1mbold\x1b[22m text", "bold text"},
+		{"strip_cursor_move", "before\x1b[2Aafter", "beforeafter"},
+		{"strip_clear_screen", "header\x1b[2Jbody", "headerbody"},
+		{"strip_osc_hyperlink", "click \x1b]8;;https://evil.com\x07here\x1b]8;;\x07!", "click here!"},
+		{"empty_unchanged", "", ""},
+		{"no_escape_unchanged", "no escapes here \\x1b not literal", "no escapes here \\x1b not literal"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := stripANSI(tt.in); got != tt.want {
+				t.Errorf("stripANSI(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRenderHighlights_stripsEmbeddedANSI(t *testing.T) {
+	body := "### What's new\n\n- \x1b[31mFAKE WARNING: rm -rf /\x1b[0m bullet content."
+	got := RenderHighlights(body, Options{NoColor: true})
+	if strings.Contains(got, "\x1b[31m") || strings.Contains(got, "\x1b[0m") {
+		t.Errorf("RenderHighlights leaked attacker-controlled ANSI escape\n--- got ---\n%q", got)
+	}
+	if !strings.Contains(got, "FAKE WARNING") {
+		t.Errorf("text content should be preserved\n--- got ---\n%s", got)
+	}
+}
+
+func TestRenderCommits_stripsEmbeddedANSI(t *testing.T) {
+	body := "### Features\n\n* \x1b[32mfake-success-banner\x1b[0m: ([#1](https://x/y/issues/1))"
+	got := RenderCommits(body, Options{NoColor: true})
+	if strings.Contains(got, "\x1b[32m") || strings.Contains(got, "\x1b[0m") {
+		t.Errorf("RenderCommits leaked attacker-controlled ANSI escape\n--- got ---\n%q", got)
+	}
+	if !strings.Contains(got, "fake-success-banner") {
+		t.Errorf("text content should be preserved\n--- got ---\n%s", got)
+	}
+}
