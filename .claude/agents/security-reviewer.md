@@ -39,7 +39,7 @@ npm --prefix web run lint
 1. **Injection**: queries parameterized? User input sanitized? ORMs used safely? Are LLM prompts using `wrap_untrusted` for any attacker-controllable string?
 2. **Broken auth**: passwords hashed (argon2id preferred)? JWTs validated? Sessions secure? Setup-wizard cookies properly invalidated?
 3. **Sensitive data**: HTTPS enforced? Secrets in env vars or secret backend, not in source? PII encrypted at rest? Logs sanitized via `safe_error_description`?
-4. **XXE**: XML parsers configured securely? Use `HTMLParseGuard` from `synthorg.tools.html_parse_guard`, never raw `lxml.html.fromstring` on attacker input.
+4. **Insecure markup parsing (XXE and HTML)**: XML parsers configured to disable external entities and DTD loading (XXE). For HTML, never call `lxml.html.fromstring` directly on attacker-controlled input; use `HTMLParseGuard` from `synthorg.tools.html_parse_guard`.
 5. **Broken access**: auth checked on every Litestar route? CORS properly configured? Admin MCP tools call `require_destructive_guardrails`?
 6. **Misconfiguration**: default creds changed? Debug mode off in prod? Security headers set? Telemetry redaction not bypassed?
 7. **XSS**: output escaped? CSP set? React auto-escaping respected (no `dangerouslySetInnerHTML` on user content)?
