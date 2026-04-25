@@ -179,16 +179,17 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "reason": {
                 "type": "string",
                 "minLength": 3,
-                # ``minLength`` alone allows whitespace-only inputs;
-                # the runtime model validator strips first then
-                # enforces a 3-character floor. Mirror that with a
-                # pattern that requires at least three non-whitespace
-                # characters anywhere in the string so the schema
-                # contract matches actual rejection behaviour.
-                "pattern": r"(?:\S.*){3}",
+                # The runtime validator on ``AutonomyUpdate.reason``
+                # rejects when ``len(reason.strip()) < 3``. Mirror
+                # that exactly here: leading/trailing whitespace is
+                # allowed, but the trimmed string must start and end
+                # with non-whitespace and span at least 3 characters.
+                # ``[\s\S]`` (vs ``.``) keeps the pattern correct
+                # under JSON Schema's ECMAScript regex semantics
+                # (where ``.`` excludes line terminators).
+                "pattern": r"^\s*\S[\s\S]{1,}\S\s*$",
                 "description": (
-                    "Why the change is requested (min 3 non-whitespace "
-                    "chars after strip)"
+                    "Why the change is requested (min 3 chars after strip)"
                 ),
             },
         },

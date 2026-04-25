@@ -415,6 +415,45 @@ _WHY_ACTIVITY = (
 )
 
 
+def _parse_activities_args(
+    arguments: dict[str, Any],
+) -> tuple[int, int, str | None, str | None, int | None]:
+    """Validate and extract ``synthorg_activities_list`` arguments.
+
+    Extracted from ``_activities_list`` to keep that handler under the
+    ruff complexity ceiling. Returns
+    ``(offset, limit, project, task_id, window_hours)`` with strings
+    already trimmed and ``window_hours`` set to ``None`` when the
+    caller wants the service's default window.
+    """
+    arg_project = "project"
+    arg_task_id = "task_id"
+    arg_window_hours = "window_hours"
+    ty_pos_int = "positive int"
+    offset, limit = coerce_pagination(arguments)
+    project_raw = arguments.get(arg_project)
+    task_id_raw = arguments.get(arg_task_id)
+    if project_raw is not None and (
+        not isinstance(project_raw, str) or not project_raw.strip()
+    ):
+        raise invalid_argument(arg_project, _TY_NON_BLANK)
+    if task_id_raw is not None and (
+        not isinstance(task_id_raw, str) or not task_id_raw.strip()
+    ):
+        raise invalid_argument(arg_task_id, _TY_NON_BLANK)
+    window_hours_raw = arguments.get(arg_window_hours)
+    window_hours: int | None = None
+    if window_hours_raw is not None:
+        if isinstance(window_hours_raw, bool) or not isinstance(window_hours_raw, int):
+            raise invalid_argument(arg_window_hours, ty_pos_int)
+        if window_hours_raw < 1:
+            raise invalid_argument(arg_window_hours, ty_pos_int)
+        window_hours = window_hours_raw
+    project = project_raw.strip() if isinstance(project_raw, str) else None
+    task_id = task_id_raw.strip() if isinstance(task_id_raw, str) else None
+    return offset, limit, project, task_id, window_hours
+
+
 async def _activities_list(
     *,
     app_state: Any,
@@ -422,31 +461,26 @@ async def _activities_list(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_activities_list"
-    arg_project = "project"
-    arg_task_id = "task_id"
     try:
-        offset, limit = coerce_pagination(arguments)
-        project_raw = arguments.get(arg_project)
-        task_id_raw = arguments.get(arg_task_id)
-        if project_raw is not None and (
-            not isinstance(project_raw, str) or not project_raw.strip()
-        ):
-            raise invalid_argument(arg_project, _TY_NON_BLANK)
-        if task_id_raw is not None and (
-            not isinstance(task_id_raw, str) or not task_id_raw.strip()
-        ):
-            raise invalid_argument(arg_task_id, _TY_NON_BLANK)
+        offset, limit, project, task_id, window_hours = _parse_activities_args(
+            arguments,
+        )
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_activity_feed_service", False):
         return capability_gap(tool, _WHY_ACTIVITY)
+    list_kwargs: dict[str, Any] = {
+        "project": project,
+        "task_id": task_id,
+        "offset": offset,
+        "limit": limit,
+    }
+    if window_hours is not None:
+        list_kwargs["window_hours"] = window_hours
     try:
         events, total = await app_state.activity_feed_service.list_recent_activity(
-            project=project_raw.strip() if project_raw is not None else None,
-            task_id=task_id_raw.strip() if task_id_raw is not None else None,
-            offset=offset,
-            limit=limit,
+            **list_kwargs,
         )
     except MemoryError, RecursionError:
         raise

@@ -72,7 +72,7 @@ async def autonomy_get(
         _log_invalid(tool, exc)
         return err(exc)
     try:
-        identity = await app_state.agent_registry.get(agent_id)
+        identity = await app_state.agent_registry.get(NotBlankStr(agent_id))
     except MemoryError, RecursionError:
         raise
     except Exception as exc:

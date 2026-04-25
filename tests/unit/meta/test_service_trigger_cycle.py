@@ -117,12 +117,17 @@ class TestTriggerCycle:
             raise RuntimeError(msg)
 
         service = _service(snapshot_builder=_boom_builder)
+        # Runtime trigger failures are normalised into
+        # ``SelfImprovementTriggerError`` so MCP callers can map them
+        # to the ``unavailable`` domain code (same path as the
+        # missing-builder precondition).
         with (
             structlog.testing.capture_logs() as logs,
-            pytest.raises(RuntimeError),
+            pytest.raises(SelfImprovementTriggerError) as exc_info,
         ):
             await service.trigger_cycle()
         events = [e for e in logs if e.get("event") == META_CYCLE_TRIGGER_FAILED]
         assert events, "expected META_CYCLE_TRIGGER_FAILED log entry"
         assert events[0]["reason"] == "snapshot_builder_failed"
         assert events[0]["error_type"] == "RuntimeError"
+        assert isinstance(exc_info.value.__cause__, RuntimeError)

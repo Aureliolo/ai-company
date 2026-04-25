@@ -186,7 +186,7 @@ _BLAST_ARGS: dict[str, Any] = {
     "role": "engineer",
     "department": "Engineering",
     "session_id": "sess-1",
-    "level": "FULL",
+    "level": "full",
     "updates": {},
     "target_status": "in_progress",
     "steps": [],

@@ -5,9 +5,10 @@ Delegates scoring, windowing, and trend detection to pluggable strategies.
 """
 
 import asyncio
+import math
 import re
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.config import PerformanceConfig
@@ -70,6 +71,29 @@ logger = get_logger(__name__)
 # trend detection); unbounded fan-out from a user-controllable caller
 # would let a client burn arbitrary CPU on a single request.
 MAX_BATCH_SNAPSHOTS_LOOKUP: Final[int] = 1024
+
+
+def _coerce_finite_weights(
+    raw: Any,
+) -> tuple[tuple[NotBlankStr, float], ...]:
+    """Coerce ``describe_weights()`` output into a calibration-safe tuple.
+
+    ``CollaborationCalibration.component_weights`` runs under
+    ``allow_inf_nan=False``; a strategy returning a ``NaN`` or ``Inf``
+    weight would surface as a Pydantic ``ValidationError`` at model
+    construction and take down the whole calibration readout. Reject
+    non-finite values here with a plain ``ValueError`` so the
+    surrounding ``except Exception`` path (which logs and falls back
+    to ``component_weights=()``) catches the failure cleanly.
+    """
+    coerced: list[tuple[NotBlankStr, float]] = []
+    for name, value in raw:
+        weight = float(value)
+        if not math.isfinite(weight):
+            msg = f"Non-finite weight for component {name!r}: {value!r}"
+            raise ValueError(msg)
+        coerced.append((NotBlankStr(name), weight))
+    return tuple(coerced)
 
 
 class PerformanceTracker:
@@ -478,9 +502,7 @@ class PerformanceTracker:
         if callable(describe):
             try:
                 raw = describe()
-                weights = tuple(
-                    (NotBlankStr(name), float(value)) for name, value in raw
-                )
+                weights = _coerce_finite_weights(raw)
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:

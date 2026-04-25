@@ -659,7 +659,13 @@ class SelfImprovementService:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise
+            # Normalise to ``SelfImprovementTriggerError`` so MCP
+            # callers (and any other facade consumers) can map runtime
+            # trigger failures to the same ``unavailable`` domain code
+            # the missing-builder branch already emits, instead of
+            # surfacing the raw provider/persistence exception.
+            msg = "Failed to build self-improvement snapshot"
+            raise SelfImprovementTriggerError(msg) from exc
         try:
             proposals = await self.run_cycle(snapshot)
         except MemoryError, RecursionError:
@@ -671,7 +677,8 @@ class SelfImprovementService:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise
+            msg = "Self-improvement cycle execution failed"
+            raise SelfImprovementTriggerError(msg) from exc
         completed_at = datetime.now(UTC)
         result = ImprovementCycleResult(
             started_at=started_at,
