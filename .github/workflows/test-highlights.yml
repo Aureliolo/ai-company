@@ -9,8 +9,10 @@ name: Test Highlights (dry-run)
 #
 # Scope discipline:
 #   - workflow_dispatch only (no schedule, no push, no PR trigger).
-#   - Gated to ``github.actor == 'Aureliolo'`` so additional
-#     collaborators with ``write`` access cannot invoke it.
+#   - Gated to ``github.actor == github.repository_owner`` so additional
+#     collaborators with ``write`` access cannot invoke it. Also makes
+#     the workflow fork-friendly: it skips silently in any fork whose
+#     owner isn't the user dispatching it.
 #   - Declares only ``models: read`` + ``contents: read`` -- no
 #     ``pull-requests: write`` and no App token, so it cannot mutate
 #     any repo state even if a bug or malicious input tried to.
@@ -43,7 +45,7 @@ jobs:
     # ``write`` access, but the extra explicit check forbids every
     # collaborator except the owner. Keeps the Copilot Pro quota under a
     # single, auditable trigger surface.
-    if: github.actor == 'Aureliolo'
+    if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

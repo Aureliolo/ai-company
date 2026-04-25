@@ -27,6 +27,9 @@ concurrency:
 jobs:
   rp-release-commit-signature:
     name: RP release commit signature
+    # Fork gate: every job in this workflow mints the upstream-only
+    # release-bot App token. Skip cleanly in forks.
+    if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
@@ -116,6 +119,9 @@ jobs:
 
   dev-release-tag-signature:
     name: Dev release tag signature
+    # Fork gate: every job in this workflow mints the upstream-only
+    # release-bot App token. Skip cleanly in forks.
+    if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
@@ -192,6 +198,9 @@ jobs:
 
   auto-rollover-commit-signature:
     name: Auto-rollover commit signature (dry-run)
+    # Fork gate: every job in this workflow mints the upstream-only
+    # release-bot App token. Skip cleanly in forks.
+    if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
