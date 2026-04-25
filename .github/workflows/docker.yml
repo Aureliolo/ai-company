@@ -485,6 +485,7 @@ jobs:
           persist-credentials: false
 
       - name: Build and scan backend image
+        id: build_scan
         uses: ./.github/actions/build-scan-image
         with:
           image-name: backend
@@ -498,6 +499,18 @@ jobs:
           base-image-tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
           extra-build-args: |
             DEPLOYMENT_ENV=${{ needs.version.outputs.deployment_env }}
+
+      # Smoke-test the just-built backend image at PR time so a broken
+      # boot path (404 on the wrong probe URL, missing migration,
+      # entrypoint crash, etc.) fails the originating PR with a red
+      # ❌ on the commit row instead of the finalize-release step
+      # after a tag has already been cut. The image is loaded into
+      # the local Docker daemon by build-scan-image; we run it here
+      # in the same job. Probes /api/v1/healthz with a 120s deadline.
+      - name: Smoke-test backend image
+        uses: ./.github/actions/smoke-test-backend-image
+        with:
+          image: ${{ steps.build_scan.outputs.ref_amd64 }}
 
   build-backend-publish:
     name: Publish Backend

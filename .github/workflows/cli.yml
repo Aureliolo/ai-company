@@ -129,12 +129,36 @@ jobs:
           cache: false
 
       - name: Build
+        id: build
         working-directory: cli
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -ldflags="-s -w" -o /dev/null ./main.go
+        run: |
+          # On the linux/amd64 cell, build to a real path so the
+          # smoke step below can execute it. All other matrix cells
+          # cross-compile to /dev/null -- they are compile-only
+          # checks; their binaries cannot be executed on this Linux
+          # runner.
+          if [ "${GOOS}" = "linux" ] && [ "${GOARCH}" = "amd64" ]; then
+            mkdir -p /tmp/cli-smoke
+            go build -ldflags="-s -w" -o /tmp/cli-smoke/synthorg ./main.go
+            echo "binary=/tmp/cli-smoke/synthorg" >> "$GITHUB_OUTPUT"
+          else
+            go build -ldflags="-s -w" -o /dev/null ./main.go
+          fi
+
+      # Smoke-test only the linux/amd64 cell -- it is the only matrix
+      # combination the runner can execute. Catches `unknown flag`,
+      # crashes on startup, missing cgo deps, etc. at PR time so a
+      # broken CLI fails the originating PR rather than the
+      # finalize-release step after a tag has already been cut.
+      - name: Smoke-test CLI binary
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        uses: ./.github/actions/smoke-test-cli-binary
+        with:
+          binary-path: ${{ steps.build.outputs.binary }}
 
   # ── Vulnerability check ──
   cli-vuln:

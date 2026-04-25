@@ -10,25 +10,6 @@ rules:
       # access to commit signatures). Mitigated: checkout uses ref: main
       # (not PR head), no untrusted input in run: steps.
       - cla.yml
-      # workflow_run fan-in sink for release pipeline events. Structurally
-      # cannot be exploited in the way zizmor's dangerous-triggers audit
-      # assumes because ALL of the following hold simultaneously (see the
-      # SAFETY comment block in release-events.yml for the full
-      # rationale):
-      #   1. ``workflow_run.event != 'pull_request'`` is asserted in the
-      #      job-level ``if:`` guard, so a future change to the source
-      #      workflows that adds a PR trigger can never reach this sink.
-      #   2. Source workflows (Auto Rollover, Test Signing) are triggered
-      #      exclusively by push to main, cron, or workflow_dispatch --
-      #      never by PR events.
-      #   3. The sink does not ``actions/checkout`` any code.
-      #   4. All ``run:`` step variables come from
-      #      ``github.event.{release,workflow_run}.*`` (GitHub-managed
-      #      fields) -- never from PR titles, bodies, or artifacts.
-      #   5. Permissions are minimal: ``issues: write`` + ``actions: read``.
-      #   6. No secrets are referenced; the App token is never minted here.
-      # Revisit this suppression if ANY of those invariants changes.
-      - release-events.yml
 
   template-injection:
     ignore:

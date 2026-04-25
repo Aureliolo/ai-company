@@ -1,0 +1,76 @@
+name: 'Smoke-test backend container image'
+description: |
+  Run a backend container image and verify it serves a 200 response
+  on its API liveness endpoint. Catches:
+    - image builds green but crashes at startup (missing migration,
+      env mismatch, library regression, broken entrypoint)
+    - 404 on the wrong probe URL (e.g. `/healthz` vs the actual
+      `/api/v1/healthz` mount point)
+
+  This composite action is the single source of truth for the
+  backend image smoke test. It runs at build time in `docker.yml`
+  (every PR / push that builds the backend image) so a broken image
+  fails the originating PR with a red ❌ on the commit row, NOT the
+  release-time finalize-release run after a tag has already been cut.
+
+inputs:
+  image:
+    description: |
+      Image reference to run. Must be loadable via `docker run`
+      (either already in the local daemon from a preceding build, or
+      pullable from a registry the runner has access to).
+    required: true
+  port:
+    description: 'Host port to bind for the probe. default: 3001'
+    required: false
+    default: '3001'
+  path:
+    description: 'HTTP path to probe. default: /api/v1/healthz (Litestar liveness, mounted under /api/v1).'
+    required: false
+    default: '/api/v1/healthz'
+  deadline-seconds:
+    description: 'Total deadline for the probe to return 200. default: 120'
+    required: false
+    default: '120'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run image and probe liveness
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        PORT: ${{ inputs.port }}
+        PROBE_PATH: ${{ inputs.path }}
+        DEADLINE: ${{ inputs.deadline-seconds }}
+      run: |
+        set -euo pipefail
+
+        echo "Starting container from $IMAGE"
+        # The image's setup wizard falls back to ephemeral SQLite when
+        # no DATABASE_URL is provided -- sufficient for a liveness
+        # smoke without provisioning external state.
+        CID=$(docker run -d --rm -p "${PORT}:${PORT}" "$IMAGE")
+        # Always dump the last 50 lines of container logs on exit so
+        # flake postmortems have something to look at.
+        trap 'docker logs "$CID" 2>&1 | tail -50; docker stop "$CID" >/dev/null 2>&1 || true' EXIT
+
+        PROBE_URL="http://localhost:${PORT}${PROBE_PATH}"
+        echo "Polling $PROBE_URL (deadline ${DEADLINE}s)"
+
+        # Each attempt records the HTTP status so the log shows WHY the
+        # probe was still failing (boot time, 5xx, conn-refused) --
+        # `curl -sf` on its own silently exits 22 on any non-2xx.
+        deadline=$((SECONDS + DEADLINE))
+        while [ "$SECONDS" -lt "$deadline" ]; do
+          attempt_code=$(curl -s -o /dev/null -w '%{http_code}' "$PROBE_URL" 2>/dev/null || echo "conn-refused")
+          if [ "$attempt_code" = "200" ]; then
+            echo "$PROBE_URL returned 200 after ${SECONDS}s"
+            exit 0
+          fi
+          echo "  attempt at ${SECONDS}s: ${attempt_code}"
+          sleep 3
+        done
+
+        echo "::error::$PROBE_URL did not return 200 within ${DEADLINE}s"
+        exit 1
