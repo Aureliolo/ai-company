@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-commit + CI gate: block precise doc counts that fall below reality.
-
-Public-facing docs make precise floor claims like "100+ event constant
-modules". This script asserts that each registered claim still satisfies
-``actual >= floor``: the docs may understate (rounded down) but must
-never overstate. When actual grows past the next clean threshold, the
-doc bumps to the new floor in the same PR.
-
-Marketing-style counts (eg "25,000+ unit tests" in README/roadmap) are
-deliberately NOT gated here. They are rounded narrative claims under
-human editorial control, not mechanically-verified invariants -- a
-strict gate would either fight the rounding or force the doc to track
-every test addition. The event-module count, by contrast, is a
-load-bearing precise number used by docs that point readers at code,
-so we keep it strict.
-"""
+"""Gate precise event-module floor claims against codebase reality."""
 
 import re
 import sys
@@ -30,39 +15,43 @@ class Claim:
     """A single floor claim registered against a docs file."""
 
     path: str
-    pattern: str
+    pattern: re.Pattern[str]
     label: str
 
 
+# Marketing-style counts (eg "25,000+ unit tests" in README/roadmap) are
+# deliberately NOT registered here. They are rounded narrative numbers
+# under human editorial control. Only precise technical claims --
+# numbers a reader will cross-reference against code -- are gated.
 CLAIMS: tuple[Claim, ...] = (
     Claim(
         "docs/design/observability.md",
-        r"(\d+)\+ domain-specific event constant modules",
+        re.compile(r"(\d+)\+ domain-specific event constant modules"),
         label="observability event modules",
     ),
     Claim(
         "docs/design/agent-execution.md",
-        r"\((\d+)\+ constants\)",
+        re.compile(r"\((\d+)\+ constants\)"),
         label="agent-execution event constants",
     ),
     Claim(
         "docs/research/control-plane-audit.md",
-        r"(\d+)\+ event constant modules",
+        re.compile(r"(\d+)\+ event constant modules"),
         label="control-plane-audit event modules",
     ),
     Claim(
         "docs/research/control-plane-audit.md",
-        r"(\d+)\+ structured event constants",
+        re.compile(r"(\d+)\+ structured event constants"),
         label="control-plane-audit structured event constants",
     ),
     Claim(
         "docs/research/control-plane-audit.md",
-        r"observability \((\d+)\+ structured events\)",
+        re.compile(r"observability \((\d+)\+ structured events\)"),
         label="control-plane-audit observability events",
     ),
     Claim(
         "docs/research/acg-formalism-evaluation.md",
-        r"(\d+)\+ event constant domains",
+        re.compile(r"(\d+)\+ event constant domains"),
         label="acg-formalism event domains",
     ),
 )
@@ -77,11 +66,16 @@ def count_event_modules() -> int:
 
 def parse_claim(claim: Claim) -> int:
     """Read the file, run the pattern, and return the parsed integer floor."""
-    text = (REPO_ROOT / claim.path).read_text(encoding="utf-8")
-    match = re.search(claim.pattern, text)
+    resolved = (REPO_ROOT / claim.path).resolve()
+    if not resolved.is_relative_to(REPO_ROOT):
+        msg = f"Claim path escapes REPO_ROOT: {claim.path!r}"
+        raise RuntimeError(msg)
+    text = resolved.read_text(encoding="utf-8")
+    match = claim.pattern.search(text)
     if not match:
         msg = (
-            f"Could not find claim pattern in {claim.path}: {claim.pattern!r}.\n"
+            f"Could not find claim pattern in {claim.path}:"
+            f" {claim.pattern.pattern!r}.\n"
             "If the claim was rewritten, update CLAIMS in"
             " scripts/check_doc_drift_counts.py."
         )
@@ -91,6 +85,15 @@ def parse_claim(claim: Claim) -> int:
 
 def main() -> int:
     """Verify every registered claim's floor is at or below actual."""
+    if not EVENT_MODULES_DIR.is_dir():
+        print(
+            f"Error: event modules directory not found: {EVENT_MODULES_DIR}."
+            " Verify the path or refactor reference in"
+            " scripts/check_doc_drift_counts.py.",
+            file=sys.stderr,
+        )
+        return 1
+
     actual = count_event_modules()
 
     failures: list[str] = []
@@ -114,7 +117,8 @@ def main() -> int:
         return 1
 
     print(
-        f"OK: all {len(CLAIMS)} claims satisfy floor <= actual (event_modules={actual})."
+        f"OK: all {len(CLAIMS)} claims satisfy floor <= actual"
+        f" (event_modules={actual})."
     )
     return 0
 

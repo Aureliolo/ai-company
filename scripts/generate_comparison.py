@@ -146,7 +146,19 @@ def _resolve_last_updated(declared: str) -> str:
             check=True,
             timeout=10,
         )
-    except subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError:
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ) as exc:
+        # Visible warning so a misconfigured build environment (no git on
+        # PATH, shallow clone with no history for this file, slow FS) does
+        # not silently render today's date and mask the real problem.
+        print(
+            f"WARNING: could not derive comparison-page last_updated from git"
+            f" ({type(exc).__name__}); using today's UTC date.",
+            file=sys.stderr,
+        )
         return dt.datetime.now(dt.UTC).date().isoformat()
     derived = result.stdout.strip()
     return derived or dt.datetime.now(dt.UTC).date().isoformat()
