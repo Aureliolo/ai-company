@@ -7,6 +7,18 @@ on:
 
 permissions: {}
 
+# Serialize runs against the shared `ci/apko-lock-update` branch.
+# A concurrent cron + manual dispatch (or two back-to-back manual
+# dispatches) would race on the delete + recreate sequence in
+# update-lockfiles, producing 422 "Reference already exists" or
+# 404 "Reference does not exist" depending on interleaving.
+# `cancel-in-progress: false` queues new runs behind any in-flight
+# one rather than cancelling -- cancelling mid-flight could leave
+# the ref in a half-created state.
+concurrency:
+  group: apko-lock-update
+  cancel-in-progress: false
+
 jobs:
   update-lockfiles:
     name: apko lock
@@ -249,8 +261,10 @@ jobs:
           Run: ${RUN_URL}
 
           Likely cause: a Wolfi package was renamed/removed, an apko CLI
-          breaking change, or the \`peter-evans/create-pull-request\`
-          action could not push (App token / branch protection drift).
+          breaking change, or the App-token + \`createCommitOnBranch\` +
+          \`gh pr create\` flow could not push (synthorg-repo-bot
+          App token mint failure, GraphQL permission denial, or
+          \`apko-lock\` env branch-policy drift).
           When this stays red for >1 weekly cycle, base images go stale.
           EOF
             echo 'TRACKING_ISSUE_BODY_EOF'
