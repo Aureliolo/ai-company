@@ -58,7 +58,14 @@ In your repository, go to **Settings -> Environments -> release** and add two se
 - `RELEASE_BOT_APP_CLIENT_ID` -- the Client ID from step 6.
 - `RELEASE_BOT_APP_PRIVATE_KEY` -- the entire PEM file contents, including the `-----BEGIN ... PRIVATE KEY-----` header and `-----END ... PRIVATE KEY-----` footer.
 
-If you do not need the release pipeline at all (you are running a research fork and never cut releases), skip this section. The release workflows are gated on `!github.event.repository.fork` and skip cleanly.
+Then duplicate the SAME values into the `apko-lock` environment under different names so the weekly lockfile-update cron can mint a token of its own. Settings -> Environments -> apko-lock:
+
+- `APKO_BOT_APP_CLIENT_ID` -- same Client ID as `RELEASE_BOT_APP_CLIENT_ID` above.
+- `APKO_BOT_APP_PRIVATE_KEY` -- same PEM contents as `RELEASE_BOT_APP_PRIVATE_KEY` above.
+
+The credentials are duplicated rather than shared because GitHub-environment secrets are env-scoped: a workflow running under `release` cannot read a secret defined only in `apko-lock`, and vice versa. Both names point at the same App, so a key rotation only needs to update both copies once.
+
+If you do not need the release pipeline at all (you are running a research fork and never cut releases), skip this section. The release and apko-lock workflows are gated on `!github.event.repository.fork` and skip cleanly.
 
 ## 4. Populate the remaining environment secrets
 
@@ -68,7 +75,7 @@ If you do not need the release pipeline at all (you are running a research fork 
 | `cloudflare-preview` | `CLOUDFLARE_API_TOKEN` | https://dash.cloudflare.com/profile/api-tokens -- Pages-deploy-scoped |
 | `cloudflare-preview` | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard sidebar |
 
-`apko-lock` and `image-push` need no secrets -- the workflows use the auto-provided `${{ github.token }}` against your fork's resources. The environments exist purely for branch-policy gating.
+`image-push` needs no secrets -- the workflow uses the auto-provided `${{ github.token }}` against your fork's GHCR namespace. The environment exists purely for branch-policy gating.
 
 ## 5. Branch protection on `main`
 

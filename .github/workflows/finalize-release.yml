@@ -274,9 +274,15 @@ jobs:
             # marker-only path silently produced an empty SBOM
             # subsection (and therefore no `### Software Bill of
             # Materials` header) on every release.
+            #
+            # No `|| true` here: an empty SBOM list is fine (jq
+            # exits 0 with empty output when no asset matches the
+            # filter), but a real failure (token denied, 404,
+            # network) is NOT fine -- masking it would let the
+            # workflow proceed to the immutable `--draft=false`
+            # publish below with an SBOM-less release body.
             SBOM_ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --json assets --jq '[.assets[].name | select(test("^sbom-.*\\.cdx\\.json$"))] | .[]' \
-              || true)
+              --json assets --jq '[.assets[].name | select(test("^sbom-.*\\.cdx\\.json$"))] | .[]')
             SBOM_ITEMS=""
             if [ -n "$SBOM_ASSETS" ]; then
               # Render as `\`name\`` separated by ` | `, preserving the
