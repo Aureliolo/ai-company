@@ -112,7 +112,16 @@ jobs:
           # 1. Ensure the branch exists at BASE_SHA (delete + recreate
           #    so each run starts fresh; the previous lockfile state is
           #    irrelevant once new locks are generated).
-          if gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" >/dev/null 2>&1; then
+          #
+          # Existence check uses `git/ref/heads/$BRANCH` (SINGULAR
+          # `ref`) for exact lookup. The plural `git/refs/heads/...`
+          # endpoint is the deprecated list/prefix-match form -- it
+          # can return 200 with an array (or with another ref that
+          # shares the prefix) and silently mis-detect existence,
+          # causing the subsequent POST to fail with "Reference
+          # already exists" on rerun. DELETE + POST keep the plural
+          # form because those are mutation endpoints, not lookups.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH"
           fi
           gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
@@ -147,21 +156,38 @@ jobs:
               commit { oid url }
             }
           }'
-          jq -n \
-            --arg query "$query" \
-            --arg branchName "$BRANCH" \
-            --arg repoWithOwner "$GITHUB_REPOSITORY" \
-            --arg expectedOid "$BASE_SHA" \
-            --argjson additions "$additions" \
-            '{
-              query: $query,
-              variables: {
-                branchName: $branchName,
-                repoWithOwner: $repoWithOwner,
-                expectedOid: $expectedOid,
-                additions: $additions
-              }
-            }' | gh api /graphql --input -
+          # Capture the response and verify the mutation actually
+          # produced a commit. `gh api /graphql` exits 0 on HTTP 200
+          # even when the JSON body contains a top-level `errors[]`
+          # array, so `set -e` does NOT catch GraphQL-level failures
+          # (auth issues, permission denials, expectedHeadOid
+          # mismatch, etc.). Without this validation we'd happily
+          # `gh pr create` against an empty branch and ship a
+          # no-change PR.
+          commit_response=$(
+            jq -n \
+              --arg query "$query" \
+              --arg branchName "$BRANCH" \
+              --arg repoWithOwner "$GITHUB_REPOSITORY" \
+              --arg expectedOid "$BASE_SHA" \
+              --argjson additions "$additions" \
+              '{
+                query: $query,
+                variables: {
+                  branchName: $branchName,
+                  repoWithOwner: $repoWithOwner,
+                  expectedOid: $expectedOid,
+                  additions: $additions
+                }
+              }' | gh api /graphql --input -
+          )
+          if jq -e '.errors != null or .data.createCommitOnBranch.commit.oid == null' >/dev/null <<<"$commit_response"; then
+            echo "::error::createCommitOnBranch did not produce a commit; raw response follows" >&2
+            jq '.' <<<"$commit_response" >&2
+            exit 1
+          fi
+          new_sha=$(jq -r '.data.createCommitOnBranch.commit.oid' <<<"$commit_response")
+          echo "Signed commit $new_sha pushed to $BRANCH"
 
           # 4. Open the PR (or no-op if one already exists for this
           #    branch -- gh exits non-zero with "a pull request for
