@@ -105,7 +105,7 @@ src/synthorg/meta/
     invoker.py         -- MCPToolInvoker (handler dispatch + error mapping)
     errors.py          -- ArgumentValidationError + GuardrailViolationError
     tool_builder.py    -- read_tool / write_tool / admin_tool builders
-    domains/           -- 15 domain tool definition modules (204 tools)
+    domains/           -- 15 domain tool definition modules (200+ tools)
     handlers/          -- 15 domain handler modules + common envelope helpers
                          (ok / err / not_supported / require_destructive_guardrails)
 

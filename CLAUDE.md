@@ -154,7 +154,7 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 
 ## MCP Handler Layer
 
-SynthOrg exposes 204 tools across 15 domains via its MCP server. Adding a new handler means implementing the `ToolHandler` protocol in `src/synthorg/meta/mcp/handlers/<domain>.py`. Handlers use envelope helpers (`ok`/`err`/`capability_gap`/`not_supported`) from `common.py`, validate args via `require_arg`, and run `require_destructive_guardrails(arguments, actor)` on any `admin_tool`. Handlers route through service-layer facades, never into `app_state.persistence.*` directly.
+SynthOrg exposes 200+ tools across 15 domains via its MCP server. Adding a new handler means implementing the `ToolHandler` protocol in `src/synthorg/meta/mcp/handlers/<domain>.py`. Handlers use envelope helpers (`ok`/`err`/`capability_gap`/`not_supported`) from `common.py`, validate args via `require_arg`, and run `require_destructive_guardrails(arguments, actor)` on any `admin_tool`. Handlers route through service-layer facades, never into `app_state.persistence.*` directly.
 
 See [docs/reference/mcp-handler-contract.md](docs/reference/mcp-handler-contract.md) for the full contract, `docs/design/tools.md` §"SynthOrg MCP Tool Surface" for the user-facing surface, and `docs/design/observability.md` §"MCP handler events" for the event inventory.
 
