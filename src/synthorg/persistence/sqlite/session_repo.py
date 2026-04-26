@@ -21,9 +21,11 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
     API_SESSION_CREATE_FAILED,
-    API_SESSION_LIMIT_ENFORCED,
     API_SESSION_REVOKE_FAILED,
-    API_SESSION_REVOKED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_SESSION_LIMIT_ENFORCED,
+    SECURITY_SESSION_REVOKED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -195,7 +197,7 @@ class SQLiteSessionRepository:
                 raise QueryError(msg) from exc
         if rowcount > 0:
             self._revoked.add(session_id)
-            logger.info(API_SESSION_REVOKED, session_id=session_id)
+            logger.info(SECURITY_SESSION_REVOKED, session_id=session_id)
             return True
         return False
 
@@ -244,7 +246,7 @@ class SQLiteSessionRepository:
                 )
                 raise QueryError(msg) from exc
         self._revoked.update(row["session_id"] for row in rows)
-        logger.info(API_SESSION_REVOKED, user_id=user_id, count=count)
+        logger.info(SECURITY_SESSION_REVOKED, user_id=user_id, count=count)
         return count
 
     async def enforce_session_limit(
@@ -266,7 +268,7 @@ class SQLiteSessionRepository:
                 revoked += 1
         if revoked:
             logger.info(
-                API_SESSION_LIMIT_ENFORCED,
+                SECURITY_SESSION_LIMIT_ENFORCED,
                 user_id=user_id,
                 revoked=revoked,
                 max_sessions=max_sessions,

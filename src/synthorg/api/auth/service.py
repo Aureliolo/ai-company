@@ -12,10 +12,11 @@ import argon2
 import jwt
 
 from synthorg.api.auth.models import User  # noqa: TC001
-from synthorg.observability import get_logger
-from synthorg.observability.events.api import (
-    API_AUTH_FAILED,
-    API_AUTH_REFRESH_CREATED,
+from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_FAILED,
+    SECURITY_AUTH_REFRESH_CREATED,
 )
 
 if TYPE_CHECKING:
@@ -63,7 +64,7 @@ class AuthService:
         if not secret:
             msg = "JWT secret not configured"
             logger.error(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="jwt_secret_missing",
                 operation=operation,
             )
@@ -101,18 +102,20 @@ class AuthService:
             return _hasher.verify(password_hash, password)
         except argon2.exceptions.VerifyMismatchError:
             return False
-        except argon2.exceptions.VerificationError:
+        except argon2.exceptions.VerificationError as exc:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="hash_verification_error",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
-        except argon2.exceptions.InvalidHashError:
-            logger.error(
-                API_AUTH_FAILED,
+        except argon2.exceptions.InvalidHashError as exc:
+            logger.error(  # noqa: TRY400 -- structlog event constant; not the stdlib `error` shape
+                SECURITY_AUTH_FAILED,
                 reason="invalid_hash_data_corruption",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -187,6 +190,8 @@ class AuthService:
             user.password_hash.encode(),
         ).hexdigest()[:16]
         payload: dict[str, Any] = {
+            "iss": USER_ISSUER,
+            "aud": USER_AUDIENCE,
             "sub": user.id,
             "username": user.username,
             "role": user.role.value,
@@ -206,11 +211,15 @@ class AuthService:
     def decode_token(self, token: str) -> dict[str, Any]:
         """Decode and validate a JWT.
 
-        Audience (``aud``) verification is intentionally disabled
-        here (``verify_aud=False``) because audience validation is
-        performed per-role in the auth middleware's
-        ``_resolve_jwt_user``.  System-user tokens require
-        ``aud=synthorg-backend``; regular user tokens omit ``aud``.
+        Issuer (``iss``) and audience (``aud``) verification is
+        intentionally deferred to the auth middleware's
+        ``_resolve_jwt_user``: the canonical pair differs by role
+        (``synthorg-cli`` / ``synthorg-backend`` for CLI-minted
+        SYSTEM tokens vs. ``synthorg-api`` / ``synthorg-api`` for
+        API-minted user tokens), and the middleware loads the user
+        record before deciding which pair to enforce. Both claims are
+        ``require``-listed here so a missing claim fails decode rather
+        than reaching the middleware as ``None``.
 
         Args:
             token: Encoded JWT string.
@@ -227,7 +236,11 @@ class AuthService:
             token,
             secret,
             algorithms=[self._config.jwt_algorithm],
-            options={"require": ["exp", "iat", "sub", "jti"], "verify_aud": False},
+            options={
+                "require": ["exp", "iat", "sub", "jti", "iss", "aud"],
+                "verify_aud": False,
+                "verify_iss": False,
+            },
         )
 
     async def persist_refresh_token(
@@ -267,7 +280,7 @@ class AuthService:
             expires_at=expires_at,
         )
         logger.info(
-            API_AUTH_REFRESH_CREATED,
+            SECURITY_AUTH_REFRESH_CREATED,
             session_id=session_id,
             user_id=user_id,
         )
