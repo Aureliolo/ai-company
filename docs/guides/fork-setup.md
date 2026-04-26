@@ -11,7 +11,7 @@ The preflight is non-blocking on pull requests and feature branches; it only fai
 
 ## 1. Sync labels
 
-CI workflows reference a fixed set of automation labels (`automation:ci-health`, `automation:ci-preflight`, `automation:release-events`, `type:ci`, `prio:low`, `prio:medium`, `prio:high`, and `autorelease: pending`). The source of truth is `.github/labels.yml`.
+CI workflows reference a fixed set of automation labels (`automation:ci-health`, `automation:ci-preflight`, `type:ci`, `prio:low`, `prio:medium`, `prio:high`, and `autorelease: pending`). The source of truth is `.github/labels.yml`.
 
 Bootstrap once: **Actions -> Sync Labels -> Run workflow** on `main`. The workflow reads `.github/labels.yml` and creates or updates each label via `gh label create --force`. It never deletes labels, so any repo-specific labels you add are safe.
 
@@ -26,7 +26,7 @@ Create at **Settings -> Environments -> New environment**:
 | Environment | Used by | Required to pass CI Preflight? |
 |-------------|---------|---------------------|
 | `atlas` | `ci.yml` schema-validate | Yes |
-| `release` | `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, `test-signing.yml`, `finalize-release.yml` | Yes |
+| `release` | `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, `finalize-release.yml` | Yes |
 | `release-tags` | `cli.yml`, `docker.yml` (tag pushes) | Yes |
 | `apko-lock` | `apko-lock.yml` (scheduled lockfile updates) | Yes |
 | `cloudflare-preview` | `pages-preview.yml` | Yes |

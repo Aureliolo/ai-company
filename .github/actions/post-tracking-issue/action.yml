@@ -90,18 +90,22 @@ runs:
         PIN: ${{ inputs.pin }}
       run: |
         set -euo pipefail
-        # Search by title alone -- a label filter here would miss any
-        # issue created via the label-less fallback below and cause
-        # the next failure to open a duplicate tracker instead of
-        # commenting on the existing one. Bind $TITLE via `jq --arg`
-        # (passing through a standalone jq pipe; gh's own --jq flag
-        # does not accept --arg) so titles containing single quotes,
-        # double quotes, or shell metacharacters cannot break the
-        # select filter.
-        ISSUE_NUMBER=$(gh issue list --state open \
-          --search "in:title \"$TITLE\"" --json number,title \
+        # Search by title alone, ALL states (open + closed). A label
+        # filter would miss any issue created via the label-less
+        # fallback below; a state=open filter would miss issues that
+        # auto-closed when the underlying check last passed and would
+        # cause the next failure to open a duplicate tracker
+        # instead of REOPENING the original one. Bind $TITLE via
+        # `jq --arg` (passing through a standalone jq pipe; gh's own
+        # --jq flag does not accept --arg) so titles containing
+        # single quotes, double quotes, or shell metacharacters
+        # cannot break the select filter.
+        ISSUE_INFO=$(gh issue list --state all \
+          --search "in:title \"$TITLE\"" --json number,title,state \
           | jq -r --arg title "$TITLE" \
-            '[.[] | select(.title == $title)] | .[0].number // empty')
+            '[.[] | select(.title == $title)] | .[0] | "\(.number // "")|\(.state // "")"')
+        ISSUE_NUMBER="${ISSUE_INFO%%|*}"
+        ISSUE_STATE="${ISSUE_INFO##*|}"
 
         if [ -z "$ISSUE_NUMBER" ]; then
           # Parse `gh issue create`'s stdout URL for the issue number
@@ -128,7 +132,17 @@ runs:
           # An edit keeps the issue clean: title is the dedup key,
           # body always reflects current state.
           gh issue edit "$ISSUE_NUMBER" --body "$BODY"
-          echo "Updated tracking issue #$ISSUE_NUMBER"
+          # Reopen if the previous check-pass auto-closed it. The
+          # PIN block below will re-pin on top, so a regression
+          # reappears in the same form as the original report
+          # instead of leaving the tracker disabled-but-pinned.
+          if [ "$ISSUE_STATE" = "CLOSED" ] || [ "$ISSUE_STATE" = "closed" ]; then
+            gh issue reopen "$ISSUE_NUMBER" \
+              --comment "Regression detected -- reopening this tracker. The check failed again at this state; see body for current details."
+            echo "Reopened tracking issue #$ISSUE_NUMBER"
+          else
+            echo "Updated tracking issue #$ISSUE_NUMBER"
+          fi
         fi
 
         if [ "$PIN" = "true" ]; then
