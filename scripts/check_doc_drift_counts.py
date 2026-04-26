@@ -23,35 +23,38 @@ class Claim:
 # deliberately NOT registered here. They are rounded narrative numbers
 # under human editorial control. Only precise technical claims --
 # numbers a reader will cross-reference against code -- are gated.
+# Patterns accept thousands separators in the captured group so a future
+# floor like "1,000+" still matches; parse_claim strips the comma before
+# converting to int.
 CLAIMS: tuple[Claim, ...] = (
     Claim(
         "docs/design/observability.md",
-        re.compile(r"(\d+)\+ domain-specific event constant modules"),
+        re.compile(r"([\d,]+)\+ domain-specific event constant modules"),
         label="observability event modules",
     ),
     Claim(
         "docs/design/agent-execution.md",
-        re.compile(r"\((\d+)\+ constants\)"),
+        re.compile(r"\(([\d,]+)\+ constants\)"),
         label="agent-execution event constants",
     ),
     Claim(
         "docs/research/control-plane-audit.md",
-        re.compile(r"(\d+)\+ event constant modules"),
+        re.compile(r"([\d,]+)\+ event constant modules"),
         label="control-plane-audit event modules",
     ),
     Claim(
         "docs/research/control-plane-audit.md",
-        re.compile(r"(\d+)\+ structured event constants"),
+        re.compile(r"([\d,]+)\+ structured event constants"),
         label="control-plane-audit structured event constants",
     ),
     Claim(
         "docs/research/control-plane-audit.md",
-        re.compile(r"observability \((\d+)\+ structured events\)"),
+        re.compile(r"observability \(([\d,]+)\+ structured events\)"),
         label="control-plane-audit observability events",
     ),
     Claim(
         "docs/research/acg-formalism-evaluation.md",
-        re.compile(r"(\d+)\+ event constant domains"),
+        re.compile(r"([\d,]+)\+ event constant domains"),
         label="acg-formalism event domains",
     ),
 )
@@ -98,7 +101,11 @@ def main() -> int:
 
     failures: list[str] = []
     for claim in CLAIMS:
-        floor = parse_claim(claim)
+        try:
+            floor = parse_claim(claim)
+        except RuntimeError as exc:
+            print(f"Doc drift gate error: {exc}", file=sys.stderr)
+            return 1
         if actual < floor:
             failures.append(
                 f"  {claim.label} ({claim.path}): claim '{floor:,}+' but"

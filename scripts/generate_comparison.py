@@ -109,13 +109,16 @@ def _load_data() -> dict[str, Any]:
         msg = f"Missing meta.last_updated in {DATA_FILE}"
         raise ValueError(msg)
 
-    data["meta"]["last_updated"] = _resolve_last_updated(data["meta"]["last_updated"])
+    new_meta = {
+        **data["meta"],
+        "last_updated": _resolve_last_updated(data["meta"]["last_updated"]),
+    }
+    new_data: dict[str, Any] = {**data, "meta": new_meta}
 
-    _validate_competitors(data["competitors"])
-    _validate_dimension_keys(data["dimensions"])
+    _validate_competitors(new_data["competitors"])
+    _validate_dimension_keys(new_data["dimensions"])
 
-    typed: dict[str, Any] = data
-    return typed
+    return new_data
 
 
 def _resolve_last_updated(declared: str) -> str:
@@ -161,7 +164,15 @@ def _resolve_last_updated(declared: str) -> str:
         )
         return dt.datetime.now(dt.UTC).date().isoformat()
     derived = result.stdout.strip()
-    return derived or dt.datetime.now(dt.UTC).date().isoformat()
+    if not derived:
+        print(
+            "WARNING: git returned empty stdout for last_updated; using"
+            f" today's UTC date. raw stdout={result.stdout!r}"
+            f" returncode={result.returncode}",
+            file=sys.stderr,
+        )
+        return dt.datetime.now(dt.UTC).date().isoformat()
+    return derived
 
 
 def _validate_competitors(competitors: list[Any]) -> None:

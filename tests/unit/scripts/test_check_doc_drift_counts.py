@@ -136,11 +136,11 @@ class TestMain:
         fake_events_dir: Path,
         tmp_path: Path,
     ) -> None:
-        # Single claim whose floor (3) equals actual (3 fake modules).
-        claim = _claim_with_text(tmp_path, "100+ event constant modules in code.")
+        # Floor (3) equals actual (3 fake modules in fake_events_dir).
+        claim = _claim_with_text(tmp_path, "3+ event constant modules in code.")
         ok = gate.Claim(
             path=claim.path,
-            pattern=re.compile(r"^(\d)\d\d\+"),
+            pattern=re.compile(r"^(\d+)\+"),
             label="ok",
         )
         with (

@@ -244,13 +244,21 @@ class TestResolveLastUpdated:
         # User-visible warning so build environments never silently fall back.
         assert "WARNING" in capsys.readouterr().err
 
-    def test_auto_falls_back_on_empty_output(self) -> None:
+    def test_auto_falls_back_on_empty_output(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         fake = MagicMock(returncode=0, stdout="\n", stderr="")
         with (
             _patch_today(),
             patch.object(gen.subprocess, "run", return_value=fake),
         ):
             assert gen._resolve_last_updated(gen.AUTO_SENTINEL) == _FROZEN_DATE
+        # Empty git stdout must be visibly warned about so a contributor
+        # sees the fallback fired (matches the exception-path warning).
+        err = capsys.readouterr().err
+        assert "WARNING" in err
+        assert "empty stdout" in err
 
 
 # -- Helper functions --
