@@ -1,11 +1,13 @@
 """Tests for scripts/generate_comparison.py."""
 
+import datetime as dt
 import importlib.util
+import subprocess
 from collections.abc import Generator
 from pathlib import Path
 from types import ModuleType
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -174,6 +176,39 @@ class TestLoadData:
             pytest.raises(TypeError, match="not a mapping"),
         ):
             gen._load_data()
+
+
+@pytest.mark.unit
+class TestResolveLastUpdated:
+    """Tests for _resolve_last_updated git-derived timestamp logic."""
+
+    def test_pinned_date_passes_through(self) -> None:
+        assert gen._resolve_last_updated("2026-04-02") == "2026-04-02"
+
+    def test_auto_uses_git_commit_date(self) -> None:
+        fake = MagicMock(returncode=0, stdout="2026-04-22\n", stderr="")
+        with patch.object(gen.subprocess, "run", return_value=fake):
+            assert gen._resolve_last_updated(gen.AUTO_SENTINEL) == "2026-04-22"
+
+    def test_auto_falls_back_when_git_fails(self) -> None:
+        with patch.object(
+            gen.subprocess,
+            "run",
+            side_effect=subprocess.CalledProcessError(128, "git"),
+        ):
+            today = dt.datetime.now(dt.UTC).date().isoformat()
+            assert gen._resolve_last_updated(gen.AUTO_SENTINEL) == today
+
+    def test_auto_falls_back_when_git_missing(self) -> None:
+        with patch.object(gen.subprocess, "run", side_effect=FileNotFoundError):
+            today = dt.datetime.now(dt.UTC).date().isoformat()
+            assert gen._resolve_last_updated(gen.AUTO_SENTINEL) == today
+
+    def test_auto_falls_back_on_empty_output(self) -> None:
+        fake = MagicMock(returncode=0, stdout="\n", stderr="")
+        with patch.object(gen.subprocess, "run", return_value=fake):
+            today = dt.datetime.now(dt.UTC).date().isoformat()
+            assert gen._resolve_last_updated(gen.AUTO_SENTINEL) == today
 
 
 # -- Helper functions --
