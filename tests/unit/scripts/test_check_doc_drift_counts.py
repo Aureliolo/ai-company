@@ -122,6 +122,18 @@ class TestParseClaim:
         ):
             gate.parse_claim(evil)
 
+    def test_unreadable_file_becomes_runtime_error(self, tmp_path: Path) -> None:
+        missing = gate.Claim(
+            path="absent.md",
+            pattern=re.compile(r"(\d+)"),
+            label="missing",
+        )
+        with (
+            patch.object(gate, "REPO_ROOT", tmp_path),
+            pytest.raises(RuntimeError, match="Could not read claim file"),
+        ):
+            gate.parse_claim(missing)
+
 
 # -- main() --
 

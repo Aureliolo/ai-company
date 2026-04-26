@@ -73,7 +73,13 @@ def parse_claim(claim: Claim) -> int:
     if not resolved.is_relative_to(REPO_ROOT):
         msg = f"Claim path escapes REPO_ROOT: {claim.path!r}"
         raise RuntimeError(msg)
-    text = resolved.read_text(encoding="utf-8")
+    try:
+        text = resolved.read_text(encoding="utf-8")
+    except OSError as exc:
+        # Re-raise as RuntimeError so main()'s gate handler prints a
+        # concise single-line message instead of a stacktrace.
+        msg = f"Could not read claim file {claim.path}: {type(exc).__name__}: {exc}"
+        raise RuntimeError(msg) from exc
     match = claim.pattern.search(text)
     if not match:
         msg = (
