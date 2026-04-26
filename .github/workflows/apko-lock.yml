@@ -142,22 +142,30 @@ jobs:
 
           # 2. Build the createCommitOnBranch fileChanges.additions[]
           #    array from the changed lockfile paths. Each entry needs
-          #    {path, contents (base64)}.
-          additions=$(
+          #    {path, contents (base64)}. We write the array to a
+          #    temp file and pull it into the request body via jq's
+          #    --slurpfile because passing 4 base64-encoded lockfiles
+          #    as a single --argjson value blows past the runner's
+          #    ARG_MAX (`/usr/bin/jq: Argument list too long`). The
+          #    same goes for the request body itself -- write it to
+          #    a file and let `gh api --input <file>` read it,
+          #    rather than piping a giant string through stdin.
+          additions_file=$(mktemp)
+          {
             while IFS= read -r path; do
               [ -z "$path" ] && continue
-              jq -nc --arg p "$path" --arg c "$(base64 -w0 "$path")" \
-                '{path: $p, contents: $c}'
-            done <<< "$CHANGED_FILES" | jq -s '.'
-          )
+              jq -nc --arg p "$path" --rawfile c "$path" \
+                '{path: $p, contents: ($c | @base64)}'
+            done <<< "$CHANGED_FILES"
+          } | jq -s '.' > "$additions_file"
 
           # 3. Sign-and-commit via GraphQL. expectedHeadOid pins us to
           #    the just-created branch tip (BASE_SHA) so a concurrent
           #    push between step 1 and step 3 surfaces as an error
-          #    instead of a silent overwrite. We construct the full
-          #    request body (query + variables) as JSON and pipe via
-          #    --input because `gh api graphql -F` can't reliably pass
-          #    array-typed GraphQL variables (it stringifies them).
+          #    instead of a silent overwrite. `--slurpfile` reads the
+          #    additions JSON from disk (no argv pressure) and binds
+          #    it as a single-element array, hence `$additions[0]`
+          #    in the filter to get back the original FileAddition[].
           query='mutation($branchName: String!, $repoWithOwner: String!, $expectedOid: GitObjectID!, $additions: [FileAddition!]!) {
             createCommitOnBranch(input: {
               branch: { repositoryNameWithOwner: $repoWithOwner, branchName: $branchName }
@@ -168,6 +176,23 @@ jobs:
               commit { oid url }
             }
           }'
+          body_file=$(mktemp)
+          jq -n \
+            --arg query "$query" \
+            --arg branchName "$BRANCH" \
+            --arg repoWithOwner "$GITHUB_REPOSITORY" \
+            --arg expectedOid "$BASE_SHA" \
+            --slurpfile additions "$additions_file" \
+            '{
+              query: $query,
+              variables: {
+                branchName: $branchName,
+                repoWithOwner: $repoWithOwner,
+                expectedOid: $expectedOid,
+                additions: $additions[0]
+              }
+            }' > "$body_file"
+
           # Capture the response and verify the mutation actually
           # produced a commit. `gh api /graphql` exits 0 on HTTP 200
           # even when the JSON body contains a top-level `errors[]`
@@ -176,23 +201,7 @@ jobs:
           # mismatch, etc.). Without this validation we'd happily
           # `gh pr create` against an empty branch and ship a
           # no-change PR.
-          commit_response=$(
-            jq -n \
-              --arg query "$query" \
-              --arg branchName "$BRANCH" \
-              --arg repoWithOwner "$GITHUB_REPOSITORY" \
-              --arg expectedOid "$BASE_SHA" \
-              --argjson additions "$additions" \
-              '{
-                query: $query,
-                variables: {
-                  branchName: $branchName,
-                  repoWithOwner: $repoWithOwner,
-                  expectedOid: $expectedOid,
-                  additions: $additions
-                }
-              }' | gh api /graphql --input -
-          )
+          commit_response=$(gh api /graphql --input "$body_file")
           if jq -e '.errors != null or .data.createCommitOnBranch.commit.oid == null' >/dev/null <<<"$commit_response"; then
             echo "::error::createCommitOnBranch did not produce a commit; raw response follows" >&2
             jq '.' <<<"$commit_response" >&2
