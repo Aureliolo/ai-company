@@ -15,6 +15,8 @@ What works today:
 - **Communication** with message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), meeting protocols, and an A2A gateway for external agent systems
 - **Workflow engine** with Kanban, Agile sprints, ceremony scheduling (8 strategies), visual workflow editor, and workflow execution from graph definitions
 - **Tool ecosystem** with 8+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication) and sandbox security (auth proxy, gVisor, Chainguard packages)
+- **Persistence** with SQLite (single-node default) and PostgreSQL (multi-instance, dual-backend conformance-tested) backends, Atlas-managed schema migrations, and ISO 4217 currency stamping on every cost-bearing row
+- **Distributed runtime** with NATS JetStream message bus and distributed task queue for multi-instance deployments
 - **Web dashboard** (React 19 + shadcn/ui) with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, setup wizard, and WebSocket / SSE resilience
 - **CLI** (Go) with init, start, stop, doctor, config, wipe, cleanup, worker, backup, completion, and cosign / SLSA verification
 - **Docker deployment** with Chainguard distroless images, Trivy + Grype scanning, cosign signatures, and SLSA L3 provenance
@@ -25,8 +27,6 @@ What works today:
 What's not there yet:
 
 - **End-to-end production runs** -- subsystems are integrated but the full autonomous loop (agents receiving work, executing, producing artifacts, iterating) has not been validated as a cohesive product
-- **PostgreSQL persistence** -- SQLite is the only shipped backend; Postgres is designed and partially implemented but not yet GA
-- **Distributed backends** -- message bus, task queue, and persistence are local-process only
 - **Runtime configuration surface for agent evolution** -- the evolution service is implemented but wired at app init; runtime configuration via REST or UI is not yet exposed
 
 ## Planned
@@ -37,8 +37,7 @@ Prioritised by dependency order. All work is tracked on the [GitHub issue tracke
 - Notification sink MVP for operator alerts (Slack, ntfy, email via HTTP sink relay)
 - OpenAPI TypeScript codegen for the web dashboard
 - REST API and dashboard UI for agent evolution configuration and triggering
-- PostgreSQL persistence backend (migrations, performance tuning, TimescaleDB for time-series tables)
-- Distributed message bus (NATS JetStream) and distributed task queue
+- PostgreSQL performance tuning + TimescaleDB hypertable support for append-only time-series tables
 - Dynamic company scaling across clusters
 - Multi-project support with project-scoped teams and isolated budgets
 - Plugin system and benchmarking suite
