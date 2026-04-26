@@ -24,7 +24,7 @@ jobs:
       (github.event_name == 'pull_request_target'
         && github.event.pull_request.user.login != 'dependabot[bot]'
         && github.event.pull_request.user.login != 'renovate[bot]'
-        && github.event.pull_request.user.login != 'synthorg-release-bot[bot]') ||
+        && github.event.pull_request.user.login != 'synthorg-repo-bot[bot]') ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')
     permissions:
       contents: write
@@ -60,4 +60,4 @@ jobs:
           # job -- that gate protects against the whole workflow firing
           # while this gate protects against the action flagging any
           # individual commit inside a mixed-authorship PR.
-          allowlist: dependabot[bot],renovate[bot],synthorg-release-bot[bot],github-actions[bot]
+          allowlist: dependabot[bot],renovate[bot],synthorg-repo-bot[bot],github-actions[bot]

@@ -5,7 +5,7 @@ name: Graduate
 # Actions -> Graduate -> Run workflow with the target version and a reason.
 #
 # Produces a signed empty commit on main via the Git Data API using the
-# synthorg-release-bot App installation token. The commit carries a
+# synthorg-repo-bot App installation token. The commit carries a
 # `Release-As: <target>` trailer so Release Please picks it up on its next
 # run. Downgrades are hard-blocked (no `force` input, by design); fix-forward
 # with a higher target if you need to recover.

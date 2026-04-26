@@ -308,7 +308,7 @@ jobs:
     timeout-minutes: 30
     # Environment-gated: the `release-tags` env branch policy (`v*`) is a
     # structural ref gate for the GoReleaser push path. This env carries
-    # no privileged secrets -- the `synthorg-release-bot` App credentials
+    # no privileged secrets -- the `synthorg-repo-bot` App credentials
     # (`RELEASE_BOT_APP_CLIENT_ID` / `RELEASE_BOT_APP_PRIVATE_KEY`) live
     # on the main-only `release` env so a forged `v*` tag cannot unlock them.
     environment: release-tags

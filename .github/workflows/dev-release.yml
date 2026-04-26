@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
 
       # Shared setup: validate ref is refs/heads/main and mint the
-      # synthorg-release-bot App installation token. The minted token
+      # synthorg-repo-bot App installation token. The minted token
       # is needed so the tag-push step fires downstream Docker + CLI
       # workflows -- GITHUB_TOKEN-authored pushes are suppressed by
       # GitHub's anti-recursion rule, App tokens are not.

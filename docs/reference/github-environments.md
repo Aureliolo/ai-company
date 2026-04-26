@@ -16,7 +16,7 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | `release` | `main` | `release.yml` + `dev-release.yml` + `auto-rollover.yml` + `graduate.yml` + `test-signing.yml` (main-scoped), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main; carries `statuses: write` so the publish job can post a `finalize-release` commit status against `workflow_run.head_sha`). Holds `RELEASE_BOT_APP_CLIENT_ID` + `RELEASE_BOT_APP_PRIVATE_KEY`. |
 | `release-tags` | `v*` | `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes). Structural ref gate only; no privileged secrets. |
 | `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
-| `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch. Holds `APKO_BOT_APP_CLIENT_ID` + `APKO_BOT_APP_PRIVATE_KEY` for the dedicated `synthorg-apko-bot` GitHub App (Contents:write + Pull-requests:write, scoped to this repo only). The App's installation token is what creates the lockfile-update PR -- `GITHUB_TOKEN` is blocked by the repo-level `can_approve_pull_request_reviews: false` setting, and reusing `synthorg-release-bot` would conflate release-pipeline auth with weekly-cron auth. |
+| `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch. Holds `APKO_BOT_APP_CLIENT_ID` + `APKO_BOT_APP_PRIVATE_KEY` -- a copy of the `synthorg-repo-bot` App credentials, used by the apko-lock workflow to mint an installation token for the lockfile-update PR. `GITHUB_TOKEN` cannot create the PR because the repo-level setting `can_approve_pull_request_reviews: false` blocks it. The same App credentials live under `RELEASE_BOT_APP_*` in the `release` env (env-scoped, not shared across envs). Both copies point at the same App; the dedicated `apko-lock` env keeps weekly-cron auth and release-pipeline auth in separate boxes even though they share an identity. |
 | `cloudflare-preview` | _none_ (see below) | `pages-preview.yml` pull_request events |
 | `atlas` | _none_ (see below) | `ci.yml:schema-validate` push + pull_request |
 
@@ -106,7 +106,7 @@ environment that scopes the secret.
 ### `RELEASE_BOT_APP_*`
 
 The release pipeline is authenticated by a dedicated GitHub App,
-`synthorg-release-bot`. Its credentials live in the `release`
+`synthorg-repo-bot`. Its credentials live in the `release`
 deployment environment as two secrets:
 
 - `RELEASE_BOT_APP_CLIENT_ID` -- the App's Client ID as shown on the

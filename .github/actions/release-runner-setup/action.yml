@@ -2,7 +2,7 @@ name: Release runner setup
 description: >-
   Shared setup for release-pipeline workflows (release.yml, dev-release.yml,
   auto-rollover.yml). Asserts the triggering ref is refs/heads/main and mints
-  a short-lived installation token for the `synthorg-release-bot` GitHub App.
+  a short-lived installation token for the `synthorg-repo-bot` GitHub App.
   The minted token is exposed on the `token` output so downstream steps can
   use it for API calls that produce signed commits AND fire downstream
   workflows -- the two constraints PAT + GITHUB_TOKEN could not satisfy

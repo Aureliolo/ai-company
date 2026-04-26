@@ -9,7 +9,7 @@ permissions: {}
 jobs:
   release-please:
     name: Release Please
-    # Fork gate: release-please needs the synthorg-release-bot App token
+    # Fork gate: release-please needs the synthorg-repo-bot App token
     # to mint signed commits + bypass GITHUB_TOKEN's anti-recursion rule.
     # Forks don't have those env-scoped secrets; skip cleanly.
     if: ${{ !github.event.repository.fork }}
@@ -38,7 +38,7 @@ jobs:
           persist-credentials: false
 
       # Shared setup: validate ref is refs/heads/main and mint the
-      # synthorg-release-bot App installation token.
+      # synthorg-repo-bot App installation token.
       - name: Release runner setup
         id: setup
         uses: ./.github/actions/release-runner-setup
@@ -266,7 +266,7 @@ jobs:
 
       # ── Mark CI Pass satisfied on the release PR ──
       # release-please opened / updated the PR using the
-      # synthorg-release-bot App installation token. GitHub's
+      # synthorg-repo-bot App installation token. GitHub's
       # anti-recursion rule blocks `pull_request` workflows for
       # events created by the workflow's own installation token,
       # so ci.yml never auto-fires on release PRs.

@@ -43,7 +43,7 @@ jobs:
           persist-credentials: false
 
       # Shared setup: validate ref is refs/heads/main and mint the
-      # synthorg-release-bot App installation token. The minted token
+      # synthorg-repo-bot App installation token. The minted token
       # is needed so the rollover commit on main is GitHub-signed (main
       # enforces signed commits via branch protection) AND triggers the
       # downstream Release + Dev Release workflows.

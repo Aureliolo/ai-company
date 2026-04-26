@@ -3,7 +3,7 @@
 
 Any workflow that writes a commit to the repository must go through the
 Git Data REST API (``POST /git/commits`` + ``PATCH /git/refs/...``)
-authenticated by the ``synthorg-release-bot`` App installation token.
+authenticated by the ``synthorg-repo-bot`` App installation token.
 Shell ``git commit`` + ``git push`` from the runner never produces a
 GitHub-signed commit, regardless of which token it uses:
 
