@@ -12,18 +12,42 @@ jobs:
     name: apko lock
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Environment `apko-lock` carries a `main`-only branch allowlist so the
-    # schedule-triggered write permissions (contents:write + pull-requests:write)
-    # are gated on the deployment ref being main. Configured via
+    # Environment `apko-lock` carries a `main`-only branch allowlist so
+    # the schedule + dispatch entrypoints are gated on the deployment
+    # ref being main. The env also holds `APKO_BOT_APP_CLIENT_ID` /
+    # `APKO_BOT_APP_PRIVATE_KEY` -- the credentials for the dedicated
+    # `synthorg-apko-bot` GitHub App (Contents:write + PRs:write,
+    # scoped to this repo only). Using a dedicated App keeps PR-creation
+    # auth narrow: GITHUB_TOKEN is blocked by the repo-level
+    # `can_approve_pull_request_reviews: false` setting, the
+    # release-bot only does releases, and a per-job App preserves the
+    # one-bot-one-job principle. Configured via
     # scripts/configure_environments.sh (see docs/reference/github-environments.md).
     environment: apko-lock
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      # contents:write + pull-requests:write are NOT granted to
+      # GITHUB_TOKEN here. PR creation uses the apko-bot App
+      # installation token minted below; that token carries its own
+      # narrowly-scoped Contents + Pull-requests permissions on the
+      # apko-bot installation, independent of GITHUB_TOKEN.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+
+      # Mint a short-lived App installation token for synthorg-apko-bot.
+      # `owner` + `repositories` pin the installation lookup so the
+      # token is bound to this single-repo install -- without them the
+      # action walks every installation the App is authorised for.
+      - name: Mint apko-bot App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id: ${{ secrets.APKO_BOT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.APKO_BOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
 
       - name: Set up apko
         uses: ./.github/actions/setup-apko
@@ -47,48 +71,116 @@ jobs:
             apko lock "${config}"
           done
 
-      - name: Check for changes
+      - name: Detect lockfile changes
         id: diff
         run: |
-          # `git diff --quiet` only catches modifications to tracked
-          # files; `apko lock` writes brand-new `<config>.apko.lock.json`
-          # files on first run that are still untracked. `git status
-          # --porcelain` covers both cases.
-          if [ -z "$(git status --porcelain -- 'docker/*/apko.lock.json')" ]; then
+          # `git status --porcelain` catches both tracked-modified and
+          # brand-new untracked lockfiles (first-run case).
+          changed_files=$(git status --porcelain -- 'docker/*/apko.lock.json' | awk '{ print $2 }')
+          if [ -z "$changed_files" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            # Pass the file list to the next step via heredoc-safe output.
+            {
+              echo 'files<<APKO_FILES_EOF'
+              echo "$changed_files"
+              echo 'APKO_FILES_EOF'
+            } >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create PR
+      # Commit + push + open PR using only native tools (gh CLI + git).
+      # `git push` with the apko-bot token produces an UNSIGNED commit;
+      # to keep the signed-commit pattern used elsewhere in the repo,
+      # we route the commit through the GraphQL `createCommitOnBranch`
+      # mutation, which signs the resulting commit as the App.
+      - name: Open / update apko-lock PR
         if: steps.diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
-        with:
-          commit-message: "ci: update apko lockfiles"
-          # Route the commit through the Contents API so it is signed
-          # by GitHub (keeps the PR free of Unverified badges and
-          # matches the signature pattern used elsewhere in CI).
-          sign-commits: true
-          title: "ci: update apko lockfiles"
-          body: |
-            Automated weekly update of apko lockfiles via `.github/workflows/apko-lock.yml`.
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ci/apko-lock-update
+          BASE_SHA: ${{ github.sha }}
+          CHANGED_FILES: ${{ steps.diff.outputs.files }}
+        run: |
+          set -euo pipefail
 
-            Wolfi package digests and transitive dependencies have been refreshed.
-          branch: ci/apko-lock-update
-          labels: |
-            dependencies
-            type:ci
-            scope:docker
-          # peter-evans/create-pull-request' `reviewers` input only
-          # accepts user logins; passing an org name produces a 422
-          # "Could not resolve to a node" from GitHub's review-request
-          # API. Gate on owner.type == 'User' so an org-owned fork
-          # falls back to no reviewer assignment (the PR still opens,
-          # just without an automatic reviewer). User-owned repos --
-          # including the upstream `Aureliolo/synthorg` -- keep the
-          # existing behaviour. To request review from a team in an
-          # org-owned fork, change to `team-reviewers: <team-slug>` here.
-          reviewers: ${{ github.event.repository.owner.type == 'User' && github.repository_owner || '' }}
+          # 1. Ensure the branch exists at BASE_SHA (delete + recreate
+          #    so each run starts fresh; the previous lockfile state is
+          #    irrelevant once new locks are generated).
+          if gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" >/dev/null 2>&1; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH"
+          fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/heads/$BRANCH" \
+            -f "sha=$BASE_SHA"
+
+          # 2. Build the createCommitOnBranch fileChanges.additions[]
+          #    array from the changed lockfile paths. Each entry needs
+          #    {path, contents (base64)}.
+          additions=$(
+            while IFS= read -r path; do
+              [ -z "$path" ] && continue
+              jq -nc --arg p "$path" --arg c "$(base64 -w0 "$path")" \
+                '{path: $p, contents: $c}'
+            done <<< "$CHANGED_FILES" | jq -s '.'
+          )
+
+          # 3. Sign-and-commit via GraphQL. expectedHeadOid pins us to
+          #    the just-created branch tip (BASE_SHA) so a concurrent
+          #    push between step 1 and step 3 surfaces as an error
+          #    instead of a silent overwrite. We construct the full
+          #    request body (query + variables) as JSON and pipe via
+          #    --input because `gh api graphql -F` can't reliably pass
+          #    array-typed GraphQL variables (it stringifies them).
+          query='mutation($branchName: String!, $repoWithOwner: String!, $expectedOid: GitObjectID!, $additions: [FileAddition!]!) {
+            createCommitOnBranch(input: {
+              branch: { repositoryNameWithOwner: $repoWithOwner, branchName: $branchName }
+              message: { headline: "ci: update apko lockfiles" }
+              fileChanges: { additions: $additions }
+              expectedHeadOid: $expectedOid
+            }) {
+              commit { oid url }
+            }
+          }'
+          jq -n \
+            --arg query "$query" \
+            --arg branchName "$BRANCH" \
+            --arg repoWithOwner "$GITHUB_REPOSITORY" \
+            --arg expectedOid "$BASE_SHA" \
+            --argjson additions "$additions" \
+            '{
+              query: $query,
+              variables: {
+                branchName: $branchName,
+                repoWithOwner: $repoWithOwner,
+                expectedOid: $expectedOid,
+                additions: $additions
+              }
+            }' | gh api /graphql --input -
+
+          # 4. Open the PR (or no-op if one already exists for this
+          #    branch -- gh exits non-zero with "a pull request for
+          #    branch X already exists" on stderr, which we accept).
+          pr_create_output=$(mktemp)
+          if ! gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "ci: update apko lockfiles" \
+            --body "Automated weekly update of apko lockfiles via \`.github/workflows/apko-lock.yml\`.
+
+          Wolfi package digests and transitive dependencies have been refreshed." \
+            --label dependencies --label "type:ci" --label "scope:docker" \
+            > "$pr_create_output" 2>&1; then
+            if grep -q "already exists" "$pr_create_output"; then
+              cat "$pr_create_output"
+              echo "PR already exists for $BRANCH -- branch updated, no new PR needed"
+            else
+              cat "$pr_create_output" >&2
+              exit 1
+            fi
+          else
+            cat "$pr_create_output"
+          fi
 
   report-failure:
     name: Open / update tracking issue on schedule failure

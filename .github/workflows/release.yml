@@ -22,15 +22,11 @@ jobs:
       # inference is accessed via actions/ai-inference under the
       # `models: read` workflow-level permission. No new secret.
       models: read
-      # For the final "Trigger CI on release PR" step below: a
-      # workflow_dispatch against ci.yml is needed because
-      # release-please opens the PR using the synthorg-release-bot
-      # App installation token, and GitHub's anti-recursion rule
-      # suppresses pull_request workflow runs for events created
-      # by the App token that owns the running workflow. Without
-      # this nudge, ci.yml never fires on release PRs and the
-      # required "CI Pass" check waits forever.
-      actions: write
+      # For the "Post CI Pass status on release PR" step below: the
+      # statuses API needs `statuses: write` to mark the required
+      # `CI Pass` check satisfied on the release PR's head SHA
+      # without running ci.yml. See the rationale on that step.
+      statuses: write
     steps:
       # Minimal checkout of main required so `./.github/actions/...`
       # paths resolve on the runner disk. `fetch-depth: 1` is enough;
@@ -268,27 +264,47 @@ jobs:
           gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$NEW_BODY"
           echo "Highlights prepended to PR #$PR_NUMBER"
 
-      # ── Trigger CI on the release PR ──
+      # ── Mark CI Pass satisfied on the release PR ──
       # release-please opened / updated the PR using the
       # synthorg-release-bot App installation token. GitHub's
       # anti-recursion rule blocks `pull_request` workflows for
       # events created by the workflow's own installation token,
-      # so ci.yml never auto-fires on release PRs and the
-      # required "CI Pass" check would wait forever.
+      # so ci.yml never auto-fires on release PRs.
       #
-      # workflow_dispatch is the documented exception to that
-      # rule (it can be invoked from GITHUB_TOKEN), and the
-      # resulting check_run posts against the dispatched ref's
-      # HEAD SHA -- which matches the PR's head SHA -- so the
-      # "CI Pass" gate resolves on the PR. Runs after the BSL
-      # Change Date update (which itself bumps the head SHA via
-      # the Contents API) so CI runs against the final SHA.
-      - name: Trigger CI on release PR
+      # The previous fix (#1593) used `gh workflow run ci.yml
+      # --ref <release-branch>` to nudge ci.yml via
+      # workflow_dispatch -- but workflow_dispatch runs produce a
+      # check_suite with empty `pull_requests`, so the resulting
+      # `CI Pass` check_run does NOT appear in the PR's status
+      # rollup. Branch protection still saw the check on the SHA,
+      # but the merge UI showed "CI Pass -- Expected, waiting"
+      # forever (visible to a human viewer; not a real check
+      # failure but indistinguishable from one in the UI).
+      #
+      # Release PRs touch only CHANGELOG.md, version.txt, and the
+      # manifest -- there is no source code that ci.yml could
+      # meaningfully test. We therefore post the `CI Pass`
+      # *commit status* (not check_run) directly on the PR head
+      # SHA. Statuses are in the rollup unconditionally, satisfy
+      # branch protection's required-check evaluation, and don't
+      # require any workflow run at all. ci.yml's
+      # `is_release_please` skip stays in place as defense-in-
+      # depth in case release-please's identity ever changes.
+      #
+      # Resolves the head SHA AT THIS POINT (after the BSL Change
+      # Date Contents-API commit) so the status posts on the
+      # final SHA the PR will be merged at, not the
+      # release-please-action output captured before that commit.
+      - name: Post CI Pass status on release PR
         if: steps.release.outputs.pr != ''
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: release-please--branches--main--components--synthorg
         run: |
           set -euo pipefail
-          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
-          echo "Dispatched ci.yml against $BRANCH"
+          HEAD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" --jq '.object.sha')
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f "state=success" \
+            -f "context=CI Pass" \
+            -f "description=release-please PR -- CI auto-passes (no source changes to test)"
+          echo "Posted CI Pass=success on $HEAD_SHA"
