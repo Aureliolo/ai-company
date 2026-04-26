@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.4](https://github.com/Aureliolo/synthorg/compare/v0.7.3...v0.7.4) (2026-04-26)
+
+
+### Bug Fixes
+
+* **ci:** dedicated apko-bot App + direct CI Pass status post ([#1615](https://github.com/Aureliolo/synthorg/issues/1615)) ([694f642](https://github.com/Aureliolo/synthorg/commit/694f642fa85bb0e623c856b8874e7127a66a8c91))
+
+
+### Refactoring
+
+* **ci:** apko ARG_MAX fix + remove post-release canaries + tracking-issue lifecycle ([#1619](https://github.com/Aureliolo/synthorg/issues/1619)) ([6eb2153](https://github.com/Aureliolo/synthorg/commit/6eb21535787fd9ca4a1d083f04976c127db23453))
+
+
+### CI/CD
+
+* update apko lockfiles ([#1622](https://github.com/Aureliolo/synthorg/issues/1622)) ([049daa8](https://github.com/Aureliolo/synthorg/commit/049daa8029c9410a2c8022028029f6c4d35a78d0))
+
 ## [0.7.3](https://github.com/Aureliolo/synthorg/compare/v0.7.2...v0.7.3) (2026-04-25)
 
 
