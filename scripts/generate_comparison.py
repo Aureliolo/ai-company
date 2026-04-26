@@ -15,9 +15,12 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_FILE = REPO_ROOT / "data" / "competitors.yaml"
@@ -111,7 +114,8 @@ def _load_data() -> dict[str, Any]:
     _validate_competitors(data["competitors"])
     _validate_dimension_keys(data["dimensions"])
 
-    return data
+    typed: dict[str, Any] = data
+    return typed
 
 
 def _resolve_last_updated(declared: str) -> str:
@@ -257,7 +261,7 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
 
 def _competitor_row(
     comp: dict[str, Any],
-    group_keys: list[str],
+    group_keys: Sequence[str],
     categories: list[dict[str, str]],
 ) -> str:
     """Build a single Markdown table row for a competitor."""

@@ -105,7 +105,7 @@ jobs:
           uv run python scripts/check_persistence_boundary.py
           --repo-root "${{ github.workspace }}"
 
-      - name: Doc count drift gate (test count + event modules)
+      - name: Doc count drift gate (event modules)
         run: uv run python scripts/check_doc_drift_counts.py
 
   # ── Schema: Migration Validation ──

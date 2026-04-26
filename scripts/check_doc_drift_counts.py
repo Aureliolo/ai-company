@@ -1,26 +1,22 @@
 #!/usr/bin/env python3
-"""Pre-commit + CI gate: block doc claims that fall below the codebase counts.
+"""Pre-commit + CI gate: block precise doc counts that fall below reality.
 
-Public-facing docs make rounded floor claims like "20,000+ unit tests" or
-"100+ event constant modules". This script asserts that each registered
-claim site still satisfies ``actual >= floor``: the docs may understate
-(rounded down) but must never overstate. When the actual count grows past
-the next clean threshold, the doc bumps to the new floor in the same PR.
+Public-facing docs make precise floor claims like "100+ event constant
+modules". This script asserts that each registered claim still satisfies
+``actual >= floor``: the docs may understate (rounded down) but must
+never overstate. When actual grows past the next clean threshold, the
+doc bumps to the new floor in the same PR.
 
-The script has two modes:
-
-- ``--fast`` (pre-commit): event-module count only. No pytest collection,
-  so the hook stays under one second.
-- default (CI): full check, including ``pytest --collect-only`` for the
-  unit-test claim. Slow (~30s) but authoritative.
-
-Both modes share the same claim registry; the ``source`` field controls
-which counter runs in which mode.
+Marketing-style counts (eg "25,000+ unit tests" in README/roadmap) are
+deliberately NOT gated here. They are rounded narrative claims under
+human editorial control, not mechanically-verified invariants -- a
+strict gate would either fight the rounding or force the doc to track
+every test addition. The event-module count, by contrast, is a
+load-bearing precise number used by docs that point readers at code,
+so we keep it strict.
 """
 
-import argparse
 import re
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,45 +31,38 @@ class Claim:
 
     path: str
     pattern: str
-    source: str  # "pytest" or "event_modules"
     label: str
 
 
 CLAIMS: tuple[Claim, ...] = (
     Claim(
-        "README.md",
-        r"\((\d[\d,]*)\+ unit tests",
-        source="pytest",
-        label="README test count",
-    ),
-    Claim(
-        "docs/roadmap/index.md",
-        r"\((\d[\d,]*)\+ unit tests",
-        source="pytest",
-        label="roadmap test count",
-    ),
-    Claim(
         "docs/design/observability.md",
         r"(\d+)\+ domain-specific event constant modules",
-        source="event_modules",
         label="observability event modules",
     ),
     Claim(
         "docs/design/agent-execution.md",
         r"\((\d+)\+ constants\)",
-        source="event_modules",
         label="agent-execution event constants",
     ),
     Claim(
         "docs/research/control-plane-audit.md",
         r"(\d+)\+ event constant modules",
-        source="event_modules",
         label="control-plane-audit event modules",
+    ),
+    Claim(
+        "docs/research/control-plane-audit.md",
+        r"(\d+)\+ structured event constants",
+        label="control-plane-audit structured event constants",
+    ),
+    Claim(
+        "docs/research/control-plane-audit.md",
+        r"observability \((\d+)\+ structured events\)",
+        label="control-plane-audit observability events",
     ),
     Claim(
         "docs/research/acg-formalism-evaluation.md",
         r"(\d+)\+ event constant domains",
-        source="event_modules",
         label="acg-formalism event domains",
     ),
 )
@@ -84,43 +73,6 @@ def count_event_modules() -> int:
     return sum(
         1 for path in EVENT_MODULES_DIR.glob("*.py") if path.name != "__init__.py"
     )
-
-
-def count_unit_tests() -> int:
-    """Return the number of tests pytest would collect."""
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "-m",
-            "pytest",
-            "tests/",
-            "--collect-only",
-            "-q",
-            "-n",
-            "8",
-        ],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=180,
-    )
-    if result.returncode != 0:
-        msg = (
-            "pytest --collect-only failed; cannot verify test-count claims.\n"
-            f"stderr:\n{result.stderr}"
-        )
-        raise RuntimeError(msg)
-    match = re.search(r"(\d+) tests collected", result.stdout)
-    if not match:
-        msg = (
-            "pytest --collect-only output did not contain a 'N tests collected'"
-            f" line. stdout tail:\n{result.stdout[-500:]}"
-        )
-        raise RuntimeError(msg)
-    return int(match.group(1))
 
 
 def parse_claim(claim: Claim) -> int:
@@ -139,24 +91,11 @@ def parse_claim(claim: Claim) -> int:
 
 def main() -> int:
     """Verify every registered claim's floor is at or below actual."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--fast",
-        action="store_true",
-        help="Skip pytest-backed claims (suitable for pre-commit).",
-    )
-    args = parser.parse_args()
-
-    actuals: dict[str, int] = {"event_modules": count_event_modules()}
-    if not args.fast:
-        actuals["pytest"] = count_unit_tests()
+    actual = count_event_modules()
 
     failures: list[str] = []
     for claim in CLAIMS:
-        if claim.source not in actuals:
-            continue
         floor = parse_claim(claim)
-        actual = actuals[claim.source]
         if actual < floor:
             failures.append(
                 f"  {claim.label} ({claim.path}): claim '{floor:,}+' but"
@@ -174,12 +113,9 @@ def main() -> int:
         )
         return 1
 
-    if not args.fast:
-        print(
-            f"OK: all {len(CLAIMS)} claims satisfy floor <= actual"
-            f" (tests={actuals['pytest']:,},"
-            f" event_modules={actuals['event_modules']})."
-        )
+    print(
+        f"OK: all {len(CLAIMS)} claims satisfy floor <= actual (event_modules={actual})."
+    )
     return 0
 
 

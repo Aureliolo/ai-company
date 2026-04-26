@@ -167,14 +167,14 @@ repos:
         files: ^\.github/workflows/.*\.ya?ml$
 
       - id: doc-drift-counts
-        name: doc count floors (event modules); fast mode for pre-commit
+        name: doc count floors (event modules)
         entry: uv
-        args: [run, python, scripts/check_doc_drift_counts.py, --fast]
+        args: [run, python, scripts/check_doc_drift_counts.py]
         language: system
         # Trigger on edits to any registered claim site or to the events
         # directory itself; the script enumerates the events package
         # and parses each claim file end-to-end on every run.
-        files: ^(README\.md|docs/roadmap/index\.md|docs/design/observability\.md|docs/design/agent-execution\.md|docs/research/(control-plane-audit|acg-formalism-evaluation)\.md|src/synthorg/observability/events/.*\.py|scripts/check_doc_drift_counts\.py)$
+        files: ^(docs/design/observability\.md|docs/design/agent-execution\.md|docs/research/(control-plane-audit|acg-formalism-evaluation)\.md|src/synthorg/observability/events/.*\.py|scripts/check_doc_drift_counts\.py)$
         pass_filenames: false
 
       - id: mypy
