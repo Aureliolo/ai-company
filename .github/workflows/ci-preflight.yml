@@ -64,72 +64,12 @@ jobs:
           steps.check.outputs.gaps-found == 'false'
           && (github.event_name != 'pull_request'
               || github.event.pull_request.head.repo.full_name == github.repository)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PREFLIGHT_TITLE: "CI setup incomplete -- please configure the following"
-          COMMIT_SHA: ${{ github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Search by title alone, same dedup key as post-tracking-issue.
-          # Use jq --arg so titles with shell metacharacters are safe.
-          ISSUE_NUMBER=$(gh issue list --state open \
-            --search "in:title \"$PREFLIGHT_TITLE\"" --json number,title \
-            | jq -r --arg title "$PREFLIGHT_TITLE" \
-              '[.[] | select(.title == $title)] | .[0].number // empty')
-
-          if [ -n "$ISSUE_NUMBER" ]; then
-            gh issue comment "$ISSUE_NUMBER" \
-              --body "Preflight passed at \`$COMMIT_SHA\`. Closing -- this issue will reopen automatically if a check regresses."
-            gh issue close "$ISSUE_NUMBER"
-            echo "Closed tracking issue #$ISSUE_NUMBER"
-
-            # Unpin so the closed-and-resolved issue does not stay
-            # in the repo's pinned-issues row alongside genuinely
-            # active tracking issues. The dedup-by-title path in
-            # post-tracking-issue/action.yml will reopen + re-pin
-            # this same issue (rather than create a duplicate) if
-            # the check regresses.
-            #
-            # GitHub never shipped a REST endpoint for unpinning --
-            # the supported path is the GraphQL `unpinIssue`
-            # mutation. Best-effort: a missing scope or already-
-            # unpinned state degrades to a warning rather than
-            # failing the whole "Close tracking issue" step.
-            OWNER="${GH_REPO%%/*}"
-            REPO_NAME="${GH_REPO##*/}"
-            ISSUE_NODE_ID=$(gh api graphql \
-              -f query='query($owner: String!, $repo: String!, $number: Int!) {
-                repository(owner: $owner, name: $repo) {
-                  issue(number: $number) { id }
-                }
-              }' \
-              -f owner="$OWNER" \
-              -f repo="$REPO_NAME" \
-              -F number="$ISSUE_NUMBER" \
-              --jq '.data.repository.issue.id' 2>/dev/null) || ISSUE_NODE_ID=""
-
-            if [ -z "$ISSUE_NODE_ID" ]; then
-              echo "::warning::could not resolve issue #$ISSUE_NUMBER node ID for unpinning"
-            else
-              UNPIN_RESPONSE=$(gh api graphql \
-                -f query='mutation($id: ID!) {
-                  unpinIssue(input: {issueId: $id}) {
-                    issue { number }
-                  }
-                }' \
-                -f id="$ISSUE_NODE_ID" 2>&1) || true
-              if printf '%s' "$UNPIN_RESPONSE" | grep -q '"errors"'; then
-                UNPIN_ERROR=$(printf '%s' "$UNPIN_RESPONSE" | jq -r '.errors[0].message // "unknown error"' 2>/dev/null || echo "unknown error")
-                echo "::warning::could not unpin tracking issue #$ISSUE_NUMBER: $UNPIN_ERROR"
-              elif printf '%s' "$UNPIN_RESPONSE" | grep -q '"unpinIssue"'; then
-                echo "Unpinned tracking issue #$ISSUE_NUMBER"
-              fi
-            fi
-          else
-            echo "No open preflight tracking issue to close."
-          fi
+        uses: ./.github/actions/post-tracking-issue
+        with:
+          mode: close
+          title: "CI setup incomplete -- please configure the following"
+          body: "Preflight passed at `${{ github.sha }}`. Closing -- this issue will reopen automatically if a check regresses."
+          gh-token: ${{ github.token }}
 
       - name: Fail on push to main when gaps remain
         if: >-

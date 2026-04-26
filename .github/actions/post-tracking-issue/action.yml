@@ -1,28 +1,51 @@
 name: 'Post Tracking Issue'
 description: |
-  Open or update a tracking GitHub Issue used by `report-failure` jobs
-  across CI workflows. Centralises the issue-sink shell flow so future
-  fixes (e.g., title-only search, label-less fallback, pinning policy)
+  Open / update / close a tracking GitHub Issue used by
+  `report-failure` (and `report-success`) jobs across CI workflows.
+  Centralises the issue-sink shell flow so future fixes (title-only
+  search, label-less fallback, pinning policy, dedup-across-states)
   only need to land in one place.
 
-  Behaviour:
-    1. Search open issues by title alone (no label filter) so issues
-       created via the label-less fallback below remain discoverable
-       and the next failure updates them instead of opening a
-       duplicate tracker.
-    2. If a match is found -> edit the body in place. The body is
-       authoritative state, so an edit avoids accumulating stale
+  Behaviour (mode: 'open', the default):
+    1. Search open + closed issues by title alone (no label filter)
+       so issues created via the label-less fallback below remain
+       discoverable AND a tracker that auto-closed on a prior
+       success can be reopened by the next regression instead of
+       spawning a duplicate. When duplicates exist (e.g. legacy
+       open-only lookups created them historically), prefer the
+       most recently-updated open issue, falling back to the
+       most recently-updated closed issue.
+    2. If a closed match is found -> reopen it with a regression
+       comment, then edit the body. The pin block below re-pins so a
+       regression resurfaces identically to the original report.
+    3. If an open match is found -> edit the body in place. The body
+       is authoritative state, so an edit avoids accumulating stale
        snapshots in the comment chain.
-    3. Otherwise -> create a new issue with the supplied labels. If the
-       labelled create fails (e.g., a referenced label has been deleted
-       from the repo), retry without labels and emit a workflow
-       warning so the missing-label condition surfaces in the run UI.
-    4. If `pin: true` (default), best-effort pin the issue via the
+    4. Otherwise -> create a new issue with the supplied labels. If
+       the labelled create fails (e.g., a referenced label has been
+       deleted from the repo), retry without labels and emit a
+       workflow warning so the missing-label condition surfaces in
+       the run UI.
+    5. If `pin: true` (default), best-effort pin the issue via the
        GraphQL `pinIssue` mutation (GitHub never shipped a REST
        endpoint for this). Pin failures (3-issue cap, race, "already
        pinned", permissions) emit a warning with the actual GraphQL
        error message but do NOT fail the action -- the create / edit
        above is the primary signal.
+
+  Behaviour (mode: 'close'):
+    1. Search open + closed issues by title -- same dedup key as
+       mode: 'open' so the consumer does not have to track issue
+       numbers across runs.
+    2. If a matching open issue is found -> comment with the
+       supplied body (or a default `success` message if body is
+       empty), close it, and unpin via the GraphQL `unpinIssue`
+       mutation. Closed-but-still-pinned trackers are unpinned even
+       though they are already closed -- handles drift from earlier
+       runs that closed without unpinning.
+    3. If no matching issue is found -> no-op. A consumer that
+       calls 'close' on every successful run is the expected pattern;
+       the no-tracker case is normal, not an error.
 
   Caller contract:
     - The job invoking this action must declare `permissions:
@@ -33,25 +56,52 @@ description: |
       token is needed.
 
 inputs:
+  mode:
+    description: |
+      'open' (default) -- create / update / reopen the tracker.
+      'close' -- find the tracker (if any), comment, close, and
+      unpin. No-op if no tracker exists.
+    required: false
+    default: 'open'
   title:
     description: |
       Issue title; used as the dedup key (in:title exact match). Pick
-      a stable, descriptive string -- the action looks up open issues
-      by this exact title, so changing it forks the tracker.
+      a stable, descriptive string -- the action looks up issues by
+      this exact title across all states, so changing it forks the
+      tracker. Titles containing double quotes are escaped before
+      being passed to gh issue list --search; the jq filter then
+      narrows the search results to an exact-title match, so a
+      title with metacharacters cannot accidentally match a
+      different issue or break the search.
     required: true
   labels:
     description: |
       Comma-separated labels to apply on issue creation, e.g.
       `automation:ci-health,type:ci,prio:medium`. The lookup ignores
-      labels so dedup works even if a label gets deleted.
-    required: true
+      labels so dedup works even if a label gets deleted. Required
+      for mode: 'open'; ignored for mode: 'close'.
+    required: false
+    default: ''
   body:
-    description: 'Markdown body. On a fresh issue this is the initial body. On an existing match it overwrites the body in place.'
-    required: true
+    description: |
+      Markdown body. mode: 'open' -- on a fresh issue this is the
+      initial body, on an existing match it overwrites the body in
+      place. mode: 'close' -- the body is posted as a comment before
+      closing; if empty, a generic "Resolved at <SHA>" comment is
+      used instead.
+    required: false
+    default: ''
   pin:
-    description: 'Pin the issue after create / edit. Best-effort -- failures degrade to a warning. default: true'
+    description: 'Pin the issue after create / edit. Best-effort -- failures degrade to a warning. Ignored for mode: close. default: true'
     required: false
     default: 'true'
+  close-comment-sha:
+    description: |
+      Optional SHA appended to the default close comment when
+      `body` is empty in mode: 'close'. Lets consumers signal which
+      commit's run resolved the tracker. Ignored if `body` is set.
+    required: false
+    default: ''
   gh-token:
     description: >-
       GitHub token with `issues: write` scope on the workflow's own
@@ -74,7 +124,7 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Post / update tracking issue
+    - name: Post / update / close tracking issue
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.gh-token }}
@@ -84,26 +134,141 @@ runs:
         # repository`. Set `GH_REPO` explicitly so the composite
         # action works whether or not the caller checked out.
         GH_REPO: ${{ github.repository }}
+        MODE: ${{ inputs.mode }}
         TITLE: ${{ inputs.title }}
         LABELS: ${{ inputs.labels }}
         BODY: ${{ inputs.body }}
         PIN: ${{ inputs.pin }}
+        CLOSE_COMMENT_SHA: ${{ inputs.close-comment-sha }}
       run: |
         set -euo pipefail
-        # Search by title alone, ALL states (open + closed). A label
-        # filter would miss any issue created via the label-less
-        # fallback below; a state=open filter would miss issues that
-        # auto-closed when the underlying check last passed and would
-        # cause the next failure to open a duplicate tracker
-        # instead of REOPENING the original one. Bind $TITLE via
-        # `jq --arg` (passing through a standalone jq pipe; gh's own
-        # --jq flag does not accept --arg) so titles containing
-        # single quotes, double quotes, or shell metacharacters
-        # cannot break the select filter.
-        ISSUE_INFO=$(gh issue list --state all \
-          --search "in:title \"$TITLE\"" --json number,title,state \
-          | jq -r --arg title "$TITLE" \
-            '[.[] | select(.title == $title)] | .[0] | "\(.number // "")|\(.state // "")"')
+        OWNER="${GITHUB_REPOSITORY%%/*}"
+        REPO_NAME="${GITHUB_REPOSITORY##*/}"
+
+        # ── Helpers ─────────────────────────────────────────────────
+        # Resolve an issue's GraphQL node ID for pinIssue / unpinIssue
+        # mutations. Empty string on failure.
+        resolve_node_id() {
+          local n="$1"
+          gh api graphql \
+            -f query='query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                issue(number: $number) { id }
+              }
+            }' \
+            -f owner="$OWNER" \
+            -f repo="$REPO_NAME" \
+            -F number="$n" \
+            --jq '.data.repository.issue.id' 2>/dev/null || true
+        }
+
+        # Inspect the response from a pinIssue / unpinIssue GraphQL
+        # mutation and emit the appropriate workflow log line.
+        # Three-way: GraphQL `errors` array (business-rule failure;
+        # extract first message) | success marker (`pinIssue` /
+        # `unpinIssue` token in body) | unknown response (auth /
+        # network / non-JSON; trim and surface raw).
+        report_pin_response() {
+          local op="$1"     # 'pin' or 'unpin'
+          local n="$2"
+          local resp="$3"
+          local marker
+          if [ "$op" = "pin" ]; then marker='"pinIssue"'; else marker='"unpinIssue"'; fi
+          if printf '%s' "$resp" | grep -q '"errors"'; then
+            local err
+            err=$(printf '%s' "$resp" | jq -r '.errors[0].message // "unknown error"' 2>/dev/null || echo "unknown error")
+            echo "::warning::could not ${op} tracking issue #$n: $err"
+          elif printf '%s' "$resp" | grep -q "$marker"; then
+            echo "$( [ "$op" = "pin" ] && echo Pinned || echo Unpinned ) tracking issue #$n"
+          else
+            local err
+            err=$(printf '%s' "$resp" | head -c 200)
+            echo "::warning::could not ${op} tracking issue #$n: $err"
+          fi
+        }
+
+        # Look up an existing tracker by title across all states.
+        # Outputs "<number>|<state>" (both possibly empty) on stdout.
+        # Selection rule: prefer the most-recently-updated open issue,
+        # then fall back to the most-recently-updated closed issue.
+        # Non-deterministic `.[0]` would let a stale duplicate from
+        # the legacy open-only lookup era win.
+        #
+        # The search query escapes embedded double quotes in $TITLE
+        # so a title containing `"` (or any other Lucene-ish
+        # metacharacter) cannot break the gh issue list --search
+        # parser. The jq filter then narrows to an exact-title match
+        # so the search remains coarse-but-safe.
+        lookup_tracker() {
+          local escaped="${TITLE//\"/\\\"}"
+          gh issue list --state all \
+            --search "in:title \"$escaped\"" \
+            --json number,title,state,updatedAt \
+            | jq -r --arg title "$TITLE" '
+                [.[] | select(.title == $title)] as $matches
+                | (
+                    ($matches | map(select(.state == "OPEN" or .state == "open")) | sort_by(.updatedAt) | last)
+                    // ($matches | sort_by(.updatedAt) | last)
+                    // {}
+                  )
+                | "\(.number // "")|\(.state // "")"
+              '
+        }
+
+        # ── mode: close ─────────────────────────────────────────────
+        # Find the tracker (if any) and close + unpin. No-op when no
+        # tracker exists -- consumers that call 'close' on every
+        # successful run rely on this idempotency.
+        if [ "$MODE" = "close" ]; then
+          ISSUE_INFO=$(lookup_tracker)
+          ISSUE_NUMBER="${ISSUE_INFO%%|*}"
+          ISSUE_STATE="${ISSUE_INFO##*|}"
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "No tracking issue with title \"$TITLE\" -- nothing to close."
+            exit 0
+          fi
+
+          # Default close comment when caller did not supply one.
+          if [ -z "$BODY" ]; then
+            if [ -n "$CLOSE_COMMENT_SHA" ]; then
+              CLOSE_BODY="Resolved at \`$CLOSE_COMMENT_SHA\`. Closing -- this issue will reopen automatically if a check regresses."
+            else
+              CLOSE_BODY="Resolved. Closing -- this issue will reopen automatically if a check regresses."
+            fi
+          else
+            CLOSE_BODY="$BODY"
+          fi
+
+          # Comment + close only if the issue is still open. An
+          # already-closed match still gets unpinned below (handles
+          # drift from earlier runs that closed without unpinning).
+          if [ "$ISSUE_STATE" = "OPEN" ] || [ "$ISSUE_STATE" = "open" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body "$CLOSE_BODY"
+            gh issue close "$ISSUE_NUMBER"
+            echo "Closed tracking issue #$ISSUE_NUMBER"
+          else
+            echo "Tracking issue #$ISSUE_NUMBER already closed -- ensuring unpinned"
+          fi
+
+          ISSUE_NODE_ID=$(resolve_node_id "$ISSUE_NUMBER")
+          if [ -z "$ISSUE_NODE_ID" ]; then
+            echo "::warning::could not resolve issue #$ISSUE_NUMBER node ID for unpinning"
+          else
+            UNPIN_RESPONSE=$(gh api graphql \
+              -f query='mutation($id: ID!) {
+                unpinIssue(input: {issueId: $id}) {
+                  issue { number }
+                }
+              }' \
+              -f id="$ISSUE_NODE_ID" 2>&1) || true
+            report_pin_response unpin "$ISSUE_NUMBER" "$UNPIN_RESPONSE"
+          fi
+          exit 0
+        fi
+
+        # ── mode: open (default) ────────────────────────────────────
+        ISSUE_INFO=$(lookup_tracker)
         ISSUE_NUMBER="${ISSUE_INFO%%|*}"
         ISSUE_STATE="${ISSUE_INFO##*|}"
 
@@ -154,23 +319,12 @@ runs:
           # `PUT /repos/.../issues/.../pin` URL the prior version used
           # always returned 404, silently swallowed by `2>/dev/null`.
           # The supported path is the GraphQL `pinIssue` mutation,
-          # which takes the issue's node ID. Resolve the node ID via
-          # GraphQL (the workflow's GITHUB_TOKEN has the necessary
-          # repository read scope), then fire the mutation and surface
-          # the actual error message on failure instead of guessing.
-          OWNER="${GITHUB_REPOSITORY%%/*}"
-          REPO_NAME="${GITHUB_REPOSITORY##*/}"
-          ISSUE_NODE_ID=$(gh api graphql \
-            -f query='query($owner: String!, $repo: String!, $number: Int!) {
-              repository(owner: $owner, name: $repo) {
-                issue(number: $number) { id }
-              }
-            }' \
-            -f owner="$OWNER" \
-            -f repo="$REPO_NAME" \
-            -F number="$ISSUE_NUMBER" \
-            --jq '.data.repository.issue.id' 2>/dev/null) || ISSUE_NODE_ID=""
-
+          # which takes the issue's node ID. resolve_node_id and
+          # report_pin_response (defined above) are shared with the
+          # mode: 'close' unpin path so both pin and unpin emit
+          # logs in the same three-way shape: GraphQL errors |
+          # success marker | unknown response.
+          ISSUE_NODE_ID=$(resolve_node_id "$ISSUE_NUMBER")
           if [ -z "$ISSUE_NODE_ID" ]; then
             echo "::warning::could not resolve issue #$ISSUE_NUMBER node ID for pinning"
           else
@@ -181,21 +335,6 @@ runs:
                 }
               }' \
               -f id="$ISSUE_NODE_ID" 2>&1) || true
-
-            if printf '%s' "$PIN_RESPONSE" | grep -q '"errors"'; then
-              # GraphQL returns 200 with an `errors` array on
-              # business-rule failures (3-pin quota, race conditions,
-              # permission denied). Extract the first error message.
-              PIN_ERROR=$(printf '%s' "$PIN_RESPONSE" | jq -r '.errors[0].message // "unknown error"' 2>/dev/null || echo "unknown error")
-              echo "::warning::could not pin tracking issue #$ISSUE_NUMBER: $PIN_ERROR"
-            elif printf '%s' "$PIN_RESPONSE" | grep -q '"pinIssue"'; then
-              echo "Pinned tracking issue #$ISSUE_NUMBER"
-            else
-              # Network / auth failure -- gh api itself returned
-              # something that is not a recognisable GraphQL response.
-              # Trim to the first 200 chars to keep workflow logs clean.
-              PIN_ERROR=$(printf '%s' "$PIN_RESPONSE" | head -c 200)
-              echo "::warning::could not pin tracking issue #$ISSUE_NUMBER: $PIN_ERROR"
-            fi
+            report_pin_response pin "$ISSUE_NUMBER" "$PIN_RESPONSE"
           fi
         fi

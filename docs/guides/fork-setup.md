@@ -39,7 +39,7 @@ Workflow consumers of each environment fall into two camps: required for any rel
 
 ## 3. Create the release-bot GitHub App
 
-Stable, dev, rollover, graduate, and signing workflows mint installation tokens from a GitHub App with the right repository permissions. Without it, every commit those workflows produce on `main` would be unsigned and rejected by branch protection. The App is the single piece of state that makes the release pipeline able to write to a protected `main`.
+The release pipeline (`release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, and `finalize-release.yml`) mints installation tokens from a GitHub App with the right repository permissions. Without it, every commit those workflows produce on `main` would be unsigned and rejected by branch protection. The App is the single piece of state that makes the release pipeline able to write to a protected `main`. The same App is also used by the weekly `apko-lock.yml` cron when it opens its lockfile-update PR (its credentials are duplicated into the `apko-lock` env under different secret names so each env carries its own copy).
 
 Steps:
 
