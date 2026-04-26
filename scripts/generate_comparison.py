@@ -10,16 +10,22 @@ Run ``uv run python scripts/generate_comparison.py`` before
 ``uv run zensical build``.
 """
 
+import datetime as dt
+import subprocess
 import sys
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_FILE = REPO_ROOT / "data" / "competitors.yaml"
 OUTPUT_FILE = REPO_ROOT / "docs" / "reference" / "comparison.md"
+AUTO_SENTINEL = "auto"
 
 # Support value display symbols
 SUPPORT_ICONS = {
@@ -103,10 +109,70 @@ def _load_data() -> dict[str, Any]:
         msg = f"Missing meta.last_updated in {DATA_FILE}"
         raise ValueError(msg)
 
-    _validate_competitors(data["competitors"])
-    _validate_dimension_keys(data["dimensions"])
+    new_meta = {
+        **data["meta"],
+        "last_updated": _resolve_last_updated(data["meta"]["last_updated"]),
+    }
+    new_data: dict[str, Any] = {**data, "meta": new_meta}
 
-    return data
+    _validate_competitors(new_data["competitors"])
+    _validate_dimension_keys(new_data["dimensions"])
+
+    return new_data
+
+
+def _resolve_last_updated(declared: str) -> str:
+    """Return the `last_updated` value to render in the generated page.
+
+    When the YAML field is the ``auto`` sentinel, derive an ISO date from
+    the most recent commit that touched ``data/competitors.yaml`` so the
+    rendered timestamp tracks the source data automatically.  Falls back
+    to today's UTC date if git history is unavailable (shallow clone or
+    non-git environment).  Any other declared value passes through
+    unchanged so existing pinned dates keep working.
+    """
+    if declared != AUTO_SENTINEL:
+        return declared
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "log",
+                "-1",
+                "--format=%cs",
+                "--",
+                str(DATA_FILE.relative_to(REPO_ROOT)),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        )
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ) as exc:
+        # Visible warning so a misconfigured build environment (no git on
+        # PATH, shallow clone with no history for this file, slow FS) does
+        # not silently render today's date and mask the real problem.
+        print(
+            f"WARNING: could not derive comparison-page last_updated from git"
+            f" ({type(exc).__name__}); using today's UTC date.",
+            file=sys.stderr,
+        )
+        return dt.datetime.now(dt.UTC).date().isoformat()
+    derived = result.stdout.strip()
+    if not derived:
+        print(
+            "WARNING: git returned empty stdout for last_updated; using"
+            f" today's UTC date. raw stdout={result.stdout!r}"
+            f" returncode={result.returncode}",
+            file=sys.stderr,
+        )
+        return dt.datetime.now(dt.UTC).date().isoformat()
+    return derived
 
 
 def _validate_competitors(competitors: list[Any]) -> None:
@@ -218,7 +284,7 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
 
 def _competitor_row(
     comp: dict[str, Any],
-    group_keys: list[str],
+    group_keys: Sequence[str],
     categories: list[dict[str, str]],
 ) -> str:
     """Build a single Markdown table row for a competitor."""

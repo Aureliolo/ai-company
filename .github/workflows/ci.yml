@@ -25,6 +25,7 @@ jobs:
       python: ${{ steps.filter.outputs.python }}
       dashboard: ${{ steps.filter.outputs.dashboard }}
       docker: ${{ steps.filter.outputs.docker }}
+      doc_claims: ${{ steps.filter.outputs.doc_claims }}
       # release-please PRs only touch CHANGELOG.md, version.txt, and
       # the manifest. There is no source code to test, so every heavy
       # job below short-circuits on this flag and ci-pass posts success
@@ -75,6 +76,16 @@ jobs:
               - 'docker/**'
               - '.dockerignore'
               - '.github/workflows/ci.yml'
+            # Files whose claims are guarded by the doc-drift gate. Docs-only
+            # PRs that touch one of these (and nothing in `python:`) still need
+            # the gate to run, otherwise a stale "100+" claim could ship.
+            doc_claims:
+              - 'docs/design/observability.md'
+              - 'docs/design/agent-execution.md'
+              - 'docs/research/control-plane-audit.md'
+              - 'docs/research/acg-formalism-evaluation.md'
+              - 'src/synthorg/observability/events/**'
+              - 'scripts/check_doc_drift_counts.py'
 
   # ── Python: Lint ──
   lint:
@@ -104,6 +115,26 @@ jobs:
         run: >-
           uv run python scripts/check_persistence_boundary.py
           --repo-root "${{ github.workspace }}"
+
+  # ── Docs: Doc-claim drift gate ──
+  # Runs on python OR doc_claims so a docs-only PR that bumps a guarded
+  # claim (eg "100+ event constant modules") still triggers the gate.
+  doc-drift:
+    name: Doc Drift Gate
+    needs: changes
+    if: (needs.changes.outputs.python == 'true' || needs.changes.outputs.doc_claims == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Doc count drift gate (event modules)
+        run: uv run python scripts/check_doc_drift_counts.py
 
   # ── Schema: Migration Validation ──
   schema-validate:
@@ -677,7 +708,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, schema-validate, type-check, openapi-liveness, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
+    needs: [changes, lint, doc-drift, schema-validate, type-check, openapi-liveness, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -689,6 +720,7 @@ jobs:
           RESULTS: >-
             ${{ needs.changes.result }}
             ${{ needs.lint.result }}
+            ${{ needs.doc-drift.result }}
             ${{ needs.schema-validate.result }}
             ${{ needs.type-check.result }}
             ${{ needs.openapi-liveness.result }}

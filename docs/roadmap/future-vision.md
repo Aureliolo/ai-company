@@ -6,9 +6,7 @@ The longer-term direction for SynthOrg. Items here are either **planned** (sched
 
 | Feature | Status |
 |---------|--------|
-| PostgreSQL persistence backend | Planned |
-| Distributed message bus (NATS JetStream) | Planned |
-| Distributed task queue | Planned |
+| PostgreSQL performance tuning + TimescaleDB hypertable support | Planned |
 | Multi-project support with project-scoped teams and isolated budgets | Planned |
 | Dynamic company scaling across clusters | Planned |
 | Plugin system | Planned |
@@ -43,7 +41,7 @@ flowchart LR
     P1 --> P2 --> P3 --> P4
 
     P1:::shipped
-    P2:::planned
+    P2:::shipped
     P3:::planned
     P4:::backlog
 

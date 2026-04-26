@@ -23,7 +23,11 @@
 #   "partial" - self-hosting available but with reduced features vs cloud
 
 meta:
-  last_updated: "2026-04-21"
+  # last_updated is auto-derived from this file's most recent git commit
+  # by scripts/generate_comparison.py at build time. The literal value
+  # below is a fallback for shallow clones or non-git environments;
+  # editing it has no effect on a normal CI deploy.
+  last_updated: "auto"
 
 dimensions:
   - key: org_structure

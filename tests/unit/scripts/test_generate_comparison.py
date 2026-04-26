@@ -1,11 +1,13 @@
 """Tests for scripts/generate_comparison.py."""
 
+import datetime as dt
 import importlib.util
+import subprocess
 from collections.abc import Generator
 from pathlib import Path
 from types import ModuleType
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -174,6 +176,89 @@ class TestLoadData:
             pytest.raises(TypeError, match="not a mapping"),
         ):
             gen._load_data()
+
+
+_FROZEN_DATE = "2026-04-26"
+
+
+def _patch_today(date_str: str = _FROZEN_DATE) -> Any:
+    """Patch dt.datetime.now to a fixed UTC date so the fallback is deterministic.
+
+    Eliminates a race condition where a test that calls `dt.datetime.now`
+    in the assertion can disagree with the function's own call if they
+    straddle UTC midnight.
+    """
+    frozen = MagicMock()
+    frozen.date.return_value.isoformat.return_value = date_str
+    mock_dt = MagicMock()
+    mock_dt.datetime.now.return_value = frozen
+    mock_dt.UTC = dt.UTC
+    return patch.object(gen, "dt", mock_dt)
+
+
+@pytest.mark.unit
+class TestResolveLastUpdated:
+    """Tests for _resolve_last_updated git-derived timestamp logic."""
+
+    def test_pinned_date_passes_through(self) -> None:
+        assert gen._resolve_last_updated("2026-04-02") == "2026-04-02"
+
+    def test_auto_uses_git_commit_date(self) -> None:
+        fake = MagicMock(returncode=0, stdout="2026-04-22\n", stderr="")
+        with patch.object(gen.subprocess, "run", return_value=fake):
+            assert gen._resolve_last_updated(gen.AUTO_SENTINEL) == "2026-04-22"
+
+    def test_auto_strips_extra_whitespace_from_git_output(self) -> None:
+        fake = MagicMock(returncode=0, stdout="  2026-04-22\t\n  ", stderr="")
+        with patch.object(gen.subprocess, "run", return_value=fake):
+            assert gen._resolve_last_updated(gen.AUTO_SENTINEL) == "2026-04-22"
+
+    def test_auto_returns_unvalidated_git_output(self) -> None:
+        # Documents intentional behavior: the resolver trusts git's %cs
+        # format and does not validate the string. If git ever returns
+        # malformed output, the rendered page surfaces it verbatim
+        # (caught by visual review, not this layer).
+        fake = MagicMock(returncode=0, stdout="2026-04-22garbage\n", stderr="")
+        with patch.object(gen.subprocess, "run", return_value=fake):
+            assert gen._resolve_last_updated(gen.AUTO_SENTINEL) == "2026-04-22garbage"
+
+    @pytest.mark.parametrize(
+        "side_effect",
+        [
+            subprocess.CalledProcessError(128, "git"),
+            FileNotFoundError(),
+            subprocess.TimeoutExpired("git", timeout=10),
+        ],
+        ids=["called_process_error", "git_missing", "timeout"],
+    )
+    def test_auto_falls_back_on_git_error(
+        self,
+        side_effect: BaseException,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        with (
+            _patch_today(),
+            patch.object(gen.subprocess, "run", side_effect=side_effect),
+        ):
+            assert gen._resolve_last_updated(gen.AUTO_SENTINEL) == _FROZEN_DATE
+        # User-visible warning so build environments never silently fall back.
+        assert "WARNING" in capsys.readouterr().err
+
+    def test_auto_falls_back_on_empty_output(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        fake = MagicMock(returncode=0, stdout="\n", stderr="")
+        with (
+            _patch_today(),
+            patch.object(gen.subprocess, "run", return_value=fake),
+        ):
+            assert gen._resolve_last_updated(gen.AUTO_SENTINEL) == _FROZEN_DATE
+        # Empty git stdout must be visibly warned about so a contributor
+        # sees the fallback fired (matches the exception-path warning).
+        err = capsys.readouterr().err
+        assert "WARNING" in err
+        assert "empty stdout" in err
 
 
 # -- Helper functions --

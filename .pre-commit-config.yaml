@@ -24,7 +24,7 @@ ci:
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, no-new-logger-exception-str-exc, orphan-fixtures]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -165,6 +165,17 @@ repos:
         args: [run, python, scripts/check_workflow_shell_git_commits.py]
         language: system
         files: ^\.github/workflows/.*\.ya?ml$
+
+      - id: doc-drift-counts
+        name: doc count floors (event modules)
+        entry: uv
+        args: [run, python, scripts/check_doc_drift_counts.py]
+        language: system
+        # Trigger on edits to any registered claim site or to the events
+        # directory itself; the script enumerates the events package
+        # and parses each claim file end-to-end on every run.
+        files: ^(docs/design/observability\.md|docs/design/agent-execution\.md|docs/research/(control-plane-audit|acg-formalism-evaluation)\.md|src/synthorg/observability/events/.*\.py|scripts/check_doc_drift_counts\.py)$
+        pass_filenames: false
 
       - id: mypy
         name: mypy type-check (affected modules)

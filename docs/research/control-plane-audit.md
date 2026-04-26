@@ -195,7 +195,7 @@ formats.
 **SynthOrg implementation**:
 
 - `src/synthorg/observability/setup.py` -- structlog + stdlib, idempotent `configure_logging()`,
-  82+ event constant modules in `observability/events/`.
+  100+ event constant modules in `observability/events/`.
 - `src/synthorg/observability/sinks.py` -- multi-sink routing: console, file (with rotation),
   syslog, HTTP batch handler.
 - `src/synthorg/observability/http_handler.py` -- `HttpBatchHandler`: thread-safe queue,
@@ -227,7 +227,7 @@ Without this, SynthOrg can ship logs to an external SIEM via HTTP sink, but cann
 participate in standard metrics pipelines or distributed tracing systems. This is the
 most significant gap for enterprise control-plane positioning.
 
-The 82+ structured event constants and correlation IDs provide the raw material for
+The 100+ structured event constants and correlation IDs provide the raw material for
 building proper observability exports -- the data model is sound, the export format is not.
 
 ---
@@ -272,7 +272,7 @@ claim for custom rules to developers, not operators.
 
 SynthOrg provides an integrated control plane that competitors typically deliver as separate
 tools: inventory (HR module), policy enforcement (security module with hybrid rule engine),
-token metering (3-layer budget enforcement), and observability (82+ structured events). The
+token metering (3-layer budget enforcement), and observability (100+ structured events). The
 integration advantage is that these components share context -- budget enforcement gates
 security escalation, performance tracking feeds autonomy decisions, trust levels gate
 model upgrades.

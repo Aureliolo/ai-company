@@ -18,7 +18,7 @@ SynthOrg is a Python framework for building **synthetic organizations** -- auton
 
 Define your company in YAML. Agents collaborate through a message bus, follow workflows (Kanban, Agile sprints, or custom), track costs against budgets, and produce real artifacts. The framework is provider-agnostic (100+ LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and designed for the full autonomy spectrum -- from human approval on every action to fully autonomous operation.
 
-> **Early access.** Core subsystems are built and tested (13,000+ unit tests, 80%+ coverage). APIs may change between releases. See the [roadmap](https://synthorg.io/docs/roadmap/) for what's next.
+> **Early access.** Core subsystems are built and tested (25,000+ unit tests, 80%+ coverage). APIs may change between releases. See the [roadmap](https://synthorg.io/docs/roadmap/) for what's next.
 
 ## Why SynthOrg?
 
@@ -92,7 +92,7 @@ curl http://localhost:3001/api/v1/readyz
 
 **[Communication](https://synthorg.io/docs/design/communication/)** -- Message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), meeting protocols (round-robin, position papers, structured phases), and A2A federation with external agent systems.
 
-**[Tools & MCP](https://synthorg.io/docs/guides/mcp-tools/)** -- Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for external tools. SynthOrg's own MCP server exposes 204 tools across 15 domains (agents, tasks, workflows, approvals, budget, memory, quality, organization, communication, coordination, analytics, integrations, infrastructure, signals, meta), split across `read_tool` / `write_tool` / `admin_tool` capability actions; destructive `admin_tool` calls enforce confirm + reason + actor guardrails with attributed audit trail. Layered sandboxing with subprocess and Docker backends. SSRF prevention with configurable allowlists.
+**[Tools & MCP](https://synthorg.io/docs/guides/mcp-tools/)** -- Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for external tools. SynthOrg's own MCP server exposes 200+ tools across 15 domains (agents, tasks, workflows, approvals, budget, memory, quality, organization, communication, coordination, analytics, integrations, infrastructure, signals, meta), split across `read_tool` / `write_tool` / `admin_tool` capability actions; destructive `admin_tool` calls enforce confirm + reason + actor guardrails with attributed audit trail. Layered sandboxing with subprocess and Docker backends. SSRF prevention with configurable allowlists.
 
 **[Client Simulation](https://synthorg.io/docs/design/client-simulation/)** -- Synthetic workload generation with AI, human, and hybrid clients. 5 requirement generators (template, LLM, dataset, procedural, hybrid), 4 feedback strategies (binary, scored, criteria-check, adversarial), multi-stage review pipeline, intake engine with lifecycle management, and batch simulation runner with configurable concurrency.
 
