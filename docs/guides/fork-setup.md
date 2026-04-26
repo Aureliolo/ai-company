@@ -11,7 +11,7 @@ The preflight is non-blocking on pull requests and feature branches; it only fai
 
 ## 1. Sync labels
 
-CI workflows reference a fixed set of automation labels (`automation:ci-health`, `automation:ci-preflight`, `automation:release-events`, `type:ci`, `prio:low`, `prio:medium`, `prio:high`, and `autorelease: pending`). The source of truth is `.github/labels.yml`.
+CI workflows reference a fixed set of automation labels (`automation:ci-health`, `automation:ci-preflight`, `type:ci`, `prio:low`, `prio:medium`, `prio:high`, and `autorelease: pending`). The source of truth is `.github/labels.yml`.
 
 Bootstrap once: **Actions -> Sync Labels -> Run workflow** on `main`. The workflow reads `.github/labels.yml` and creates or updates each label via `gh label create --force`. It never deletes labels, so any repo-specific labels you add are safe.
 
@@ -26,7 +26,7 @@ Create at **Settings -> Environments -> New environment**:
 | Environment | Used by | Required to pass CI Preflight? |
 |-------------|---------|---------------------|
 | `atlas` | `ci.yml` schema-validate | Yes |
-| `release` | `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, `test-signing.yml`, `finalize-release.yml` | Yes |
+| `release` | `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, `finalize-release.yml` | Yes |
 | `release-tags` | `cli.yml`, `docker.yml` (tag pushes) | Yes |
 | `apko-lock` | `apko-lock.yml` (scheduled lockfile updates) | Yes |
 | `cloudflare-preview` | `pages-preview.yml` | Yes |
@@ -39,7 +39,7 @@ Workflow consumers of each environment fall into two camps: required for any rel
 
 ## 3. Create the release-bot GitHub App
 
-Stable, dev, rollover, graduate, and signing workflows mint installation tokens from a GitHub App with the right repository permissions. Without it, every commit those workflows produce on `main` would be unsigned and rejected by branch protection. The App is the single piece of state that makes the release pipeline able to write to a protected `main`.
+The release pipeline (`release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, and `finalize-release.yml`) mints installation tokens from a GitHub App with the right repository permissions. Without it, every commit those workflows produce on `main` would be unsigned and rejected by branch protection. The App is the single piece of state that makes the release pipeline able to write to a protected `main`. The same App is also used by the weekly `apko-lock.yml` cron when it opens its lockfile-update PR (its credentials are duplicated into the `apko-lock` env under different secret names so each env carries its own copy).
 
 Steps:
 
@@ -58,7 +58,14 @@ In your repository, go to **Settings -> Environments -> release** and add two se
 - `RELEASE_BOT_APP_CLIENT_ID` -- the Client ID from step 6.
 - `RELEASE_BOT_APP_PRIVATE_KEY` -- the entire PEM file contents, including the `-----BEGIN ... PRIVATE KEY-----` header and `-----END ... PRIVATE KEY-----` footer.
 
-If you do not need the release pipeline at all (you are running a research fork and never cut releases), skip this section. The release workflows are gated on `!github.event.repository.fork` and skip cleanly.
+Then duplicate the SAME values into the `apko-lock` environment under different names so the weekly lockfile-update cron can mint a token of its own. Settings -> Environments -> apko-lock:
+
+- `APKO_BOT_APP_CLIENT_ID` -- same Client ID as `RELEASE_BOT_APP_CLIENT_ID` above.
+- `APKO_BOT_APP_PRIVATE_KEY` -- same PEM contents as `RELEASE_BOT_APP_PRIVATE_KEY` above.
+
+The credentials are duplicated rather than shared because GitHub-environment secrets are env-scoped: a workflow running under `release` cannot read a secret defined only in `apko-lock`, and vice versa. Both names point at the same App, so a key rotation only needs to update both copies once.
+
+If you do not need the release pipeline at all (you are running a research fork and never cut releases), skip this section. The release and apko-lock workflows are gated on `!github.event.repository.fork` and skip cleanly.
 
 ## 4. Populate the remaining environment secrets
 
@@ -68,7 +75,7 @@ If you do not need the release pipeline at all (you are running a research fork 
 | `cloudflare-preview` | `CLOUDFLARE_API_TOKEN` | https://dash.cloudflare.com/profile/api-tokens -- Pages-deploy-scoped |
 | `cloudflare-preview` | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard sidebar |
 
-`apko-lock` and `image-push` need no secrets -- the workflows use the auto-provided `${{ github.token }}` against your fork's resources. The environments exist purely for branch-policy gating.
+`image-push` needs no secrets -- the workflow uses the auto-provided `${{ github.token }}` against your fork's GHCR namespace. The environment exists purely for branch-policy gating.
 
 ## 5. Branch protection on `main`
 

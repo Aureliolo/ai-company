@@ -225,9 +225,51 @@ jobs:
             fi
           fi
 
+          # SBOM subsection. Source of truth for which SBOMs exist
+          # is the release assets list, not body-injected markers --
+          # docker.yml uploads sbom-*.cdx.json files via
+          # `gh release upload` but does NOT inject
+          # <!-- CONTAINER_SBOM_DATA --> markers, so the
+          # marker-only path silently produced an empty SBOM
+          # subsection (and therefore no `### Software Bill of
+          # Materials` header) on every release.
+          #
+          # Computed BEFORE the gate so an asset-backed SBOM list
+          # can stand on its own as the verification trigger when
+          # all marker-derived sections are empty (e.g. an early
+          # build where CLI / Docker injection is broken but
+          # SBOM upload still succeeded). Without this hoist, the
+          # gate's marker-only OR-list would skip the entire
+          # Verification section and silently lose the SBOM
+          # subsection too.
+          #
+          # No `|| true` on the gh release view call: an empty
+          # SBOM list is fine (jq exits 0 with empty output when
+          # no asset matches the filter), but a real failure
+          # (token denied, 404, network) is NOT fine -- masking
+          # it would let the workflow proceed to the immutable
+          # `--draft=false` publish below with an SBOM-less
+          # release body.
+          SBOM_ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '[.assets[].name | select(test("^sbom-.*\\.cdx\\.json$"))] | .[]')
+          SBOM_ITEMS=""
+          if [ -n "$SBOM_ASSETS" ]; then
+            # Render as `\`name\`` separated by ` | `, preserving the
+            # docker.yml release-events format readers are used to.
+            SBOM_LIST=$(printf '%s' "$SBOM_ASSETS" \
+              | awk 'BEGIN{first=1} {if(first){first=0}else{printf " | "}; printf "`%s`", $0} END{print ""}')
+            SBOM_ITEMS="$(printf '**Container images:** %s\n' "$SBOM_LIST")"
+          fi
+          # Marker-injected legacy data still concatenates if
+          # present, for forward-compat if a future docker.yml
+          # change starts emitting CONTAINER_SBOM_DATA.
+          if [ -n "$CONTAINER_SBOM" ]; then
+            SBOM_ITEMS="$(printf '%s\n\n%s' "$SBOM_ITEMS" "$CONTAINER_SBOM")"
+          fi
+
           # Build the combined Verification section
           VERIFICATION=""
-          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CLI_COSIGN" ] || [ -n "$CLI_SLSA_BUNDLE" ] || [ -n "$CONTAINER_COSIGN" ] || [ -n "$CLI_SLSA" ] || [ -n "$CONTAINER_SLSA" ] || [ -n "$CONTAINER_SBOM" ]; then
+          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CLI_COSIGN" ] || [ -n "$CLI_SLSA_BUNDLE" ] || [ -n "$CONTAINER_COSIGN" ] || [ -n "$CLI_SLSA" ] || [ -n "$CONTAINER_SLSA" ] || [ -n "$SBOM_ITEMS" ]; then
             VERIFICATION="$(printf '\n<!-- FINALIZE_VERIFICATION -->\n\n---\n\n## Verification\n')"
 
             if [ -n "$CLI_CHECKSUMS" ]; then
@@ -266,13 +308,11 @@ jobs:
               VERIFICATION="$(printf '%s\n\n### Provenance (SLSA Level 3)\n\nVerify with the [GitHub CLI](https://cli.github.com/):\n\n%s\n' "$VERIFICATION" "$SLSA_BLOCK")"
             fi
 
-            # SBOM subsection
-            SBOM_ITEMS=""
-            if [ -n "$CONTAINER_SBOM" ]; then
-              SBOM_ITEMS="$(printf '**Container images:**\n%s\n' "$CONTAINER_SBOM")"
-            fi
+            # SBOM subsection. SBOM_ITEMS was computed before the
+            # gate so this block just appends; see the comment block
+            # at the top of the gate for the rationale.
             if [ -n "$SBOM_ITEMS" ]; then
-              VERIFICATION="$(printf '%s\n\n### Software Bill of Materials (SBOM)\n\nCycloneDX JSON SBOMs are attached to this release as downloadable assets.\n\n%s\n' "$VERIFICATION" "$SBOM_ITEMS")"
+              VERIFICATION="$(printf '%s\n\n### Software Bill of Materials\n\nCycloneDX JSON SBOMs are attached to this release as downloadable assets.\n\n%s\n' "$VERIFICATION" "$SBOM_ITEMS")"
             fi
           fi
 

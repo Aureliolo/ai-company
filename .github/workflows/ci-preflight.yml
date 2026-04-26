@@ -64,29 +64,12 @@ jobs:
           steps.check.outputs.gaps-found == 'false'
           && (github.event_name != 'pull_request'
               || github.event.pull_request.head.repo.full_name == github.repository)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PREFLIGHT_TITLE: "CI setup incomplete -- please configure the following"
-          COMMIT_SHA: ${{ github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Search by title alone, same dedup key as post-tracking-issue.
-          # Use jq --arg so titles with shell metacharacters are safe.
-          ISSUE_NUMBER=$(gh issue list --state open \
-            --search "in:title \"$PREFLIGHT_TITLE\"" --json number,title \
-            | jq -r --arg title "$PREFLIGHT_TITLE" \
-              '[.[] | select(.title == $title)] | .[0].number // empty')
-
-          if [ -n "$ISSUE_NUMBER" ]; then
-            gh issue comment "$ISSUE_NUMBER" \
-              --body "Preflight passed at \`$COMMIT_SHA\`. Closing -- this issue will reopen automatically if a check regresses."
-            gh issue close "$ISSUE_NUMBER"
-            echo "Closed tracking issue #$ISSUE_NUMBER"
-          else
-            echo "No open preflight tracking issue to close."
-          fi
+        uses: ./.github/actions/post-tracking-issue
+        with:
+          mode: close
+          title: "CI setup incomplete -- please configure the following"
+          body: "Preflight passed at `${{ github.sha }}`. Closing -- this issue will reopen automatically if a check regresses."
+          gh-token: ${{ github.token }}
 
       - name: Fail on push to main when gaps remain
         if: >-
