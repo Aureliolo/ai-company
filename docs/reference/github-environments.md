@@ -16,7 +16,7 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | `release` | `main` | `release.yml` + `dev-release.yml` + `auto-rollover.yml` + `graduate.yml` + `test-signing.yml` (main-scoped), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main; carries `statuses: write` so the publish job can post a `finalize-release` commit status against `workflow_run.head_sha`). Holds `RELEASE_BOT_APP_CLIENT_ID` + `RELEASE_BOT_APP_PRIVATE_KEY`. |
 | `release-tags` | `v*` | `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes). Structural ref gate only; no privileged secrets. |
 | `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
-| `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch |
+| `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch. Holds `APKO_BOT_APP_CLIENT_ID` + `APKO_BOT_APP_PRIVATE_KEY` -- a copy of the `synthorg-repo-bot` App credentials (`Contents: Read and write` + `Pull requests: Read and write` + `Metadata: Read`, scoped to this repo only), used by the apko-lock workflow to mint an installation token for the lockfile-update PR. `GITHUB_TOKEN` cannot create the PR because the repo-level setting `can_approve_pull_request_reviews: false` blocks it. The same App credentials live under `RELEASE_BOT_APP_*` in the `release` env (env-scoped, not shared across envs). Both copies point at the same App; the dedicated `apko-lock` env keeps weekly-cron auth and release-pipeline auth in separate boxes even though they share an identity. |
 | `cloudflare-preview` | _none_ (see below) | `pages-preview.yml` pull_request events |
 | `atlas` | _none_ (see below) | `ci.yml:schema-validate` push + pull_request |
 
@@ -106,7 +106,7 @@ environment that scopes the secret.
 ### `RELEASE_BOT_APP_*`
 
 The release pipeline is authenticated by a dedicated GitHub App,
-`synthorg-release-bot`. Its credentials live in the `release`
+`synthorg-repo-bot`. Its credentials live in the `release`
 deployment environment as two secrets:
 
 - `RELEASE_BOT_APP_CLIENT_ID` -- the App's Client ID as shown on the
@@ -149,20 +149,26 @@ installation token (valid ≤1 hour) via the
   side-effect of the App-token PR creation: GitHub's anti-recursion
   rule blocks `pull_request` workflows for events created by the
   workflow's own installation token, so `ci.yml` does not auto-fire
-  on the release PR. To unblock the required `CI Pass` check, the
-  job's final step issues
-  `gh workflow run ci.yml --ref release-please--branches--main--components--synthorg`
-  with `GITHUB_TOKEN` (which IS allowed to invoke
-  `workflow_dispatch` -- the documented exception to the
-  anti-recursion rule). The
-  resulting `ci.yml` run dispatches against the release branch's
-  HEAD, so its `CI Pass` check_run posts on the release PR's head
-  SHA and satisfies the `protect-main` ruleset. The
-  `branch-protection-audit` job inside `ci.yml` keeps a
-  `github.ref == 'refs/heads/main'` gate so non-main dispatches
-  skip cleanly instead of hitting the `release` environment's
-  branch allowlist and emitting a "deployment was rejected"
-  annotation on every release PR.
+  on the release PR. The required `CI Pass` check is therefore
+  satisfied by a direct commit-status post: the job's final step
+  resolves the release PR's current head SHA and issues
+  `gh api -X POST repos/.../statuses/<head_sha>` with
+  `context=CI Pass`, `state=success` under `GITHUB_TOKEN` (which
+  carries `statuses: write`). Statuses are unconditionally part of
+  a PR's `statusCheckRollup` and satisfy `required_status_checks`
+  evaluation, so the merge gate resolves without ci.yml ever
+  firing. (The earlier mechanism -- a `gh workflow run ci.yml`
+  workflow_dispatch nudge -- produced a check_run on the SHA but
+  the dispatched run's `check_suite.pull_requests` was empty, so
+  the check did not appear in the rollup; the merge UI stayed
+  stuck on `CI Pass -- Expected, waiting`. See PR #1615 for the
+  full root cause.) `ci.yml`'s `is_release_please` skip remains
+  in place as defense-in-depth so a future change in
+  release-please's identity does not accidentally run a full CI
+  suite on a release PR. The `branch-protection-audit` job inside
+  `ci.yml` keeps a `github.ref == 'refs/heads/main'` gate so any
+  ad-hoc dispatch from a non-main ref skips cleanly instead of
+  hitting the `release` environment's branch allowlist.
 - `dev-release.yml` -- tag creation for dev pre-releases via
   `gh api`.
 - `auto-rollover.yml` -- empty `Release-As:` commit via the Git

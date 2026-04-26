@@ -2,7 +2,7 @@
 """Pre-commit gate: forbid new ``RELEASE_PLEASE_TOKEN`` references.
 
 The fine-grained PAT ``RELEASE_PLEASE_TOKEN`` was retired in favour of the
-``synthorg-release-bot`` GitHub App (see issue #1555 and
+``synthorg-repo-bot`` GitHub App (see issue #1555 and
 ``docs/reference/github-environments.md``). PAT-authored API commits are
 unsigned, which means any workflow resurrecting the PAT would silently
 produce commits that fail branch protection's ``required_signatures``
@@ -37,7 +37,7 @@ _GITHUB_ROOT = _REPO_ROOT / ".github"
 _FORBIDDEN = "RELEASE_PLEASE_TOKEN"
 _STEERING_MESSAGE = (
     "RELEASE_PLEASE_TOKEN was retired in #1555. Use the "
-    "`release-runner-setup` composite (which mints a synthorg-release-bot "
+    "`release-runner-setup` composite (which mints a synthorg-repo-bot "
     "App installation token) or invoke `actions/create-github-app-token` "
     "directly. See docs/reference/github-environments.md#release_bot_app_."
 )

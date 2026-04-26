@@ -42,7 +42,7 @@ jobs:
     # of which tag triggered the upstream workflow, so the `release` env's
     # `main`-only branch policy matches cleanly. The workflow-level `if:` guard
     # still enforces that the triggering workflow ran on a tag starting with `v`.
-    # This job does not consume the `synthorg-release-bot` App token, but
+    # This job does not consume the `synthorg-repo-bot` App token, but
     # sharing the env with the release-please jobs keeps the main-scoped
     # gate consistent.
     environment: release
